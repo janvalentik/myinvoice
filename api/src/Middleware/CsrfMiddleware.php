@@ -47,6 +47,12 @@ final class CsrfMiddleware implements MiddlewareInterface
 
         $path = $request->getUri()->getPath();
 
+        // Public schvalovací endpointy — bez Origin/CSRF (klient přijde z emailu, Origin
+        // bude jiný nebo prázdný). Anti-bot ochrana = token v URL + CAPTCHA.
+        if (str_starts_with($path, '/api/public/')) {
+            return $handler->handle($request);
+        }
+
         // Origin / Referer check (i pro exempt routes)
         $appUrl = rtrim((string) $this->config->get('app.url', ''), '/');
         $origin = $request->getHeaderLine('Origin');

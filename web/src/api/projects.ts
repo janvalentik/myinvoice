@@ -21,6 +21,7 @@ export interface Project {
   currency_id: number
   currency: string
   status: 'active' | 'paused' | 'closed'
+  requires_work_report_approval: boolean
   note?: string | null
   archived_at?: string | null
   invoices_count?: number
@@ -47,6 +48,7 @@ export interface ProjectPayload {
   hourly_rate: number
   currency_id: number
   status: 'active' | 'paused' | 'closed'
+  requires_work_report_approval?: boolean
   note?: string | null
   billing_emails: BillingEmail[]
 }

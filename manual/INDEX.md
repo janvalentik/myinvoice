@@ -24,9 +24,9 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 ### Práce s daty
 
 6. [Klienti](06_Klienti.md)
-7. [Zakázky](07_Zakazky.md)
+7. [Zakázky (vč. schvalování výkazů zákazníkem)](07_Zakazky.md)
 8. [Faktury — seznam a hromadné akce](08_Faktury.md)
-9. [Faktura — editor a výkaz víceprací](09_Faktura_editor.md)
+9. [Faktura — editor, výkaz víceprací a schvalování zákazníkem](09_Faktura_editor.md)
 10. [Faktura — PDF, QR platba, odeslání e-mailem](10_Faktura_PDF.md)
 
 ### Platby a komunikace

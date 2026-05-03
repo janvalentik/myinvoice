@@ -74,14 +74,16 @@ if ($bodyHtml === '') {
     --muted: #6b7280;
     --code-bg: #f3f4f6;
     --code-text: #c0392b;
-    /* Sidebar — tmavší tón pro vizuální oddělení od obsahu */
-    --sidebar-bg: #1e1b3a;
-    --sidebar-bg-2: #15132b;
-    --sidebar-text: #e5e3f5;
-    --sidebar-muted: #9b96c0;
-    --sidebar-border: rgba(255,255,255,0.08);
-    --sidebar-hover: rgba(108,92,231,0.18);
-    --sidebar-active: #6c5ce7;
+    /* Sidebar — světlé pozadí, kontrastní text, primary accent */
+    --sidebar-bg: #ffffff;
+    --sidebar-bg-2: #f8f9fc;
+    --sidebar-text: #1f2937;
+    --sidebar-muted: #6b7280;
+    --sidebar-border: #e5e7eb;
+    --sidebar-hover: #f4f2fb;
+    --sidebar-active-bg: #ede9fe;
+    --sidebar-active-text: #4c1d95;
+    --sidebar-accent: #6c5ce7;
 }
 * { box-sizing: border-box; }
 body {
@@ -94,19 +96,28 @@ body {
 }
 a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
-.layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
+.layout { min-height: 100vh; }
 html, body { overflow-x: hidden; max-width: 100%; }
 .sidebar {
-    background: linear-gradient(180deg, var(--sidebar-bg) 0%, var(--sidebar-bg-2) 100%);
+    background: var(--sidebar-bg);
     color: var(--sidebar-text);
     border-right: 1px solid var(--sidebar-border);
     padding: 24px 0;
     overflow-y: auto;
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    width: 280px;
     height: 100vh;
-    box-shadow: 2px 0 16px rgba(0,0,0,0.08);
+    z-index: 10;
+    box-shadow: 1px 0 0 var(--sidebar-border);
+    /* Custom scrollbar pro Webkit — diskrétní, ladí s light theme */
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
 }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+.sidebar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 .sidebar-brand {
     padding: 0 20px 20px;
     border-bottom: 1px solid var(--sidebar-border);
@@ -118,32 +129,34 @@ html, body { overflow-x: hidden; max-width: 100%; }
 .sidebar-brand img {
     width: 36px;
     height: 36px;
-    background: var(--panel);
+    background: linear-gradient(135deg, #6c5ce7 0%, #4c1d95 100%);
     border-radius: 8px;
     padding: 4px;
+    box-shadow: 0 2px 8px rgba(108, 92, 231, 0.25);
 }
-.sidebar-brand .title { font-weight: 700; color: #fff; font-size: 16px; }
+.sidebar-brand .title { font-weight: 700; color: #15131D; font-size: 16px; }
 .sidebar-brand .sub { font-size: 12px; color: var(--sidebar-muted); margin-top: 2px; }
 .sidebar-brand a { color: inherit; text-decoration: none; }
-.toc-group { margin: 0 0 24px; }
+.toc-group { margin: 0 0 20px; }
 .toc-group-title {
-    font-size: 11px;
+    font-size: 13px;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: #fff;
-    padding: 12px 20px 8px;
+    letter-spacing: 1.4px;
+    color: #0f172a;
+    padding: 16px 20px 10px;
     font-weight: 800;
-    background: rgba(255,255,255,0.04);
     margin-bottom: 6px;
-    position: relative;
-    border-bottom: 2px solid #f5d142;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 .toc-group-title::before {
     content: "";
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: var(--primary);
+    width: 4px;
+    height: 16px;
+    background: var(--sidebar-accent);
+    border-radius: 2px;
+    flex: 0 0 auto;
 }
 .toc-group ul { list-style: none; margin: 0; padding: 0; }
 .toc-group li a {
@@ -155,55 +168,54 @@ html, body { overflow-x: hidden; max-width: 100%; }
     color: var(--sidebar-text);
     border-left: 3px solid transparent;
     transition: all 0.15s;
+    border-radius: 0;
 }
 .toc-group li a::before {
     content: "›";
-    color: #f5d142;
+    color: #cbd5e1;
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     line-height: 1;
     flex: 0 0 auto;
-    opacity: 0.7;
+    transition: color 0.15s;
 }
 .toc-group li a:hover {
     background: var(--sidebar-hover);
-    border-left-color: var(--primary);
-    color: #fff;
+    color: var(--sidebar-active-text);
     text-decoration: none;
 }
-.toc-group li a:hover::before { opacity: 1; }
+.toc-group li a:hover::before { color: var(--sidebar-accent); }
 .toc-group li a.active {
-    background: var(--sidebar-active);
-    border-left-color: #f5d142;
+    background: var(--sidebar-active-bg);
+    border-left-color: var(--sidebar-accent);
     font-weight: 600;
-    color: #fff;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+    color: var(--sidebar-active-text);
 }
-.toc-group li a.active::before { color: #fff; opacity: 1; content: "•"; }
+.toc-group li a.active::before { color: var(--sidebar-accent); content: "•"; }
 .toc-group li.sub a {
     padding-left: 44px;
     font-size: 13px;
     color: var(--sidebar-muted);
 }
-.toc-group li.sub a::before { content: "—"; color: var(--sidebar-muted); font-size: 13px; }
-.toc-group li.sub a:hover { color: #fff; background: rgba(255,255,255,0.04); border-left-color: transparent; }
-.toc-group li.sub a:hover::before { color: #fff; }
+.toc-group li.sub a::before { content: "—"; color: #cbd5e1; font-size: 13px; }
+.toc-group li.sub a:hover { color: var(--sidebar-active-text); background: var(--sidebar-hover); }
+.toc-group li.sub a:hover::before { color: var(--sidebar-accent); }
 .search-wrap { padding: 0 20px 20px; }
 .search-wrap input {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--sidebar-border);
-    background: rgba(255,255,255,0.06);
+    background: #fff;
     border-radius: 8px;
     font-size: 14px;
     outline: none;
-    color: #fff;
+    color: var(--sidebar-text);
 }
 .search-wrap input::placeholder { color: var(--sidebar-muted); }
 .search-wrap input:focus {
-    border-color: var(--primary);
-    background: rgba(255,255,255,0.1);
-    box-shadow: 0 0 0 3px rgba(108,92,231,0.2);
+    border-color: var(--sidebar-accent);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(108,92,231,0.15);
 }
 .search-results {
     margin-top: 8px;
@@ -233,8 +245,8 @@ html, body { overflow-x: hidden; max-width: 100%; }
     border-top: 1px solid var(--sidebar-border);
     margin-top: 12px;
 }
-.sidebar-footer a { color: var(--primary); }
-.sidebar-footer a:hover { color: #fff; }
+.sidebar-footer a { color: var(--sidebar-accent); }
+.sidebar-footer a:hover { color: var(--sidebar-active-text); }
 .btn-back {
     display: flex;
     align-items: center;
@@ -242,38 +254,41 @@ html, body { overflow-x: hidden; max-width: 100%; }
     gap: 8px;
     margin: 0 20px 16px;
     padding: 10px 14px;
-    background: rgba(245,209,66,0.12);
-    border: 1px solid rgba(245,209,66,0.35);
-    color: #f5d142;
+    background: var(--sidebar-accent);
+    border: 1px solid var(--sidebar-accent);
+    color: #fff;
     border-radius: 8px;
     font-size: 13px;
     font-weight: 600;
     text-decoration: none;
     transition: all 0.15s;
+    box-shadow: 0 1px 2px rgba(108, 92, 231, 0.2);
 }
 .btn-back:hover {
-    background: #f5d142;
-    color: var(--sidebar-bg);
+    background: #5849c2;
+    border-color: #5849c2;
+    color: #fff;
     text-decoration: none;
     transform: translateX(-2px);
+    box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
 }
 .btn-back svg { width: 16px; height: 16px; }
 .sidebar-version {
     display: inline-block;
-    background: var(--primary);
-    color: #fff;
-    padding: 2px 8px;
+    background: var(--sidebar-active-bg);
+    color: var(--sidebar-active-text);
+    padding: 2px 10px;
     border-radius: 10px;
     font-size: 11px;
     font-weight: 700;
     margin-bottom: 4px;
 }
 .content {
-    /* Content fills full main column (po sidebaru). Žádný max-width, aby
-       text + figure margin auto vycentrovaly v celé dostupné šířce — bez
-       dead-space napravo od contentu. */
+    /* Sidebar je position:fixed (280px), content musí mít margin-left = sidebar width.
+       Žádný max-width, aby text + figure margin auto vycentrovaly v celé dostupné
+       šířce — bez dead-space napravo od contentu. */
     padding: 32px 40px;
-    width: 100%;
+    margin-left: 280px;
     min-width: 0;
     /* Long URL nebo unbreakable strings nemají rozbít grid column */
     overflow-wrap: break-word;
@@ -393,7 +408,7 @@ html, body { overflow-x: hidden; max-width: 100%; }
             <img src="/styles/logo.svg" alt="logo">
             <div>
                 <div class="title"><a href="/manual">MyInvoice.cz</a></div>
-                <div class="sub">Manuál <span class="sidebar-version">v1.0</span></div>
+                <div class="sub">Uživatelský manuál</div>
             </div>
         </div>
         <a href="/" class="btn-back">

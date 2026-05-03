@@ -32,6 +32,10 @@ alternativa s důrazem na:
 - **Klonování faktur** s auto-inkrementem měsíce v popiscích (`3/2026 → 4/2026`)
 - Hromadné akce: *Vystavit znovu (N)*, *Odeslat klientovi (N)*, *Označit jako zaplacené*, *Upomínka*
 - **Výkaz víceprací** (work_report) jako 2. strana PDF s přenosem sumy do položky
+- **Schvalování výkazu zákazníkem přes e-mailový odkaz** — volitelné per zakázka:
+  zákazník dostane e-mail s odkazem na veřejnou stránku (token + CAPTCHA),
+  jedním klikem schválí/zamítne, faktura se po schválení automaticky vystaví
+  a odešle
 - PDF se **snapshotem dodavatele/odběratele/banky** — vystavená faktura je neměnná
 - Editace vystavené faktury jen pro admina s `?force=1` + audit záznam
 

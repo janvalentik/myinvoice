@@ -5,6 +5,9 @@ import { useI18n } from 'vue-i18n'
 const { t } = useI18n()
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { projectsApi, type Project } from '@/api/projects'
+import { useToast } from '@/composables/useToast'
+
+const toast = useToast()
 
 const route = useRoute()
 const router = useRouter()
@@ -36,7 +39,7 @@ async function deleteProject() {
     await projectsApi.delete(project.value.id)
     router.push(`/clients/${project.value.client_id}`)
   } catch (e: any) {
-    alert(e?.response?.data?.error?.message || t('project.delete_failed'))
+    toast.error(e?.response?.data?.error?.message || t('project.delete_failed'))
   }
 }
 </script>
@@ -51,7 +54,7 @@ async function deleteProject() {
           ← {{ project.client_company_name }}
         </RouterLink>
         <h1 class="text-2xl font-semibold mt-1">{{ project.name }}</h1>
-        <div class="text-sm text-neutral-500 mt-1 flex items-center gap-2">
+        <div class="text-sm text-neutral-500 mt-1 flex items-center gap-2 flex-wrap">
           <span class="text-xs px-2 py-0.5 rounded"
             :class="{
               'bg-emerald-50 text-emerald-700': project.status === 'active',
@@ -59,9 +62,20 @@ async function deleteProject() {
               'bg-neutral-100 text-neutral-600': project.status === 'closed',
             }">{{ project.status }}</span>
           <span v-if="project.project_number" class="font-mono text-xs">{{ project.project_number }}</span>
+          <span v-if="project.requires_work_report_approval"
+            class="text-xs px-2 py-0.5 rounded bg-primary-100 text-primary-700"
+            :title="t('project.requires_approval_hint')">
+            ✓ {{ t('project.requires_approval_badge') }}
+          </span>
         </div>
       </div>
       <div class="flex flex-wrap gap-2 justify-end">
+        <RouterLink v-if="project.status === 'active'"
+          :to="`/invoices/new?client_id=${project.client_id}&project_id=${project.id}`"
+          class="cursor-pointer px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          {{ t('project.new_invoice') }}
+        </RouterLink>
         <RouterLink :to="`/projects/${project.id}/edit`"
           class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 rounded-md text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1.5">
           <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>

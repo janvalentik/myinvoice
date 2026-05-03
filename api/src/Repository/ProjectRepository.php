@@ -129,8 +129,9 @@ final class ProjectRepository
         try {
             $sql = 'INSERT INTO projects
                 (client_id, name, payment_due_days, project_number, contract_number,
-                 budget_total, budget_yearly, budget_monthly, hourly_rate, currency_id, status, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                 budget_total, budget_yearly, budget_monthly, hourly_rate, currency_id, status,
+                 requires_work_report_approval, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
                 $clientId,
@@ -144,6 +145,7 @@ final class ProjectRepository
                 (float) ($data['hourly_rate'] ?? 1500),
                 $this->resolveCurrencyId($data, $supplierId),
                 (string) ($data['status'] ?? 'active'),
+                !empty($data['requires_work_report_approval']) ? 1 : 0,
                 $this->nullable($data, 'note'),
             ]);
             $id = (int) $pdo->lastInsertId();
@@ -171,7 +173,7 @@ final class ProjectRepository
             $sql = 'UPDATE projects SET
                     name = ?, payment_due_days = ?, project_number = ?, contract_number = ?,
                     budget_total = ?, budget_yearly = ?, budget_monthly = ?, hourly_rate = ?,
-                    currency_id = ?, status = ?, note = ?
+                    currency_id = ?, status = ?, requires_work_report_approval = ?, note = ?
                     WHERE id = ?';
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
@@ -185,6 +187,7 @@ final class ProjectRepository
                 (float) ($data['hourly_rate'] ?? 1500),
                 $this->resolveCurrencyId($data, $supplierId),
                 (string) ($data['status'] ?? 'active'),
+                !empty($data['requires_work_report_approval']) ? 1 : 0,
                 $this->nullable($data, 'note'),
                 $id,
             ]);
@@ -249,6 +252,9 @@ final class ProjectRepository
             }
         }
         if (isset($row['currency_id']))      $row['currency_id'] = (int) $row['currency_id'];
+        if (isset($row['requires_work_report_approval'])) {
+            $row['requires_work_report_approval'] = (bool) $row['requires_work_report_approval'];
+        }
         if (array_key_exists('revenue', $row)) {
             $row['revenue'] = (float) $row['revenue'];
         }

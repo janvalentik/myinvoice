@@ -322,8 +322,12 @@ async function loadWorkReport() {
   }
 }
 
-const wrTotalHours = computed(() => wrItems.value.reduce((s, i) => s + (Number(i.hours) || 0), 0))
-const wrTotalAmount = computed(() => wrItems.value.reduce((s, i) => s + (Number(i.hours) || 0) * (Number(i.rate) || 0), 0))
+// Pro výpočty + uložení: jen řádky s vyplněným popisem. Prázdné řádky uživatel
+// typicky nevyplní (přidal Přidat řádek a zapomněl), automaticky je ignorujeme,
+// aby totals v položce faktury seděly s tím, co se opravdu uloží.
+const wrItemsValid = computed(() => wrItems.value.filter(i => (i.description || '').trim() !== ''))
+const wrTotalHours = computed(() => wrItemsValid.value.reduce((s, i) => s + (Number(i.hours) || 0), 0))
+const wrTotalAmount = computed(() => wrItemsValid.value.reduce((s, i) => s + (Number(i.hours) || 0) * (Number(i.rate) || 0), 0))
 
 function addWrItem() {
   // 1. project hourly rate, 2. existing WR row rate (z editace), 3. default 1500
@@ -351,18 +355,28 @@ function openWorkReport() {
 // (množství / sazba / DPH zůstává); jinak přidá novou. Tím se opětovné kliknutí
 // "Přenést jako položku faktury" po editaci výkazu chová jako sync, ne jako duplicate.
 function pushWrToInvoiceItem() {
-  if (wrItems.value.length === 0) return
+  if (wrItemsValid.value.length === 0) return
   const totalHours = wrTotalHours.value
   const totalAmount = wrTotalAmount.value
   const avgRate = totalHours > 0 ? Math.round((totalAmount / totalHours) * 100) / 100 : 0
   const defaultVatId = vatRates.value.find(v => v.is_default)?.id ?? vatRates.value[0]?.id ?? 1
   const description = wrTitle.value || 'Výkaz víceprací'
 
+  // 1. Položka se shodným popisem → sync (aktualizace hodin/sazby).
+  // 2. Jinak prázdná položka (z blankItem na nové faktuře) → naplň ji, ne push.
+  // 3. Jinak nová položka.
   const existing = form.value.items.find(it => (it.description || '').trim() === description.trim())
-  if (existing) {
-    existing.quantity = totalHours
-    existing.unit = 'h'
-    existing.unit_price_without_vat = avgRate
+  const empty = !existing
+    ? form.value.items.find(it => (it.description || '').trim() === ''
+        && (Number(it.unit_price_without_vat) || 0) === 0)
+    : undefined
+  const target = existing || empty
+
+  if (target) {
+    target.description = description
+    target.quantity = totalHours
+    target.unit = 'h'
+    target.unit_price_without_vat = avgRate
     // vat_rate_id záměrně neměníme — uživatel ho mohl ručně změnit
   } else {
     form.value.items.push({
@@ -377,7 +391,7 @@ function pushWrToInvoiceItem() {
 }
 
 async function deleteWorkReport() {
-  if (!confirm(locale.value === 'cs' ? 'Smazat výkaz víceprací?' : 'Delete work report?')) return
+  if (!confirm(t('invoice.wr_delete_confirm'))) return
   // Pokud je faktura už uložená, smaž i z DB; jinak jen lokálně.
   if (invoiceId.value) {
     try {
@@ -395,7 +409,45 @@ async function deleteWorkReport() {
   wrOpen.value = false
 }
 
+/**
+ * Pokud uživatel má otevřený výkaz s položkami, ověř jestli odpovídá faktuře.
+ * Vrací null = OK, jinak warning string pro confirm().
+ */
+function checkWorkReportSync(): string | null {
+  if (!wrOpen.value || wrItemsValid.value.length === 0) return null
+  const totalHours = Math.round(wrTotalHours.value * 100) / 100
+  const totalAmount = Math.round(wrTotalAmount.value * 100) / 100
+  const avgRate = totalHours > 0 ? Math.round((totalAmount / totalHours) * 100) / 100 : 0
+  const description = (wrTitle.value || (locale.value === 'cs' ? 'Výkaz víceprací' : 'Work report')).trim()
+  if (description === '') return null
+
+  const ccy = currencies.value.find(c => c.id === form.value.currency_id)?.code || ''
+  const item = form.value.items.find(it => (it.description || '').trim() === description)
+
+  if (!item) {
+    return locale.value === 'cs'
+      ? `Výkaz „${description}" obsahuje ${totalHours} h za ${totalAmount.toLocaleString('cs')} ${ccy}, ale není zapsán jako položka faktury.\n\nPokračovat bez přenosu výkazu do faktury?`
+      : `Work report "${description}" has ${totalHours}h for ${totalAmount.toLocaleString('en-US')} ${ccy}, but is not listed as an invoice item.\n\nContinue without transferring the work report to the invoice?`
+  }
+
+  const itemQty = Number(item.quantity) || 0
+  const itemRate = Number(item.unit_price_without_vat) || 0
+  const qtyDiff = Math.abs(itemQty - totalHours) > 0.01
+  const rateDiff = Math.abs(itemRate - avgRate) > 0.01
+
+  if (qtyDiff || rateDiff) {
+    return locale.value === 'cs'
+      ? `Výkaz se liší od přenesené položky faktury:\n\n• Výkaz:   ${totalHours} h × ${avgRate.toLocaleString('cs')} = ${totalAmount.toLocaleString('cs')} ${ccy}\n• Položka: ${itemQty} h × ${itemRate.toLocaleString('cs')} = ${(itemQty * itemRate).toLocaleString('cs')} ${ccy}\n\nPokračovat bez aktualizace položky?`
+      : `Work report differs from invoice item:\n\n• Report: ${totalHours}h × ${avgRate} = ${totalAmount} ${ccy}\n• Item:   ${itemQty}h × ${itemRate} = ${(itemQty * itemRate)} ${ccy}\n\nContinue without updating the item?`
+  }
+  return null
+}
+
 async function submit() {
+  // Detekce nesouladu mezi výkazem a položkou faktury — uživatel má šanci se vrátit
+  const wrWarning = checkWorkReportSync()
+  if (wrWarning && !confirm(wrWarning)) return
+
   submitting.value = true
   error.value = ''
   try {
@@ -429,12 +481,13 @@ async function submit() {
       saved = await invoicesApi.create(payload)
     }
     // Po uložení faktury — pokud uživatel otevřel work report, ulož ho
-    if (wrOpen.value && wrItems.value.length > 0) {
+    // (jen řádky s vyplněným popisem; prázdné řádky tiše ignorujeme — viz wrItemsValid)
+    if (wrOpen.value && wrItemsValid.value.length > 0) {
       try {
         await invoicesApi.saveWorkReport(saved.id, {
           project_id: saved.project_id!,
           title: wrTitle.value,
-          items: wrItems.value.map((it, i) => ({
+          items: wrItemsValid.value.map((it, i) => ({
             description: it.description,
             work_date: it.work_date || null,
             hours: Number(it.hours) || 0,
@@ -496,11 +549,7 @@ async function deleteDraft() {
         <svg class="w-5 h-5 text-warning-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 0 0-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/></svg>
         <div class="text-sm text-warning-600">
           <div class="font-semibold mb-1">{{ t('invoice.edit_issued_warning') }}</div>
-          <p>
-            Upravuješ fakturu <span class="font-mono font-bold">{{ editedVarsymbol }}</span> ve stavu <span class="font-bold">{{ editedStatus }}</span>.
-            Změny přepíšou snapshoty a mohou rozsynchronizovat doklad s evidencí klienta. Akce je auditována.
-            Pro klienta doporučujeme raději vystavit dobropis.
-          </p>
+          <p>{{ t('invoice.edit_issued_body', { varsymbol: editedVarsymbol, status: editedStatus }) }}</p>
         </div>
       </div>
     </div>
@@ -726,17 +775,18 @@ async function deleteDraft() {
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.work_report') }}</h3>
           <div class="flex items-center gap-2">
             <button v-if="!wrOpen" type="button" @click="openWorkReport"
-              class="cursor-pointer px-3 h-8 text-xs border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md inline-flex items-center gap-1">
-              + Přidat výkaz
+              class="cursor-pointer px-4 h-9 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 font-medium rounded-md inline-flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+              {{ t('invoice.wr_add') }}
             </button>
             <button v-if="wrOpen && wrItems.length > 0" type="button" @click="pushWrToInvoiceItem"
-              class="cursor-pointer px-3 h-8 text-xs border border-success-500/50 text-success-600 hover:bg-success-50 rounded-md inline-flex items-center gap-1">
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
-              Přenést jako položku faktury
+              class="cursor-pointer px-4 h-9 text-sm bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-md inline-flex items-center gap-1.5 shadow-sm">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+              {{ t('invoice.wr_push_to_item') }}
             </button>
             <button v-if="wrOpen && wrItems.length > 0" type="button" @click="deleteWorkReport"
               class="cursor-pointer px-3 h-8 text-xs border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md">
-              Smazat výkaz
+              {{ t('invoice.wr_delete') }}
             </button>
           </div>
         </header>
@@ -778,7 +828,10 @@ async function deleteDraft() {
               <tr>
                 <td colspan="6" class="p-2">
                   <button type="button" @click="addWrItem"
-                    class="cursor-pointer text-sm text-primary-600 hover:text-primary-700">{{ t('invoice.wr_add_row') }}</button>
+                    class="cursor-pointer px-3 h-8 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 font-medium rounded-md inline-flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                    {{ t('invoice.wr_add_row') }}
+                  </button>
                 </td>
               </tr>
               <tr v-if="wrItems.length > 0" class="bg-neutral-50 font-semibold">

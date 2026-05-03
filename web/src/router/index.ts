@@ -37,6 +37,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/setup',  name: 'setup',  component: () => import('@/pages/Setup.vue'),          meta: { public: true } },
   { path: '/forgot', name: 'forgot', component: () => import('@/pages/ForgotPassword.vue'), meta: { public: true } },
   { path: '/reset',  name: 'reset',  component: () => import('@/pages/ResetPassword.vue'),  meta: { public: true } },
+  { path: '/approval/:token([a-f0-9]{32,128})', name: 'approval',
+    component: () => import('@/pages/ApprovalPublic.vue'), meta: { public: true } },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',

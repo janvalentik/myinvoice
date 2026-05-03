@@ -9,10 +9,12 @@ use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\InvoiceRepository;
+use MyInvoice\Repository\WorkReportRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Invoice\SnapshotBuilder;
 use MyInvoice\Service\Invoice\VarsymbolGenerator;
 use MyInvoice\Service\IpMatcher;
+use MyInvoice\Service\Pdf\InvoicePdfRenderer;
 use MyInvoice\Service\Stats\StatsRecomputer;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -35,6 +37,8 @@ final class IssueInvoiceAction
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
         private readonly StatsRecomputer $stats,
+        private readonly WorkReportRepository $workReports,
+        private readonly InvoicePdfRenderer $pdfRenderer,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -52,6 +56,20 @@ final class IssueInvoiceAction
         }
         if ($invoice['invoice_type'] === 'cancellation') {
             return Json::error($response, 'invalid_type', 'Storno nedostává varsymbol.', 422);
+        }
+
+        // Pokud projekt vyžaduje schválení výkazu A faktura má výkaz, musí být approved.
+        // Faktury bez výkazu (např. fixní paušál) lze vystavit i u projektu s requires_approval.
+        if (!empty($invoice['project_requires_approval'])
+            && ($invoice['approval_status'] ?? 'none') !== 'approved'
+            && $this->workReports->findByInvoice($id) !== null
+        ) {
+            return Json::error(
+                $response,
+                'approval_required',
+                'Tato zakázka vyžaduje schválení výkazu zákazníkem před vystavením faktury.',
+                409,
+            );
         }
 
         $issueDate = new \DateTimeImmutable($invoice['issue_date']);
@@ -101,6 +119,9 @@ final class IssueInvoiceAction
         ], $ip, $request->getHeaderLine('User-Agent'));
 
         $this->stats->recomputeForInvoiceId($id);
+        // Smaž cached draft PDF (Faktura-draft-NN.pdf) — po vystavení má faktura nový
+        // varsymbol a snapshoty, takže staré cached PDF už neodpovídá.
+        $this->pdfRenderer->invalidate($id);
 
         return Json::ok($response, $this->repo->find($id));
     }

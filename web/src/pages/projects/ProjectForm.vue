@@ -31,6 +31,7 @@ const form = ref<ProjectPayload>({
   hourly_rate: 1500,
   currency_id: 0,
   status: 'active',
+  requires_work_report_approval: false,
   note: null,
   billing_emails: [],
 })
@@ -88,6 +89,7 @@ function sanitize(p: Project): Partial<ProjectPayload> {
     hourly_rate: p.hourly_rate,
     currency_id: p.currency_id,
     status: p.status,
+    requires_work_report_approval: !!p.requires_work_report_approval,
     note: p.note ?? null,
   }
 }
@@ -222,6 +224,18 @@ async function submit() {
                 class="h-9 px-3 border border-neutral-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
             </div>
           </div>
+        </div>
+
+        <!-- Schvalování výkazu zákazníkem -->
+        <div class="border-t border-neutral-200 pt-4">
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input v-model="form.requires_work_report_approval" type="checkbox"
+              class="mt-0.5 rounded border-neutral-300 text-primary-600 focus:ring-2 focus:ring-primary-500/20" />
+            <div>
+              <div class="text-sm font-medium text-neutral-900">{{ t('project.requires_approval') }}</div>
+              <div class="text-xs text-neutral-500 mt-0.5">{{ t('project.requires_approval_hint') }}</div>
+            </div>
+          </label>
         </div>
 
         <div>

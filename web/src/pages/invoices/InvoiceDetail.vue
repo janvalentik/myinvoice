@@ -2,12 +2,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { invoicesApi, type Invoice, type WorkReport } from '@/api/invoices'
+import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus } from '@/api/invoices'
 import { formatMoney, formatDate, formatPercent, statusLabel, typeLabel, statusBadgeClass } from '@/composables/useFormat'
 import { useAuthStore } from '@/stores/auth'
 import { useHotkey } from '@/composables/useHotkey'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
+const toast = useToast()
 
 const auth = useAuthStore()
 const isAdmin = computed(() => auth.user?.role === 'admin')
@@ -18,7 +20,6 @@ const router = useRouter()
 const invoice = ref<Invoice | null>(null)
 const loading = ref(true)
 const busy = ref<string | null>(null)
-const flash = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 // Cancel modal state
 const cancelOpen = ref(false)
@@ -31,6 +32,11 @@ const sendTo = ref('')
 
 // Reminder modal state
 const reminderOpen = ref(false)
+
+// Approval modals
+const approvalStatusOpen = ref(false)
+const approvalStatusDraft = ref<ApprovalStatus>('none')
+const approvalRejectReason = ref('')
 
 const activity = ref<Array<{ id: number; user_email: string | null; user_name: string | null; action: string; payload: any; ip: string | null; created_at: string }>>([])
 const workReport = ref<WorkReport | null>(null)
@@ -62,25 +68,29 @@ function actionLabel(a: string): string {
     'invoice.cloned': 'invoice.actions.cloned',
     'invoice.credit_note_created': 'invoice.actions.credit_note_created',
     'invoice.reminder_sent': 'invoice.actions.reminder_sent',
+    'invoice.sent': 'invoice.actions.sent',
     'email.sent': 'invoice.actions.email_sent',
     'email.sent_test': 'invoice.actions.email_sent_test',
     'email.sent_test_reminder': 'invoice.actions.email_sent_test_reminder',
     'pdf.generated': 'invoice.actions.pdf_generated',
+    'invoice.approval_requested':     'invoice.actions.approval_requested',
+    'invoice.approval_request_test':  'invoice.actions.approval_request_test',
+    'invoice.approval_approved':      'invoice.actions.approval_approved',
+    'invoice.approval_rejected':      'invoice.actions.approval_rejected',
+    'invoice.approval_reset':         'invoice.actions.approval_reset',
   }
   return map[a] ? (t(map[a]) as string) : a
 }
 
 function actionColor(a: string): string {
   if (a.includes('reminder')) return 'bg-warning-50 text-warning-600'
+  if (a.includes('approval_approved')) return 'bg-success-50 text-success-600'
+  if (a.includes('approval_rejected')) return 'bg-danger-50 text-danger-500'
+  if (a.includes('approval')) return 'bg-primary-100 text-primary-700'
   if (a.includes('issued') || a.includes('paid') || a.includes('sent')) return 'bg-success-50 text-success-600'
   if (a.includes('cancelled') || a.includes('force')) return 'bg-warning-50 text-warning-600'
   if (a.includes('credit_note') || a.includes('cloned')) return 'bg-primary-100 text-primary-700'
   return 'bg-neutral-100 text-neutral-600'
-}
-
-function showFlash(type: 'success' | 'error', text: string) {
-  flash.value = { type, text }
-  setTimeout(() => { flash.value = null }, 6000)
 }
 
 async function deleteInvoice() {
@@ -91,7 +101,7 @@ async function deleteInvoice() {
     await invoicesApi.delete(invoice.value.id)
     router.push('/invoices')
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.delete_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.delete_failed'))
   } finally {
     busy.value = null
   }
@@ -100,16 +110,16 @@ async function deleteInvoice() {
 async function issue() {
   if (!invoice.value || invoice.value.status !== 'draft') return
   if (invoice.value.items.length === 0) {
-    showFlash('error', t('invoice.issue_no_items'))
+    toast.error( t('invoice.issue_no_items'))
     return
   }
   if (!confirm(t('invoice.issue_confirm'))) return
   busy.value = 'issue'
   try {
     invoice.value = await invoicesApi.issue(invoice.value.id)
-    showFlash('success', t('invoice.issued_as', { varsymbol: invoice.value.varsymbol }))
+    toast.success( t('invoice.issued_as', { varsymbol: invoice.value.varsymbol }))
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.issue_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.issue_failed'))
   } finally {
     busy.value = null
   }
@@ -123,6 +133,7 @@ useHotkey('escape', () => {
   else if (cancelOpen.value)  cancelOpen.value = false
   else if (sendOpen.value)    sendOpen.value = false
   else if (reminderOpen.value) reminderOpen.value = false
+  else if (approvalStatusOpen.value) approvalStatusOpen.value = false
 })
 
 async function markPaid() {
@@ -131,9 +142,9 @@ async function markPaid() {
   try {
     invoice.value = await invoicesApi.markPaid(invoice.value.id, paidAtInput.value)
     markPaidOpen.value = false
-    showFlash('success', t('invoice.marked_paid_at', { date: paidAtInput.value }))
+    toast.success( t('invoice.marked_paid_at', { date: paidAtInput.value }))
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.operation_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.operation_failed'))
   } finally {
     busy.value = null
   }
@@ -150,10 +161,10 @@ async function cancel() {
       router.push(`/invoices/${result.credit_note_id}/edit`)
     } else {
       await load()
-      showFlash('success', t('invoice.cancelled_ok'))
+      toast.success( t('invoice.cancelled_ok'))
     }
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.cancel_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.cancel_failed'))
   } finally {
     busy.value = null
   }
@@ -167,12 +178,12 @@ async function cloneInvoice() {
   try {
     const r = await invoicesApi.clone(invoice.value.id, { increment_month_in_descriptions: incrementMonths })
     if (!r?.draft_id) {
-      showFlash('error', t('invoice.invalid_response'))
+      toast.error( t('invoice.invalid_response'))
       return
     }
     router.push(`/invoices/${r.draft_id}/edit`)
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.clone_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.clone_failed'))
   } finally {
     busy.value = null
   }
@@ -180,16 +191,10 @@ async function cloneInvoice() {
 
 function editIssued() {
   if (!invoice.value) return
-  const ok = confirm(
-    `⚠ POZOR — úprava VYSTAVENÉ faktury\n\n` +
-    `Faktura ${invoice.value.varsymbol} už byla vystavena${invoice.value.sent_at ? ' a odeslána klientovi' : ''}.\n\n` +
-    `Úprava:\n` +
-    `• změní obsah dokladu, který klient možná už eviduje v účetnictví\n` +
-    `• přepíše JSON snapshoty (immutability je porušena)\n` +
-    `• po uložení se NEgeneruje nový varsymbol — zůstává původní\n` +
-    `• tato akce je auditována v ActivityLog\n\n` +
-    `Doporučeno: vystavit dobropis. Pokračovat na editor i tak?`
-  )
+  const ok = confirm(t('invoice.edit_issued_confirm', {
+    varsymbol: invoice.value.varsymbol || '',
+    sent: invoice.value.sent_at ? t('invoice.edit_issued_confirm_sent') : '',
+  }))
   if (!ok) return
   router.push(`/invoices/${invoice.value.id}/edit?force=1`)
 }
@@ -204,9 +209,9 @@ async function sendTest() {
   busy.value = 'send-test'
   try {
     const r = await invoicesApi.sendTest(invoice.value.id)
-    showFlash('success', t('invoice.send_test_done', { recipients: r.sent_to.join(', ') }))
+    toast.success( t('invoice.send_test_done', { recipients: r.sent_to.join(', ') }))
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.send_test_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.send_test_failed'))
   } finally {
     busy.value = null
   }
@@ -217,9 +222,9 @@ async function sendTestReminder() {
   busy.value = 'send-test-reminder'
   try {
     const r = await invoicesApi.sendTestReminder(invoice.value.id)
-    showFlash('success', t('invoice.send_test_reminder_done', { recipients: r.sent_to.join(', '), days: r.days_overdue }))
+    toast.success( t('invoice.send_test_reminder_done', { recipients: r.sent_to.join(', '), days: r.days_overdue }))
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.send_test_reminder_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.send_test_reminder_failed'))
   } finally {
     busy.value = null
   }
@@ -239,17 +244,17 @@ async function send() {
   if (!invoice.value) return
   const recipients = sendTo.value.split(',').map(e => e.trim()).filter(Boolean)
   if (!recipients.length) {
-    showFlash('error', t('invoice.recipients_required'))
+    toast.error( t('invoice.recipients_required'))
     return
   }
   busy.value = 'send'
   try {
     const r = await invoicesApi.send(invoice.value.id, { to: recipients })
     sendOpen.value = false
-    showFlash('success', t('invoice.send_done', { recipients: r.sent_to.join(', ') }))
+    toast.success( t('invoice.send_done', { recipients: r.sent_to.join(', ') }))
     await load()
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.send_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.send_failed'))
   } finally {
     busy.value = null
   }
@@ -299,10 +304,93 @@ async function sendReminder() {
     const r = await invoicesApi.sendReminder(invoice.value.id)
     invoice.value = r.invoice
     reminderOpen.value = false
-    showFlash('success', t('invoice.reminder_sent_ok', { recipients: r.sent_to.join(', '), days: r.days_overdue }))
+    toast.success( t('invoice.reminder_sent_ok', { recipients: r.sent_to.join(', '), days: r.days_overdue }))
     invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || t('invoice.reminder_failed'))
+    toast.error( e?.response?.data?.error?.message || t('invoice.reminder_failed'))
+  } finally {
+    busy.value = null
+  }
+}
+
+// ───── Schvalování výkazu zákazníkem ─────────────────────────────────
+const requiresApproval = computed(() =>
+  !!invoice.value?.project_requires_approval && !!workReport.value
+)
+const approvalStatus = computed(() => invoice.value?.approval_status ?? 'none')
+const canRequestApproval = computed(() =>
+  requiresApproval.value && invoice.value?.status === 'draft'
+)
+const approvalBadgeClass = computed(() => {
+  switch (approvalStatus.value) {
+    case 'requested': return 'bg-primary-100 text-primary-700'
+    case 'approved':  return 'bg-success-50 text-success-600'
+    case 'rejected':  return 'bg-danger-50 text-danger-500'
+    default:          return 'bg-neutral-100 text-neutral-600'
+  }
+})
+
+async function requestApproval() {
+  if (!invoice.value) return
+  if (!confirm(t('invoice.approval.request_confirm'))) return
+  busy.value = 'approval-request'
+  try {
+    const r = await invoicesApi.requestApproval(invoice.value.id)
+    invoice.value = r.invoice
+    toast.success(t('invoice.approval.request_sent', { recipients: r.sent_to.join(', ') }))
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('invoice.approval.request_failed'))
+  } finally {
+    busy.value = null
+  }
+}
+
+async function requestApprovalTest() {
+  if (!invoice.value) return
+  busy.value = 'approval-test'
+  try {
+    const r = await invoicesApi.requestApprovalTest(invoice.value.id)
+    toast.success(t('invoice.approval.test_sent', { recipients: r.sent_to.join(', ') }))
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('invoice.approval.test_failed'))
+  } finally {
+    busy.value = null
+  }
+}
+
+function openApprovalStatusModal() {
+  if (!invoice.value) return
+  approvalStatusDraft.value = invoice.value.approval_status
+  approvalRejectReason.value = invoice.value.approval_rejection_reason || ''
+  approvalStatusOpen.value = true
+}
+
+async function updateApprovalStatus() {
+  if (!invoice.value) return
+  if (approvalStatusDraft.value === 'rejected' && !approvalRejectReason.value.trim()) {
+    toast.error(t('invoice.approval.reason_required'))
+    return
+  }
+  busy.value = 'approval-status'
+  try {
+    const r = await invoicesApi.updateApprovalStatus(
+      invoice.value.id,
+      approvalStatusDraft.value,
+      approvalStatusDraft.value === 'rejected' ? approvalRejectReason.value.trim() : undefined,
+    )
+    invoice.value = r.invoice
+    approvalStatusOpen.value = false
+    if (r.auto_send_error) {
+      toast.error(t('invoice.approval.auto_send_failed', { error: r.auto_send_error }))
+    } else if (r.auto_send && r.auto_send.sent_to.length > 0) {
+      toast.success(t('invoice.approval.approved_and_sent', { recipients: r.auto_send.sent_to.join(', ') }))
+    } else {
+      toast.success(t('invoice.approval.status_updated'))
+    }
+    invoicesApi.activity(invoice.value.id).then(a => { activity.value = a }).catch(() => {})
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('invoice.approval.status_update_failed'))
   } finally {
     busy.value = null
   }
@@ -315,7 +403,7 @@ async function sendReminder() {
   <div v-else-if="invoice" class="max-w-5xl space-y-4">
     <RouterLink to="/invoices" class="text-sm text-neutral-600 hover:text-neutral-900">{{ t('invoice.back_to_list') }}</RouterLink>
     <div class="flex items-start justify-between gap-4">
-      <h1 class="text-2xl font-semibold flex items-center gap-3">
+      <h1 class="text-2xl font-semibold flex items-center gap-3 flex-wrap">
         <span v-if="invoice.varsymbol" class="font-mono">{{ invoice.varsymbol }}</span>
         <span v-else class="text-neutral-400 font-mono">{{ t('invoice.draft_id', { id: invoice.id }) }}</span>
         <span class="text-xs px-2 py-0.5 rounded font-normal" :class="statusBadgeClass(invoice.status)">
@@ -324,16 +412,27 @@ async function sendReminder() {
         <span class="text-xs px-2 py-0.5 rounded font-normal bg-neutral-100 text-neutral-600">
           {{ typeLabel(invoice.invoice_type) }}
         </span>
+        <span v-if="requiresApproval"
+          class="text-xs px-2 py-0.5 rounded font-normal" :class="approvalBadgeClass">
+          {{ t('invoice.approval.badge') }}: {{ t('invoice.approval.status_' + approvalStatus) }}
+        </span>
       </h1>
       <div class="flex flex-wrap gap-2 justify-end">
         <!-- Draft akce -->
         <RouterLink v-if="isDraft" :to="`/invoices/${invoice.id}/edit`"
           class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50 inline-flex items-center gap-1.5">
           <svg class="w-4 h-4 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-          Upravit
+          {{ t('common.edit') }}
         </RouterLink>
-        <button v-if="isDraft" @click="issue" :disabled="busy !== null"
+        <button v-if="canRequestApproval" @click="requestApproval" :disabled="busy !== null"
           class="cursor-pointer px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z"/></svg>
+          {{ busy === 'approval-request' ? '…' : t('invoice.approval.send_request') }}
+        </button>
+        <button v-if="isDraft" @click="issue"
+          :disabled="busy !== null || (requiresApproval && approvalStatus !== 'approved')"
+          :title="requiresApproval && approvalStatus !== 'approved' ? t('invoice.approval.issue_blocked') : ''"
+          class="cursor-pointer px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white font-medium rounded-md inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
           {{ busy === 'issue' ? '…' : t('invoice.issue') }}
         </button>
@@ -401,12 +500,6 @@ async function sendReminder() {
         <span v-if="invoice.client_ic && invoice.client_dic">, </span>
         <span v-if="invoice.client_dic">{{ t('common.dic') }} {{ invoice.client_dic }}</span>
       </div>
-    </div>
-
-    <!-- Flash message -->
-    <div v-if="flash" class="rounded-md px-4 py-2 text-sm"
-      :class="flash.type === 'success' ? 'bg-success-50 border border-success-500/40 text-success-600' : 'bg-danger-50 border border-danger-500/40 text-danger-500'">
-      {{ flash.text }}
     </div>
 
     <!-- Mark paid modal -->
@@ -518,8 +611,8 @@ async function sendReminder() {
         <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('common.currency') }} &amp; {{ t('invoice.totals.vat') }}</h3>
         <dl class="space-y-1.5 text-sm">
           <div class="flex justify-between"><dt class="text-neutral-500">{{ t('common.currency') }}</dt><dd class="font-mono">{{ invoice.currency }}</dd></div>
-          <div class="flex justify-between"><dt class="text-neutral-500">Jazyk</dt><dd>{{ invoice.language.toUpperCase() }}</dd></div>
-          <div class="flex justify-between"><dt class="text-neutral-500">Reverse charge</dt><dd>{{ invoice.reverse_charge ? 'ano' : 'ne' }}</dd></div>
+          <div class="flex justify-between"><dt class="text-neutral-500">{{ t('invoice.language') }}</dt><dd>{{ invoice.language.toUpperCase() }}</dd></div>
+          <div class="flex justify-between"><dt class="text-neutral-500">{{ t('invoice.reverse_charge') }}</dt><dd>{{ invoice.reverse_charge ? t('common.yes') : t('common.no') }}</dd></div>
         </dl>
       </div>
 
@@ -532,7 +625,7 @@ async function sendReminder() {
           <div v-if="invoice.bank_iban" class="font-mono text-xs break-all">{{ invoice.bank_iban }}</div>
           <div v-if="invoice.bank_name" class="text-neutral-600">{{ invoice.bank_name }}</div>
           <div v-if="!invoice.bank_account_number && !invoice.bank_iban" class="text-neutral-400 text-xs">
-            Bankovní spojení pro {{ invoice.currency }} není v Settings vyplněné
+            {{ t('invoice.bank_not_set', { currency: invoice.currency }) }}
           </div>
         </dl>
       </div>
@@ -546,13 +639,13 @@ async function sendReminder() {
       <table class="w-full text-sm">
         <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
           <tr>
-            <th class="px-4 py-2 text-left font-medium">Popis</th>
+            <th class="px-4 py-2 text-left font-medium">{{ t('invoice.items_table.description') }}</th>
             <th class="px-4 py-2 text-right font-medium">{{ t('invoice.items_table.qty') }}</th>
-            <th class="px-4 py-2 text-left font-medium">Jed.</th>
-            <th class="px-4 py-2 text-right font-medium">Cena/j</th>
-            <th class="px-4 py-2 text-center font-medium">DPH</th>
-            <th class="px-4 py-2 text-right font-medium">Bez DPH</th>
-            <th class="px-4 py-2 text-right font-medium">S DPH</th>
+            <th class="px-4 py-2 text-left font-medium">{{ t('invoice.items_table.unit') }}</th>
+            <th class="px-4 py-2 text-right font-medium">{{ t('invoice.items_table.unit_price') }}</th>
+            <th class="px-4 py-2 text-center font-medium">{{ t('invoice.items_table.vat') }}</th>
+            <th class="px-4 py-2 text-right font-medium">{{ t('invoice.items_table.without_vat') }}</th>
+            <th class="px-4 py-2 text-right font-medium">{{ t('invoice.items_table.with_vat') }}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
@@ -575,25 +668,25 @@ async function sendReminder() {
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <dl class="space-y-1 text-sm">
           <div v-for="b in invoice.vat_breakdown" :key="b.rate" class="flex justify-between">
-            <dt class="text-neutral-500">Základ {{ formatPercent(b.rate) }}</dt>
+            <dt class="text-neutral-500">{{ t('invoice.totals.base') }} {{ formatPercent(b.rate) }}</dt>
             <dd class="font-mono">{{ formatMoney(b.base, invoice.currency) }}</dd>
           </div>
           <div v-for="b in invoice.vat_breakdown" :key="'v'+b.rate" v-show="b.vat > 0" class="flex justify-between">
-            <dt class="text-neutral-500">DPH {{ formatPercent(b.rate) }}</dt>
+            <dt class="text-neutral-500">{{ t('invoice.totals.vat') }} {{ formatPercent(b.rate) }}</dt>
             <dd class="font-mono">{{ formatMoney(b.vat, invoice.currency) }}</dd>
           </div>
         </dl>
         <dl class="space-y-1 text-sm">
           <div class="flex justify-between font-semibold">
-            <dt>Bez DPH</dt>
+            <dt>{{ t('invoice.totals.without_vat') }}</dt>
             <dd class="font-mono">{{ formatMoney(invoice.totals.without_vat, invoice.currency) }}</dd>
           </div>
           <div class="flex justify-between font-semibold">
-            <dt>DPH celkem</dt>
+            <dt>{{ t('invoice.totals.vat_total') }}</dt>
             <dd class="font-mono">{{ formatMoney(invoice.totals.vat, invoice.currency) }}</dd>
           </div>
           <div class="flex justify-between border-t border-neutral-300 pt-2 mt-2 text-lg font-semibold text-primary-700">
-            <dt>Celkem</dt>
+            <dt>{{ t('invoice.totals.total') }}</dt>
             <dd class="font-mono">{{ formatMoney(invoice.totals.with_vat, invoice.currency) }}</dd>
           </div>
           <div v-if="invoice.advance_paid_amount > 0" class="flex justify-between text-sm text-neutral-600 pt-2">
@@ -648,6 +741,78 @@ async function sendReminder() {
       </table>
     </div>
 
+    <!-- Stav schválení výkazu — viditelné jen pokud projekt vyžaduje + výkaz existuje -->
+    <div v-if="requiresApproval" class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+      <header class="px-5 py-3 border-b border-neutral-200">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.approval.section_title') }}</h3>
+      </header>
+      <div class="px-5 py-4">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <dl class="space-y-1.5 text-sm flex-1 min-w-[260px]">
+            <div class="flex items-baseline gap-3">
+              <dt class="text-neutral-500 w-32">{{ t('invoice.approval.current_status') }}</dt>
+              <dd>
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium" :class="approvalBadgeClass">
+                  {{ t('invoice.approval.status_' + approvalStatus) }}
+                </span>
+              </dd>
+            </div>
+            <div v-if="invoice.approval_requested_at" class="flex items-baseline gap-3">
+              <dt class="text-neutral-500 w-32">{{ t('invoice.approval.requested_at') }}</dt>
+              <dd class="font-mono text-xs">{{ invoice.approval_requested_at }}</dd>
+            </div>
+            <div v-if="invoice.approval_decided_at" class="flex items-baseline gap-3">
+              <dt class="text-neutral-500 w-32">{{ t('invoice.approval.decided_at') }}</dt>
+              <dd class="font-mono text-xs">{{ invoice.approval_decided_at }}</dd>
+            </div>
+            <div v-if="invoice.approval_decided_by_email" class="flex items-baseline gap-3">
+              <dt class="text-neutral-500 w-32">{{ t('invoice.approval.decided_by') }}</dt>
+              <dd class="text-xs">{{ invoice.approval_decided_by_email }}</dd>
+            </div>
+            <div v-if="invoice.approval_rejection_reason" class="flex items-baseline gap-3">
+              <dt class="text-neutral-500 w-32">{{ t('invoice.approval.rejection_reason') }}</dt>
+              <dd class="text-sm text-danger-600 whitespace-pre-wrap">{{ invoice.approval_rejection_reason }}</dd>
+            </div>
+          </dl>
+          <button v-if="isAdmin" @click="openApprovalStatusModal" :disabled="busy !== null"
+            class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-md">
+            {{ t('invoice.approval.change_status') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Approval status modal (admin) -->
+    <div v-if="approvalStatusOpen" class="fixed inset-0 bg-neutral-900/40 z-50 flex items-center justify-center p-4" @click.self="approvalStatusOpen = false">
+      <div class="bg-white rounded-xl shadow-lg max-w-md w-full p-5">
+        <h3 class="text-lg font-semibold mb-3">{{ t('invoice.approval.modal_title') }}</h3>
+        <p class="text-sm text-neutral-600 mb-3">{{ t('invoice.approval.modal_hint') }}</p>
+        <div class="space-y-2 mb-4">
+          <label v-for="opt in (['none','approved','rejected'] as const)" :key="opt"
+            class="flex items-start gap-2 p-3 border rounded-md cursor-pointer"
+            :class="approvalStatusDraft === opt ? 'border-primary-500 bg-primary-50' : 'border-neutral-200'">
+            <input type="radio" v-model="approvalStatusDraft" :value="opt" class="mt-1" />
+            <div>
+              <div class="font-medium text-sm">{{ t('invoice.approval.status_' + opt) }}</div>
+              <div class="text-xs text-neutral-500">{{ t('invoice.approval.modal_desc_' + opt) }}</div>
+            </div>
+          </label>
+        </div>
+        <div v-if="approvalStatusDraft === 'rejected'" class="mb-4">
+          <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.approval.rejection_reason') }} *</label>
+          <textarea v-model="approvalRejectReason" rows="2" required
+            class="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm"></textarea>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button @click="approvalStatusOpen = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50">{{ t('common.cancel') }}</button>
+          <button @click="updateApprovalStatus" :disabled="busy !== null"
+            class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
+            {{ busy === 'approval-status' ? '…' : t('common.save') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Aktivita -->
     <div v-if="activity.length > 0" class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
       <header class="px-5 py-3 border-b border-neutral-200">
@@ -666,7 +831,7 @@ async function sendReminder() {
     </div>
 
     <!-- Sekundární akce — pod fakturou (Test odeslání + admin/destrukční) -->
-    <div v-if="!isDraft" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+    <div v-if="!isDraft || requiresApproval" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
       <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('invoice.more_actions') }}</h3>
       <div class="flex flex-wrap gap-2">
         <RouterLink :to="`/clients/${invoice.client_id}`"
@@ -679,6 +844,12 @@ async function sendReminder() {
           class="cursor-pointer px-3 h-9 text-sm border border-primary-300 rounded-md text-primary-600 hover:bg-primary-50 disabled:opacity-50 inline-flex items-center gap-1.5">
           <svg class="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
           {{ busy === 'send-test' ? '…' : t('invoice.send_test') }}
+        </button>
+
+        <button v-if="requiresApproval" @click="requestApprovalTest" :disabled="busy !== null"
+          class="cursor-pointer px-3 h-9 text-sm border border-primary-300 rounded-md text-primary-600 hover:bg-primary-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          {{ busy === 'approval-test' ? '…' : t('invoice.approval.test_send') }}
         </button>
 
         <button v-if="canSendTestReminder" @click="sendTestReminder" :disabled="busy !== null"

@@ -1,0 +1,22 @@
+{% extends '_layout.txt.twig' %}
+
+{% block content %}
+{% if is_test %}[TEST] {% endif %}Dobrý den,
+------------
+
+v příloze posíláme výkaz víceprací{% if invoice.project_name %} za zakázku „{{ invoice.project_name }}"{% endif %}{% if invoice.client_company_name %} pro {{ invoice.client_company_name }}{% endif %} ke schválení.
+
+{% if work_report %}Výkaz:           {{ work_report.title }}
+Hodin celkem:    {{ work_report.total_hours|number_format(2, ',', ' ') }} h
+K vyúčtování:    {{ work_report.total_amount|number_format(2, ',', ' ') }} {{ invoice.currency }}
+{% endif %}
+
+Po schválení Vám obratem pošleme fakturu — vše je automatizované,
+není potřeba na nic odpovídat. Schválit/zamítnout můžete na adrese:
+
+  {{ approval_url }}
+
+Detailní výpis víceprací je v PDF příloze (Vykaz-{{ invoice.varsymbol_or_id }}.pdf).
+
+{% if is_test %}=== TEST EMAIL — klient ho nedostal a token nebyl vygenerován. ==={% endif %}
+{% endblock %}

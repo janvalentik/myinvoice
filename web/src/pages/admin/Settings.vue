@@ -3,13 +3,14 @@ import { ref, onMounted, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { settingsApi, type Supplier, type CurrencyAccount } from '@/api/settings'
 import { useHotkey } from '@/composables/useHotkey'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
+const toast = useToast()
 
 const supplier = ref<Supplier | null>(null)
 const currencies = ref<CurrencyAccount[]>([])
 const loading = ref(true)
-const flash = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 const editingCurrency = ref<number | null>(null)
 const editingCurrencyLabel = ref<string>('')
@@ -28,11 +29,6 @@ async function load() {
 }
 
 onMounted(load)
-
-function showFlash(type: 'success' | 'error', text: string) {
-  flash.value = { type, text }
-  setTimeout(() => { flash.value = null }, 4000)
-}
 
 async function saveSupplier() {
   if (!supplier.value) return
@@ -57,9 +53,9 @@ async function saveSupplier() {
       pohoda_activity_code: supplier.value.pohoda_activity_code,
       pohoda_contract_code: supplier.value.pohoda_contract_code,
     })
-    showFlash('success', 'Údaje dodavatele uloženy.')
+    toast.success(t('common.saved'))
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 
@@ -84,9 +80,9 @@ async function saveCurrency() {
     })
     currencies.value = await settingsApi.listCurrencies()
     editingCurrency.value = null
-    showFlash('success', `Měna ${updated.code} (${updated.label}) uložena.`)
+    toast.success(`${updated.code} (${updated.label}) — ${t('common.saved')}`)
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 
@@ -96,9 +92,9 @@ async function addCurrencyAccount(code: string) {
   try {
     await settingsApi.createCurrency({ code, label, is_active: true })
     currencies.value = await settingsApi.listCurrencies()
-    showFlash('success', `Účet ${label} přidán.`)
+    toast.success(`${label} — ${t('common.saved')}`)
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 
@@ -107,9 +103,9 @@ async function removeCurrency(c: CurrencyAccount) {
   try {
     await settingsApi.deleteCurrency(c.id)
     currencies.value = await settingsApi.listCurrencies()
-    showFlash('success', `Měna ${c.label} smazána.`)
+    toast.success(`${c.label} — ${t('common.deleted')}`)
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 </script>
@@ -119,11 +115,6 @@ async function removeCurrency(c: CurrencyAccount) {
     <div class="mb-4">
       <h1 class="text-2xl font-semibold">{{ t('settings.title') }}</h1>
       <p class="text-sm text-neutral-500 mt-0.5">{{ t('settings.subtitle') }}</p>
-    </div>
-
-    <div v-if="flash" class="rounded-md px-4 py-2 text-sm mb-4"
-      :class="flash.type === 'success' ? 'bg-success-50 border border-success-500/40 text-success-600' : 'bg-danger-50 border border-danger-500/40 text-danger-500'">
-      {{ flash.text }}
     </div>
 
     <div v-if="loading" class="text-center text-neutral-500 py-12 text-sm">{{ t('common.loading') }}</div>

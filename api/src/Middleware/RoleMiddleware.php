@@ -91,7 +91,9 @@ final class RoleMiddleware implements MiddlewareInterface
         }
 
         // Self-service / public — Auth už dovnitř pustí jen oprávněné, role nás nezajímá
-        if (in_array($path, self::PUBLIC_OR_SELF, true)) {
+        if (in_array($path, self::PUBLIC_OR_SELF, true)
+            || str_starts_with($path, '/api/public/')
+        ) {
             return $handler->handle($request);
         }
 

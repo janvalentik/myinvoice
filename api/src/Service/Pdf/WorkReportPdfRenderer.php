@@ -1,0 +1,151 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Service\Pdf;
+
+use Mpdf\Mpdf;
+use MyInvoice\Bootstrap;
+use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\InvoiceRepository;
+use MyInvoice\Repository\WorkReportRepository;
+use Twig\Environment;
+use Twig\Loader\FilesystemLoader;
+
+/**
+ * Renderuje samostatný PDF jen výkazu víceprací (Vykaz-XYZ.pdf).
+ * Použito jako příloha emailu žádosti o schválení.
+ *
+ * Nesdílí cache s InvoicePdfRenderer — vždy regeneruje (výkaz se může měnit
+ * mezi requesty na schválení).
+ */
+final class WorkReportPdfRenderer
+{
+    public function __construct(
+        private readonly InvoiceRepository $invoices,
+        private readonly WorkReportRepository $workReports,
+        private readonly Connection $db,
+    ) {}
+
+    /**
+     * Vyrendrované PDF výkazu do souboru a vrátí cestu.
+     * Throw RuntimeException pokud faktura/výkaz neexistuje.
+     */
+    public function render(int $invoiceId): string
+    {
+        $invoice = $this->invoices->find($invoiceId);
+        if ($invoice === null) {
+            throw new \RuntimeException("Faktura #{$invoiceId} nenalezena");
+        }
+        $workReport = $this->workReports->findByInvoice($invoiceId);
+        if ($workReport === null) {
+            throw new \RuntimeException("Výkaz pro fakturu #{$invoiceId} neexistuje");
+        }
+
+        $supplier = $this->resolveSupplier($invoice);
+        $logoPath = $this->resolveLogoPath($supplier);
+
+        $cssPath = Bootstrap::rootDir() . '/styles/invoice.css';
+        $css = is_file($cssPath) ? (string) file_get_contents($cssPath) : '';
+
+        $locale = (string) ($invoice['language'] ?? 'cs');
+        $twig = $this->twig();
+        $twig->addFunction(new \Twig\TwigFunction('t', static function (string $cs, string $en) use ($locale) {
+            return $locale === 'en' ? $en : $cs;
+        }));
+
+        $body = $twig->render('work_report.twig', [
+            'invoice'        => $invoice,
+            'supplier'       => $supplier,
+            'work_report'    => $workReport,
+            'locale'         => $locale,
+            'date_format'    => $locale === 'en' ? 'M j, Y' : 'j. n. Y',
+            'decimal_sep'    => $locale === 'en' ? '.' : ',',
+            'thousand_sep'   => $locale === 'en' ? ',' : ' ',
+            'css'            => '',
+            'logo_path'      => $logoPath,
+        ]);
+
+        $rootDir = Bootstrap::rootDir();
+        $tmpDir = $rootDir . '/storage/cache/mpdf';
+        if (!is_dir($tmpDir)) {
+            @mkdir($tmpDir, 0755, true);
+        }
+
+        $mpdf = new Mpdf([
+            'mode'          => 'utf-8',
+            'format'        => 'A4',
+            'margin_top'    => 15,
+            'margin_bottom' => 18,
+            'margin_left'   => 15,
+            'margin_right'  => 15,
+            'tempDir'       => $tmpDir,
+            'default_font'  => 'dejavusans',
+            'autoPageBreak' => true,
+        ]);
+        $mpdf->SetTitle('');
+        $mpdf->SetAuthor('');
+        $mpdf->SetCreator('MyInvoice.cz');
+
+        if ($css !== '') {
+            $mpdf->WriteHTML($css, \Mpdf\HTMLParserMode::HEADER_CSS);
+        }
+        $mpdf->WriteHTML($body, \Mpdf\HTMLParserMode::HTML_BODY);
+
+        $supplierId = (int) ($invoice['supplier_id'] ?? 1);
+        $issueDate = new \DateTimeImmutable($invoice['issue_date']);
+        $dir = $rootDir . '/storage/work-reports/sup-' . $supplierId . '/' . $issueDate->format('Y-m');
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+
+        $vs = $invoice['varsymbol'] ?: ('draft-' . $invoice['id']);
+        $path = "$dir/Vykaz-$vs.pdf";
+
+        $tmpPath = $path . '.new';
+        $mpdf->Output($tmpPath, \Mpdf\Output\Destination::FILE);
+        if (is_file($path)) @unlink($path);
+        if (!@rename($tmpPath, $path)) {
+            $path = $tmpPath;
+        }
+        return $path;
+    }
+
+    private function twig(): Environment
+    {
+        $loader = new FilesystemLoader(dirname(__DIR__, 3) . '/templates/invoice');
+        return new Environment($loader, [
+            'autoescape' => 'html',
+            'cache' => false,
+            'strict_variables' => false,
+        ]);
+    }
+
+    private function resolveSupplier(array $invoice): array
+    {
+        if (!empty($invoice['supplier_snapshot'])) {
+            $snap = is_string($invoice['supplier_snapshot'])
+                ? json_decode($invoice['supplier_snapshot'], true)
+                : $invoice['supplier_snapshot'];
+            if (is_array($snap)) return $snap;
+        }
+        $sid = (int) ($invoice['supplier_id'] ?? 0);
+        if ($sid <= 0) return [];
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT s.*, co.iso2 AS country_iso2, co.name_cs AS country_name_cs, co.name_en AS country_name_en
+               FROM supplier s LEFT JOIN countries co ON co.id = s.country_id WHERE s.id = ?'
+        );
+        $stmt->execute([$sid]);
+        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function resolveLogoPath(array $supplier): ?string
+    {
+        $logoPath = $supplier['logo_path'] ?? null;
+        if (!$logoPath) return null;
+        if (!is_file($logoPath)) {
+            $abs = Bootstrap::rootDir() . '/' . ltrim($logoPath, '/');
+            if (is_file($abs)) return $abs;
+            return null;
+        }
+        return $logoPath;
+    }
+}

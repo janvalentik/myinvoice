@@ -53,6 +53,12 @@ final class IpAllowlistMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // /api/public/* — vždy povolíme (zákazníci přicházejí z libovolných IP přes
+        // schvalovací email link). Anti-bot ochrana = token v URL + CAPTCHA.
+        if (str_starts_with($request->getUri()->getPath(), '/api/public/')) {
+            return $handler->handle($request);
+        }
+
         if ($this->ipMatcher->matches($ip, $rules)) {
             return $handler->handle($request);
         }

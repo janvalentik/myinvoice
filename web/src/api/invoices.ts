@@ -2,6 +2,7 @@ import { api } from './client'
 
 export type InvoiceType = 'invoice' | 'proforma' | 'credit_note' | 'cancellation'
 export type InvoiceStatus = 'draft' | 'issued' | 'sent' | 'reminded' | 'paid' | 'cancelled'
+export type ApprovalStatus = 'none' | 'requested' | 'approved' | 'rejected'
 
 export interface InvoiceItem {
   id?: number
@@ -60,6 +61,13 @@ export interface Invoice {
   total_with_vat: number
   rounding: number
   status: InvoiceStatus
+  approval_status: ApprovalStatus
+  approval_token: string | null
+  approval_requested_at: string | null
+  approval_decided_at: string | null
+  approval_decided_by_email: string | null
+  approval_rejection_reason: string | null
+  project_requires_approval?: boolean
   sent_at: string | null
   last_reminder_at: string | null
   reminder_count: number
@@ -285,6 +293,29 @@ export const invoicesApi = {
     api.post<{ sent_to: string[]; sent_at: string; days_overdue: number; is_test: true }>(
       `/invoices/${id}/reminder-test`,
       {},
+    ).then(r => r.data),
+
+  // Schvalování výkazu zákazníkem
+  requestApproval: (id: number) =>
+    api.post<{ sent_to: string[]; sent_at: string; invoice: Invoice }>(
+      `/invoices/${id}/request-approval`,
+      {},
+    ).then(r => r.data),
+
+  requestApprovalTest: (id: number) =>
+    api.post<{ sent_to: string[]; sent_at: string; is_test: true }>(
+      `/invoices/${id}/request-approval-test`,
+      {},
+    ).then(r => r.data),
+
+  updateApprovalStatus: (id: number, status: ApprovalStatus, rejectionReason?: string) =>
+    api.put<{
+      invoice: Invoice
+      auto_send?: { issued: boolean; sent_to: string[]; varsymbol: string | null }
+      auto_send_error?: string
+    }>(
+      `/invoices/${id}/approval-status`,
+      { status, rejection_reason: rejectionReason || null },
     ).then(r => r.data),
 
   // Work report (výkaz víceprací)

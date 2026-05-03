@@ -1,0 +1,22 @@
+{% extends '_layout.txt.twig' %}
+
+{% block content %}
+{% if is_test %}[TEST] {% endif %}Hello,
+------------
+
+please find attached a work report{% if invoice.project_name %} for project "{{ invoice.project_name }}"{% endif %}{% if invoice.client_company_name %} on behalf of {{ invoice.client_company_name }}{% endif %} awaiting your approval.
+
+{% if work_report %}Report:        {{ work_report.title }}
+Total hours:   {{ work_report.total_hours|number_format(2, '.', ',') }} h
+Amount:        {{ work_report.total_amount|number_format(2, '.', ',') }} {{ invoice.currency }}
+{% endif %}
+
+Once approved, we will send the invoice immediately — everything is automated,
+no need to reply. Approve or reject at:
+
+  {{ approval_url }}
+
+Full breakdown is attached as a PDF (Vykaz-{{ invoice.varsymbol_or_id }}.pdf).
+
+{% if is_test %}=== TEST EMAIL — the client did not receive it and no token was generated. ==={% endif %}
+{% endblock %}

@@ -80,7 +80,9 @@ final class AuthMiddleware implements MiddlewareInterface
         }
 
         $path = $request->getUri()->getPath();
-        if (in_array($path, self::PUBLIC_PATHS, true)) {
+        if (in_array($path, self::PUBLIC_PATHS, true)
+            || str_starts_with($path, '/api/public/')
+        ) {
             return $handler->handle($request);
         }
 

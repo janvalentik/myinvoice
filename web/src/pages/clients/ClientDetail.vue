@@ -6,8 +6,10 @@ import { clientsApi, type Client } from '@/api/clients'
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
 import { formatMoney, formatDate, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass } from '@/composables/useFormat'
 import MonthlyRevenueChart from '@/components/charts/MonthlyRevenueChart.vue'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
+const toast = useToast()
 
 const route = useRoute()
 const router = useRouter()
@@ -101,7 +103,7 @@ async function deleteClient() {
     await clientsApi.delete(client.value.id)
     router.push('/clients')
   } catch (e: any) {
-    alert(e?.response?.data?.error?.message || t('client.delete_failed'))
+    toast.error(e?.response?.data?.error?.message || t('client.delete_failed'))
   }
 }
 </script>

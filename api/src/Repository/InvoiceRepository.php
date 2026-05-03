@@ -31,6 +31,7 @@ final class InvoiceRepository
                     p.name AS project_name, p.hourly_rate AS project_hourly_rate,
                     p.payment_due_days AS project_payment_due_days,
                     p.project_number AS project_number, p.contract_number AS contract_number,
+                    p.requires_work_report_approval AS project_requires_approval,
                     cur.code AS currency, cur.symbol AS currency_symbol, cur.decimals AS currency_decimals,
                     cur.label AS currency_label,
                     cur.account_number AS bank_account_number, cur.bank_code AS bank_code,
@@ -398,7 +399,79 @@ final class InvoiceRepository
         }
         if (isset($row['client_reverse_charge'])) $row['client_reverse_charge'] = (bool) $row['client_reverse_charge'];
         if (array_key_exists('reminder_count', $row)) $row['reminder_count'] = (int) $row['reminder_count'];
+        if (array_key_exists('project_requires_approval', $row)) {
+            $row['project_requires_approval'] = $row['project_requires_approval'] !== null
+                ? (bool) $row['project_requires_approval']
+                : false;
+        }
         return $row;
+    }
+
+    /**
+     * Vygeneruje a uloží nový approval_token, nastaví status='requested'.
+     * Vrací nový token.
+     */
+    public function setApprovalRequested(int $invoiceId): string
+    {
+        $token = bin2hex(random_bytes(24)); // 48 hex chars
+        $this->db->pdo()->prepare(
+            'UPDATE invoices
+                SET approval_status = "requested",
+                    approval_token = ?,
+                    approval_requested_at = NOW(),
+                    approval_decided_at = NULL,
+                    approval_decided_by_email = NULL,
+                    approval_rejection_reason = NULL
+              WHERE id = ?'
+        )->execute([$token, $invoiceId]);
+        return $token;
+    }
+
+    /**
+     * Uloží rozhodnutí (approved/rejected). $decidedBy = email klienta (z public formu)
+     * nebo email aktuálního uživatele (z admin „Změnit stav"). Token zneplatněn.
+     */
+    public function setApprovalDecision(int $invoiceId, string $newStatus, ?string $decidedBy, ?string $rejectionReason): void
+    {
+        if (!in_array($newStatus, ['approved', 'rejected'], true)) {
+            throw new \InvalidArgumentException("Invalid approval status: $newStatus");
+        }
+        $this->db->pdo()->prepare(
+            'UPDATE invoices
+                SET approval_status = ?,
+                    approval_token = NULL,
+                    approval_decided_at = NOW(),
+                    approval_decided_by_email = ?,
+                    approval_rejection_reason = ?
+              WHERE id = ?'
+        )->execute([$newStatus, $decidedBy, $rejectionReason, $invoiceId]);
+    }
+
+    /**
+     * Reset approval na 'none' (pro admin „Změnit stav" → none). Token zneplatněn.
+     */
+    public function resetApproval(int $invoiceId): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE invoices
+                SET approval_status = "none",
+                    approval_token = NULL,
+                    approval_requested_at = NULL,
+                    approval_decided_at = NULL,
+                    approval_decided_by_email = NULL,
+                    approval_rejection_reason = NULL
+              WHERE id = ?'
+        )->execute([$invoiceId]);
+    }
+
+    /** Najde fakturu podle approval_token (jen aktivní — token nesmí být null). */
+    public function findByApprovalToken(string $token): ?array
+    {
+        $stmt = $this->db->pdo()->prepare('SELECT id FROM invoices WHERE approval_token = ?');
+        $stmt->execute([$token]);
+        $id = $stmt->fetchColumn();
+        if ($id === false) return null;
+        return $this->find((int) $id);
     }
 
     private function castItem(array $row): array

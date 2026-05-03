@@ -15,6 +15,11 @@ use MyInvoice\Action\Client\ListClientsAction;
 use MyInvoice\Action\Client\UpdateClientAction;
 use MyInvoice\Action\Codebook\CodebookAction;
 use MyInvoice\Action\Admin\EmailTemplateAction;
+use MyInvoice\Action\Approval\PublicApprovalDecideAction;
+use MyInvoice\Action\Approval\PublicApprovalGetAction;
+use MyInvoice\Action\Approval\RequestApprovalAction;
+use MyInvoice\Action\Approval\RequestApprovalTestAction;
+use MyInvoice\Action\Approval\UpdateApprovalStatusAction;
 use MyInvoice\Action\Admin\ExportAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
 use MyInvoice\Action\Admin\ListActivityLogAction;
@@ -140,6 +145,15 @@ final class Routes
         $app->get    ('/api/invoices/{id:[0-9]+}/work-report', GetWorkReportAction::class);
         $app->put    ('/api/invoices/{id:[0-9]+}/work-report', SaveWorkReportAction::class);
         $app->delete ('/api/invoices/{id:[0-9]+}/work-report', DeleteWorkReportAction::class);
+
+        // Schvalování výkazu zákazníkem (M8)
+        $app->post   ('/api/invoices/{id:[0-9]+}/request-approval',      RequestApprovalAction::class);
+        $app->post   ('/api/invoices/{id:[0-9]+}/request-approval-test', RequestApprovalTestAction::class);
+        $app->put    ('/api/invoices/{id:[0-9]+}/approval-status',       UpdateApprovalStatusAction::class);
+
+        // Public schvalovací endpointy (bez auth, jen token)
+        $app->get    ('/api/public/approval/{token:[a-f0-9]{32,128}}',          PublicApprovalGetAction::class);
+        $app->post   ('/api/public/approval/{token:[a-f0-9]{32,128}}/decide',   PublicApprovalDecideAction::class);
 
         // Dashboard
         $app->get ('/api/dashboard/summary',        SummaryAction::class);

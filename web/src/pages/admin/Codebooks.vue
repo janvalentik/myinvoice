@@ -3,8 +3,10 @@ import { ref, onMounted, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { settingsApi, type VatRate, type Country, type CurrencyAccount } from '@/api/settings'
 import { useHotkey } from '@/composables/useHotkey'
+import { useToast } from '@/composables/useToast'
 
 const { t } = useI18n()
+const toast = useToast()
 
 type Tab = 'currencies' | 'vat' | 'countries'
 const tab = ref<Tab>('currencies')
@@ -13,7 +15,6 @@ const currencies = ref<CurrencyAccount[]>([])
 const vatRates   = ref<VatRate[]>([])
 const countries  = ref<Country[]>([])
 const loading    = ref(false)
-const flash      = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 async function loadAll() {
   loading.value = true
@@ -26,11 +27,6 @@ async function loadAll() {
   } finally { loading.value = false }
 }
 onMounted(loadAll)
-
-function showFlash(type: 'success' | 'error', text: string) {
-  flash.value = { type, text }
-  setTimeout(() => { flash.value = null }, 4000)
-}
 
 // ─── Currencies ───────────────────────────────────────────
 const currencyDraft = reactive<Partial<CurrencyAccount> & { _new?: boolean }>({})
@@ -74,20 +70,20 @@ async function saveCurrency() {
       })
     }
     currencyOpen.value = false
-    showFlash('success', 'Měna uložena.')
+    toast.success(t('common.saved'))
     await loadAll()
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 async function deleteCurrency(c: CurrencyAccount) {
   if (!confirm(`Smazat ${c.label}?`)) return
   try {
     await settingsApi.deleteCurrency(c.id)
-    showFlash('success', 'Smazáno.')
+    toast.success(t('common.deleted'))
     await loadAll()
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 
@@ -111,20 +107,20 @@ async function saveVat() {
     if (vatDraft._new) await settingsApi.createVatRate(vatDraft)
     else if (vatDraft.id) await settingsApi.updateVatRate(vatDraft.id, vatDraft)
     vatOpen.value = false
-    showFlash('success', 'Sazba uložena.')
+    toast.success(t('common.saved'))
     await loadAll()
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 async function deleteVat(v: VatRate) {
   if (!confirm(`Smazat sazbu ${v.code} (${v.rate_percent} %)?`)) return
   try {
     await settingsApi.deleteVatRate(v.id)
-    showFlash('success', 'Smazáno.')
+    toast.success(t('common.deleted'))
     await loadAll()
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 
@@ -150,20 +146,20 @@ async function saveCountry() {
     if (countryDraft._new) await settingsApi.createCountry(countryDraft)
     else if (countryDraft.id) await settingsApi.updateCountry(countryDraft.id, countryDraft)
     countryOpen.value = false
-    showFlash('success', 'Země uložena.')
+    toast.success(t('common.saved'))
     await loadAll()
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 async function deleteCountry(c: Country) {
   if (!confirm(`Smazat zemi ${c.iso2} – ${c.name_cs}?`)) return
   try {
     await settingsApi.deleteCountry(c.id)
-    showFlash('success', 'Smazáno.')
+    toast.success(t('common.deleted'))
     await loadAll()
   } catch (e: any) {
-    showFlash('error', e?.response?.data?.error?.message || 'Chyba')
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
   }
 }
 </script>
@@ -173,11 +169,6 @@ async function deleteCountry(c: Country) {
     <div class="mb-4">
       <h1 class="text-2xl font-semibold">{{ t('codebooks.title') }}</h1>
       <p class="text-sm text-neutral-500 mt-0.5">{{ t('codebooks.subtitle') }}</p>
-    </div>
-
-    <div v-if="flash" class="rounded-md px-4 py-2 text-sm mb-4"
-      :class="flash.type === 'success' ? 'bg-success-50 border border-success-500/40 text-success-600' : 'bg-danger-50 border border-danger-500/40 text-danger-500'">
-      {{ flash.text }}
     </div>
 
     <!-- Tabs -->

@@ -51,25 +51,29 @@ final class SaveWorkReportAction
         $items = (array) ($body['items'] ?? []);
 
         if ($projectId <= 0) {
-            return Json::error($response, 'validation_failed', 'Chybí project_id.', 400);
+            return Json::error($response, 'validation_failed', 'Chybí ID zakázky.', 400);
         }
         if ($title === '') {
-            return Json::error($response, 'validation_failed', 'Chybí title.', 400);
+            return Json::error($response, 'validation_failed', 'Chybí název výkazu.', 400);
         }
-        // Validace items
+
+        // Validace — popisujeme řádky 1-based (uživatelsky srozumitelné). Frontend
+        // by měl prázdné řádky filtrovat před odesláním (inv. položka totals by se
+        // jinak nesedla s uloženým výkazem).
         foreach ($items as $idx => $it) {
+            $row = $idx + 1;
             if (trim((string) ($it['description'] ?? '')) === '') {
-                return Json::error($response, 'validation_failed', "items[$idx].description je povinný.", 400);
+                return Json::error($response, 'validation_failed', "Řádek $row: chybí popis.", 400);
             }
             if ((float) ($it['hours'] ?? 0) <= 0) {
-                return Json::error($response, 'validation_failed', "items[$idx].hours musí být > 0.", 400);
+                return Json::error($response, 'validation_failed', "Řádek $row: počet hodin musí být větší než 0.", 400);
             }
             if ((float) ($it['rate'] ?? 0) < 0) {
-                return Json::error($response, 'validation_failed', "items[$idx].rate musí být >= 0.", 400);
+                return Json::error($response, 'validation_failed', "Řádek $row: sazba nesmí být záporná.", 400);
             }
             $wd = trim((string) ($it['work_date'] ?? ''));
             if ($wd !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $wd)) {
-                return Json::error($response, 'validation_failed', "items[$idx].work_date musí být ve formátu YYYY-MM-DD.", 400);
+                return Json::error($response, 'validation_failed', "Řádek $row: datum musí být ve formátu YYYY-MM-DD.", 400);
             }
         }
 
