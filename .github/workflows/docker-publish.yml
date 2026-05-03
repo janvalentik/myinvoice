@@ -17,20 +17,35 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}   # = radekhulan/myinvoice
 
+# Strategie multi-arch buildu:
+#   1) `build` job běží matrixově per platforma na native runneru (amd64 = ubuntu-latest,
+#      arm64 = ubuntu-24.04-arm — free hosted od 2025 pro public repos). Každý job
+#      pushne single-arch image jen pomocí digestu (--push-by-digest, bez tagů).
+#   2) `merge` job stáhne digesty obou platforem a vytvoří manifest list se všemi
+#      semver tagy (1.3.0, 1.3, latest). Bez QEMU = ~5-8 min total místo 28 min.
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
 
     permissions:
       contents: read
       packages: write     # nutné pro push do ghcr.io
 
     steps:
+      - name: Prepare platform pair
+        # `linux/amd64` → `linux-amd64` (bezpečné jako identifikátor artefaktu / cache scope)
+        run: echo "PLATFORM_PAIR=${{ matrix.platform }}" | sed 's|/|-|' >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up QEMU (for arm64 emulation)
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -42,10 +57,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Vytvoří tags + labels podle eventu:
+      - name: Extract metadata (labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.title=MyInvoice.cz
+            org.opencontainers.image.description=Czech invoicing system (PHP 8.5 + Vue 3 + MariaDB), multi-supplier
+            org.opencontainers.image.vendor=MyWebdesign.cz s.r.o.
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          # GHA cache — per-platform scope, aby se amd64/arm64 navzájem nepřepisovaly.
+          cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
+          cache-to:   type=gha,scope=${{ env.PLATFORM_PAIR }},mode=min
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs: [build]
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Vytvoří tags podle eventu:
       # - tag push v1.2.3 → image tagy: 1.2.3, 1.2, latest
       # - workflow_dispatch → image tag: <input>
-      - name: Extract metadata
+      - name: Extract metadata (tags)
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -55,31 +135,13 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
-          labels: |
-            org.opencontainers.image.title=MyInvoice.cz
-            org.opencontainers.image.description=Czech invoicing system (PHP 8.5 + Vue 3 + MariaDB), multi-supplier
-            org.opencontainers.image.vendor=MyWebdesign.cz s.r.o.
-            org.opencontainers.image.licenses=MIT
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          # arm64 emulace přes QEMU je 5-10× pomalejší než nativní amd64,
-          # ale pro infrequent release tagů akceptovatelné (~10 min total build).
-          # Pokud by se to stalo problém, vypnout arm64 a publishovat jen amd64.
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          # GHA cache — urychluje opakované buildy. mode=min ukládá jen final
-          # image layers (ne intermediate composer/node deps). Trade-off: composer
-          # install se rerunne na příštím buildu (+~30s), ale cache export je 10×
-          # rychlejší (mode=max u multi-arch dělá 15+ min export po samotném push).
-          cache-from: type=gha
-          cache-to: type=gha,mode=min
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Image digest
-        run: echo "Pushed image digests, tags = ${{ steps.meta.outputs.tags }}"
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
