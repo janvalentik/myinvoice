@@ -6,6 +6,8 @@
 
 Vyvíjí **[MyWebdesign.cz s.r.o.](https://mywebdesign.cz/)**
 
+📖 **Online dokumentace: [myinvoice.cz/manual](https://myinvoice.cz/manual/)**
+
 ![Přehled (dashboard)](manual/img/01_dashboard.webp)
 
 ---
@@ -100,24 +102,38 @@ lokálně PHP, MariaDB, Node ani nic dalšího.
 
 ### Varianta A — pre-built image z GHCR (bez klonování repa)
 
+Pro produkční nasazení tam, kde nechceš klonovat celý repo. Image `ghcr.io/radekhulan/myinvoice`
+je multi-arch (`linux/amd64` + `linux/arm64`) — funguje na běžném Linux serveru
+i na M1/M2 Macu nebo Raspberry Pi 4/5.
+
 ```bash
-# Stáhni si docker-compose.yml a setup script
-curl -O https://raw.githubusercontent.com/radekhulan/myinvoice/master/docker-compose.yml
+mkdir myinvoice && cd myinvoice
+curl -O https://raw.githubusercontent.com/radekhulan/myinvoice/master/docker-compose.production.yml
 curl -O https://raw.githubusercontent.com/radekhulan/myinvoice/master/cfg.sample.php
+mv docker-compose.production.yml docker-compose.yml
+cp cfg.sample.php cfg.docker.php
+# uprav cfg.docker.php — minimálně:
+#   db.host => 'db', db.user => 'myinvoice', db.pass => '<heslo z .env níže>'
+#   app.pepper a secret_encryption_key (oboje: openssl rand -base64 32)
 
-# Uprav docker-compose.yml: nahraď `build: .` za:
-#   image: ghcr.io/radekhulan/myinvoice:latest
-# (nebo konkrétní verzi: ghcr.io/radekhulan/myinvoice:1.2.0)
+cat > .env <<EOF
+DB_PASSWORD=$(openssl rand -base64 28)
+DB_ROOT_PASSWORD=$(openssl rand -base64 28)
+EOF
 
-cp cfg.sample.php cfg.docker.php   # pak vyplň DB host=db, app.pepper a secret_encryption_key
 docker compose up -d
 docker compose exec app php api/bin/migrate.php
 ```
 
-Image jsou multi-arch (`linux/amd64` + `linux/arm64`) — funguje na běžném
-Linux serveru i na M1/M2 Macu nebo Raspberry Pi 4/5.
+Otevři **http://localhost:8080** → setup wizard.
 
-### Varianta B — build z source
+> 💡 V produkci pinuj konkrétní verzi — v `docker-compose.yml` změň `:latest`
+> na `:1.2.0`. Update pak: bumpni tag, `docker compose pull && up -d`, spusť `migrate.php`.
+
+### Varianta B — build z source (pro vývoj)
+
+S klonem repa máš přístup k celému kódu, můžeš upravovat a build si vyrobí lokálně.
+Použij stejný flow s automatickým install scriptem:
 
 ```bash
 git clone https://github.com/radekhulan/myinvoice.git

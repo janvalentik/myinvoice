@@ -74,9 +74,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # GHA cache — drasticky urychluje opakované buildy (composer + node deps reuse)
+          # GHA cache — urychluje opakované buildy. mode=min ukládá jen final
+          # image layers (ne intermediate composer/node deps). Trade-off: composer
+          # install se rerunne na příštím buildu (+~30s), ale cache export je 10×
+          # rychlejší (mode=max u multi-arch dělá 15+ min export po samotném push).
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
 
       - name: Image digest
         run: echo "Pushed image digests, tags = ${{ steps.meta.outputs.tags }}"
