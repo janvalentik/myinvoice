@@ -30,6 +30,7 @@ final class ExportCsvAction
             'year'        => $filter['year']      ?? null,
             'date_from'   => $filter['date_from'] ?? null,
             'date_to'     => $filter['date_to']   ?? null,
+            'currency'    => $filter['currency']  ?? null,
             'supplier_id' => SupplierGuard::currentId($request),
         ];
         foreach (['status', 'type'] as $f) {

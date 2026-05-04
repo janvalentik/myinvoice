@@ -13,6 +13,8 @@
 
 Vyvíjí **[MyWebdesign.cz s.r.o.](https://mywebdesign.cz/)**
 
+🌐 **Projektový web: [myinvoice.cz](https://myinvoice.cz/)**
+
 📖 **Online dokumentace: [myinvoice.cz/manual](https://myinvoice.cz/manual/)**
 
 ![Přehled (dashboard)](manual/img/01_dashboard.webp)
@@ -225,7 +227,7 @@ Pokud nechceš Docker (např. cílový deploy je IIS / Apache na holém železe)
 
 - **PHP 8.5+** s extensions: `pdo`, `pdo_mysql`, `mbstring`, `openssl`, `json`, `iconv`, `gd`
 - **MariaDB 10.6+** (doporučeno 11.x)
-- **Composer 2.x**, **Node.js 20+**, **pnpm 9+**
+- **Composer 2.x**, **Node.js 22+**, **pnpm 10+**
 - **Redis** (volitelné — fallback na MariaDB MEMORY)
 - Web server: **IIS** nebo **Apache** (oba podporované, repo má `web.config` i `.htaccess`)
 
@@ -331,14 +333,18 @@ pak v `cfg.php` přepni `smtp.dkim.enabled => true`.
 
 | Vrstva | Volba |
 |---|---|
-| Backend | PHP 8.5 + Slim 4 + PHP-DI 7 + Twig + Monolog |
-| Frontend | Vue 3 + Vite 6 + Tailwind 4 + Pinia + vue-i18n |
+| Backend | PHP 8.5 + Slim 4.13 + PHP-DI 7 + Twig 3.10 + Monolog 3.7 + Guzzle 7.9 |
+| Frontend | Vue 3.5 + Vite 8 + Tailwind 4 + Pinia 3 + vue-router 5 + vue-i18n 11 + VueUse 14 + axios 1.16 + TypeScript 5.7 |
 | Databáze | MariaDB 10.6+ (doporučeno 11.x) |
-| PDF | mPDF 8 + Twig templates |
-| QR | rikudou/czqrpayment (SPAYD), sepa-qr (EPC), chillerlan/php-qrcode |
-| Mail | Symfony Mailer (SMTP + DKIM) |
+| PDF | mPDF 8.2 + Twig 3.10 templates |
+| Grafy | Chart.js 4 + vue-chartjs 5 |
+| QR | rikudou/czqrpayment 5 (SPAYD), smhg/sepa-qr-data 3 (EPC), chillerlan/php-qrcode 6 |
+| Mail | Symfony Mailer 8 (SMTP + DKIM) + Symfony Mime 8 |
+| Validace | respect/validation 3, enshrined/svg-sanitize 0.22 |
+| Cache / brute-force | Redis přes predis 3 (preferred) / MariaDB MEMORY (fallback) |
 | Auth | session-based + CSRF + TOTP 2FA |
-| Cache / brute-force | Redis (preferred) / MariaDB MEMORY (fallback) |
+| Testy / kvalita | PHPUnit 13, PHPStan 2, php-cs-fixer 3, vue-tsc 2 |
+| Build | Composer 2 (PHP), pnpm 10 + Node.js 22+ (JS), GitHub Actions CI |
 
 Pokud chybí `cfg.php` nebo nelze do DB, frontend i API vrací **503 s instrukcemi**
 (žádná bílá stránka).

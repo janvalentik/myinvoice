@@ -30,20 +30,30 @@ onMounted(async () => {
 })
 
 const kpiGridCols = computed(() => {
-  if (!summary.value) return 'lg:grid-cols-4'
+  if (!summary.value) return 'lg:grid-cols-6'
   const showApprovals = isAdmin.value
     && (summary.value.pending_approvals?.requested ?? 0) > 0
-  const count = (summary.value.kpi.per_currency?.length ?? 0)
-    + 3                              // Vystaveno + Po splatnosti + Ø
-    + (showApprovals ? 1 : 0)        // + Čeká na schválení
-  // Tailwind musí vidět tyto třídy staticky — proto explicitní mapping:
+  const currencies = summary.value.kpi.per_currency?.length ?? 0
+  // Revenue tile spans 2 cols (lg:col-span-2), standardní boxy 1 col.
+  // Sloty = currencies*2 + 4 standard (Vystaveno/Po splatnosti/Před splatností/Ø) [+ 1 schvalování]
+  const slots = currencies * 2 + 4 + (showApprovals ? 1 : 0)
+  // Tailwind musí vidět tyto třídy staticky — explicitní mapping.
   return ({
-    3: 'lg:grid-cols-3',
-    4: 'lg:grid-cols-4',
-    5: 'lg:grid-cols-5',
-    6: 'lg:grid-cols-6',
-    7: 'lg:grid-cols-7',
-  } as Record<number, string>)[count] ?? 'lg:grid-cols-4'
+    6: 'lg:grid-cols-6',   // 1 měna: 1×wide + 4×slim, 1 řada
+    7: 'lg:grid-cols-7',   // 1 měna + schvalování, 1 řada
+    8: 'lg:grid-cols-4',   // 2 měny: 2 řady × 4 (revenue span 2)
+    9: 'lg:grid-cols-3',   // 2 měny + schvalování
+    10: 'lg:grid-cols-5',  // 3 měny: 2 řady × 5
+  } as Record<number, string>)[slots] ?? 'lg:grid-cols-6'
+})
+
+const upcomingPerCurrency = computed(() => {
+  if (!summary.value) return [] as Array<{ currency: string; total: number }>
+  const map = new Map<string, number>()
+  for (const i of summary.value.unpaid_upcoming) {
+    map.set(i.currency, (map.get(i.currency) ?? 0) + Number(i.amount_to_pay || 0))
+  }
+  return Array.from(map, ([currency, total]) => ({ currency, total }))
 })
 
 const hasAnyRevenue = computed(() => {
@@ -106,7 +116,7 @@ function openInvoice(id: number) {
     <div v-else-if="summary" class="space-y-6">
       <!-- KPI tiles — dynamicky N sloupců dle počtu měn (1 měna → 4 boxy, 2 měny → 5 boxů…) -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4" :class="kpiGridCols">
-        <div v-for="c in summary.kpi.per_currency" :key="c.currency" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <div v-for="c in summary.kpi.per_currency" :key="c.currency" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm lg:col-span-2">
           <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.revenue', { year: summary.year, currency: c.currency }) }}</div>
           <div class="text-2xl font-semibold text-neutral-900 font-mono">{{ formatMoney(c.this_year, c.currency) }}</div>
           <div v-if="c.change_pct !== null" class="text-xs mt-1" :class="c.change_pct >= 0 ? 'text-success-600' : 'text-danger-500'"
@@ -127,11 +137,22 @@ function openInvoice(id: number) {
           <div class="text-2xl font-semibold" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-900'">
             {{ summary.kpi.overdue_count }}
           </div>
-          <div class="text-xs mt-1" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-400'">
+          <div class="text-xs mt-1 flex flex-wrap gap-x-3" :class="summary.kpi.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-400'">
             <span v-for="o in summary.kpi.overdue_per_currency" :key="o.currency">
               {{ formatMoney(o.total, o.currency) }}
             </span>
             <span v-if="summary.kpi.overdue_count === 0">{{ t('dashboard.all_ok') }}</span>
+          </div>
+        </div>
+
+        <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+          <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.upcoming') }}</div>
+          <div class="text-2xl font-semibold text-neutral-900">{{ summary.unpaid_upcoming.length }}</div>
+          <div class="text-xs mt-1 text-neutral-400 flex flex-wrap gap-x-3">
+            <span v-for="u in upcomingPerCurrency" :key="u.currency">
+              {{ formatMoney(u.total, u.currency) }}
+            </span>
+            <span v-if="!upcomingPerCurrency.length">{{ t('dashboard.upcoming_none') }}</span>
           </div>
         </div>
 

@@ -177,7 +177,7 @@ JSON response
   - 401 → redirect na `/login`
 - **Form validace**: VeeValidate + Yup (lehké, dobře integrované)
 - **Tailwind 4**: `@theme` block s custom paletou (emerald-600/zinc-900), JIT
-- **i18n**: `vue-i18n@10`, JSON soubory, lazy-load per locale
+- **i18n**: `vue-i18n@11`, JSON soubory, lazy-load per locale
 
 ### Build a deploy
 - Vývoj: `pnpm dev` (Vite, port 5173, proxy na PHP `:8080`)
@@ -442,22 +442,23 @@ public function get(string $path, mixed $default = null): mixed {
     "slim/slim": "^4.13",
     "slim/psr7": "^1.6",
     "php-di/php-di": "^7.0",
-    "vlucas/phpdotenv": "^5.6",
-    "respect/validation": "^2.4",
+    "respect/validation": "^3.1",
     "monolog/monolog": "^3.7",
     "twig/twig": "^3.10",
     "mpdf/mpdf": "^8.2",
-    "symfony/mailer": "^7.1",
-    "symfony/mime": "^7.1",
-    "rikudou/czqrpayment": "^4.0",
-    "rikudou/iban": "^3.1",
-    "girgias/sepa-qr-data": "^1.0",
-    "chillerlan/php-qrcode": "^5.0",
-    "predis/predis": "^2.2",
-    "enshrined/svg-sanitize": "^0.21"
+    "symfony/mailer": "^8.0",
+    "symfony/mime": "^8.0",
+    "symfony/uid": "^8.0",
+    "guzzlehttp/guzzle": "^7.9",
+    "rikudou/czqrpayment": "^5.3",
+    "rikudou/iban": "^1.3",
+    "smhg/sepa-qr-data": "^3.0",
+    "chillerlan/php-qrcode": "^6.0",
+    "predis/predis": "^3.4",
+    "enshrined/svg-sanitize": "^0.22"
   },
   "require-dev": {
-    "phpunit/phpunit": "^11.4",
+    "phpunit/phpunit": "^13.0",
     "phpstan/phpstan": "^2.0",
     "friendsofphp/php-cs-fixer": "^3.64"
   }
@@ -469,25 +470,23 @@ public function get(string $path, mixed $default = null): mixed {
 ```json
 {
   "dependencies": {
-    "vue": "^3.5",
-    "vue-router": "^4.4",
-    "pinia": "^2.2",
-    "axios": "^1.7",
-    "@vueuse/core": "^11.2",
-    "vue-i18n": "^10.0",
-    "vee-validate": "^4.13",
-    "yup": "^1.4",
-    "date-fns": "^4.1",
-    "@headlessui/vue": "^1.7"
+    "vue": "^3.5.13",
+    "vue-router": "^5.0.6",
+    "pinia": "^3.0.4",
+    "axios": "^1.16.0",
+    "@vueuse/core": "^14.3.0",
+    "vue-i18n": "^11.0.1",
+    "chart.js": "^4.5.1",
+    "vue-chartjs": "^5.3.3"
   },
   "devDependencies": {
-    "vite": "^5.4",
-    "@vitejs/plugin-vue": "^5.1",
-    "typescript": "^5.6",
-    "vue-tsc": "^2.1",
-    "tailwindcss": "^4.0",
-    "@tailwindcss/vite": "^4.0",
-    "@tailwindcss/forms": "^0.5"
+    "vite": "^8.0.10",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "typescript": "^5.7.3",
+    "vue-tsc": "^2.2.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.2",
+    "@types/node": "^22.10.5"
   }
 }
 ```

@@ -33,6 +33,7 @@ final class ListInvoicesAction
             'month'       => $filter['month']       ?? null,
             'date_from'   => $filter['date_from']   ?? null,
             'date_to'     => $filter['date_to']     ?? null,
+            'currency'    => $filter['currency']    ?? null,
             'unpaid_only' => !empty($filter['unpaid_only']),
             'overdue'     => !empty($filter['overdue']),
             'supplier_id' => (int) $request->getAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0),

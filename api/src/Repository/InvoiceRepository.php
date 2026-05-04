@@ -179,6 +179,10 @@ final class InvoiceRepository
             $where[] = 'COALESCE(i.tax_date, i.issue_date) <= ?';
             $params[] = (string) $filters['date_to'];
         }
+        if (!empty($filters['currency'])) {
+            $where[] = 'cur.code = ?';
+            $params[] = strtoupper((string) $filters['currency']);
+        }
         if (!empty($filters['unpaid_only'])) {
             $where[] = "i.status IN ('issued','sent','reminded')";
             $where[] = 'i.invoice_type IN ("invoice","credit_note")';
@@ -202,6 +206,7 @@ final class InvoiceRepository
                 "SELECT COUNT(*) FROM invoices i
                    JOIN clients c ON c.id = i.client_id
               LEFT JOIN projects p ON p.id = i.project_id
+                   JOIN currencies cur ON cur.id = i.currency_id
                   WHERE $whereSql"
             );
             $cntStmt->execute($params);

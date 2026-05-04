@@ -205,6 +205,7 @@ export interface ListFilters {
   month?: number
   date_from?: string
   date_to?: string
+  currency?: string
   unpaid_only?: boolean
   overdue?: boolean
   q?: string
@@ -235,6 +236,7 @@ export const invoicesApi = {
     if (filters.month)       params['filter[month]']       = filters.month
     if (filters.date_from)   params['filter[date_from]']   = filters.date_from
     if (filters.date_to)     params['filter[date_to]']     = filters.date_to
+    if (filters.currency)    params['filter[currency]']    = filters.currency
     if (filters.unpaid_only) params['filter[unpaid_only]'] = 1
     if (filters.overdue)     params['filter[overdue]']     = 1
     if (filters.page)        params.page                   = filters.page
@@ -251,6 +253,7 @@ export const invoicesApi = {
     if (filters.year)       params.set('filter[year]',       String(filters.year))
     if (filters.date_from)  params.set('filter[date_from]',  filters.date_from)
     if (filters.date_to)    params.set('filter[date_to]',    filters.date_to)
+    if (filters.currency)   params.set('filter[currency]',   filters.currency)
     return api.get<Blob>('/invoices/export.csv', { params, responseType: 'blob' })
   },
 

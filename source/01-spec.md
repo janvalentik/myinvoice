@@ -14,17 +14,20 @@ MyInvoice.cz je **multi-supplier fakturační systém** určený pro vystavován
 ### Tech stack
 | Vrstva | Volba |
 |---|---|
-| Backend | **PHP 8.5** (Slim 4 + ADR pattern, PSR-7/PSR-15) |
-| Databáze | **MariaDB** (instance `c:/inetpub/MariaDB`, db `myinvoice`, user `root`, heslo v `cfg.local.php`) |
-| Cache / brute-force | **Redis** pokud je dostupný; fallback **MariaDB MEMORY engine** |
-| PDF | **mPDF** |
-| QR platby | **rikudou/czqrpayment** (CZK SPAYD), **sepa-qr** (EUR SEPA EPC), **chillerlan/php-qrcode** renderer |
-| Frontend | **Vue 3** (Composition API, `<script setup>`) + **Vite** + **Pinia** + **Vue Router** + **Tailwind CSS 4** + **VueUse** + **Axios** |
-| i18n | **vue-i18n** (CZ/EN), backend Symfony Translation pro PDF/email |
-| Email | **Symfony Mailer** přes SMTP (s OAuth2 / DKIM podporou), šablony Twig |
+| Backend | **PHP 8.5** (Slim 4.13 + ADR pattern, PSR-7/PSR-15, PHP-DI 7) |
+| Databáze | **MariaDB 10.6+** (instance `c:/inetpub/MariaDB`, db `myinvoice`, user `root`, heslo v `cfg.local.php`) |
+| Cache / brute-force | **Redis** přes **predis 3** pokud je dostupný; fallback **MariaDB MEMORY engine** |
+| PDF | **mPDF 8.2** |
+| QR platby | **rikudou/czqrpayment 5** (CZK SPAYD), **smhg/sepa-qr-data 3** (EUR SEPA EPC), **chillerlan/php-qrcode 6** renderer |
+| Frontend | **Vue 3.5** (Composition API, `<script setup>`) + **Vite 8** + **Pinia 3** + **vue-router 5** + **Tailwind CSS 4** + **VueUse 14** + **axios 1.16** + **TypeScript 5.7** |
+| Grafy | **Chart.js 4** + **vue-chartjs 5** |
+| i18n | **vue-i18n 11** (CZ/EN), backend Symfony Translation pro PDF/email |
+| Email | **Symfony Mailer 8** + **Symfony Mime 8** přes SMTP (s OAuth2 / DKIM podporou), šablony **Twig 3.10** |
+| Validace / sanitizace | **respect/validation 3**, **enshrined/svg-sanitize 0.22**, **guzzlehttp/guzzle 7.9** (ARES/VIES) |
 | Auth | session-based (HTTP-only cookie, SameSite=Lax) + CSRF token; **bez JWT** (server-side trust, ne SPA na různých doménách) |
-| Logging | **Monolog** → rotující soubor + DB tabulka `activity_log` |
-| Build | Composer (PHP), pnpm (JS), GitHub Actions pro CI |
+| Logging | **Monolog 3.7** → rotující soubor + DB tabulka `activity_log` |
+| Testy / kvalita | **PHPUnit 13**, **PHPStan 2**, **php-cs-fixer 3**, **vue-tsc 2** |
+| Build | **Composer 2** (PHP), **pnpm 10** + **Node.js 22+** (JS), GitHub Actions CI |
 
 ### Vizuální styl
 - Paleta: **emerald-600 / zinc-900** (finančně-důvěryhodný), accent blue-500

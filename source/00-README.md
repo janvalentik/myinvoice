@@ -6,9 +6,12 @@
 ## Co je MyInvoice.cz
 
 Multi-supplier fakturační systém (jedna instalace = N dodavatelů / IČ s izolovanými daty):
-- **Backend:** PHP 8.5 + MariaDB (instance `c:/inetpub/MariaDB`, db `myinvoice`)
-- **Frontend:** Vue 3 + Vite + Tailwind 4 (Composition API)
-- **PDF:** mPDF, **QR platba:** SPAYD (CZK) + SEPA EPC (EUR)
+- **Backend:** PHP 8.5 + Slim 4.13 + PHP-DI 7 + Twig 3.10 + Monolog 3.7 + MariaDB 10.6+ (instance `c:/inetpub/MariaDB`, db `myinvoice`)
+- **Frontend:** Vue 3.5 + Vite 8 + Tailwind 4 + Pinia 3 + vue-router 5 + vue-i18n 11 + VueUse 14 + axios 1.16 + TypeScript 5.7 (Composition API)
+- **PDF:** mPDF 8.2, **QR platba:** rikudou/czqrpayment 5 (CZK SPAYD) + smhg/sepa-qr-data 3 (EUR SEPA EPC) + chillerlan/php-qrcode 6
+- **Mail:** Symfony Mailer 8 (SMTP + DKIM)
+- **Grafy:** Chart.js 4 + vue-chartjs 5
+- **Build / testy:** Composer 2, pnpm 10 + Node.js 22+, PHPUnit 13, PHPStan 2, vue-tsc 2
 - **Exporty pro účetní:** PDF ZIP, **ISDOC 6.0.2**, **Pohoda XML** (Stormware data package)
 - **Hosting:** IIS i Apache (oba podporované)
 - **Konfigurace:** `cfg.php` v rootu repa (+ `cfg.local.php` pro per-env override)

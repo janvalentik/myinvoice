@@ -7,6 +7,7 @@ import { useHotkey } from '@/composables/useHotkey'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
 import { clientsApi, type Client } from '@/api/clients'
+import { codebooksApi, type Currency } from '@/api/codebooks'
 import TableSkeleton from '@/components/ui/TableSkeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 
@@ -34,7 +35,9 @@ const dateFrom = ref<string>('')
 const dateTo = ref<string>('')
 const overdueOnly = ref(false)
 const unpaidOnly = ref(false)
+const currencyFilter = ref<string>('')
 const clients = ref<Client[]>([])
+const currencies = ref<Currency[]>([])
 
 const selectedIds = ref<number[]>([])
 const bulkBusy = ref(false)
@@ -205,6 +208,7 @@ async function exportCsv() {
       month: dateFrom.value || dateTo.value || yearFilter.value === '' || monthFilter.value === '' ? undefined : Number(monthFilter.value),
       date_from: dateFrom.value || undefined,
       date_to:   dateTo.value || undefined,
+      currency:  currencyFilter.value || undefined,
     })
     const url = URL.createObjectURL(r.data as unknown as Blob)
     const a = document.createElement('a')
@@ -261,6 +265,7 @@ async function load(reset = true) {
       month: dateFrom.value || dateTo.value || yearFilter.value === '' || monthFilter.value === '' ? undefined : Number(monthFilter.value),
       date_from: dateFrom.value || undefined,
       date_to:   dateTo.value || undefined,
+      currency:  currencyFilter.value || undefined,
       overdue: overdueOnly.value || undefined,
       unpaid_only: unpaidOnly.value || undefined,
       page: page.value,
@@ -283,12 +288,18 @@ onMounted(async () => {
   if (route.query.client_id) {
     clientFilter.value = Number(route.query.client_id)
   }
-  // Načti seznam klientů pro select (paralelně s prvním load)
+  // Načti seznam klientů + měn pro select (paralelně s prvním load)
   clientsApi.list({ archived: false, per_page: 200 }).then(r => { clients.value = r.data }).catch(() => {})
+  codebooksApi.currencies().then(r => {
+    // Endpoint je supplier-scoped, ale multi-account schéma vrací 1 řádek per bank účet —
+    // dedupe by code pro dropdown filtru.
+    const seen = new Set<string>()
+    currencies.value = r.filter(c => c.is_active && !seen.has(c.code) && seen.add(c.code))
+  }).catch(() => {})
   await load(true)
 })
 
-watch([statusFilter, typeFilter, clientFilter, yearFilter, monthFilter, dateFrom, dateTo, overdueOnly, unpaidOnly], () => load(true))
+watch([statusFilter, typeFilter, clientFilter, yearFilter, monthFilter, dateFrom, dateTo, overdueOnly, unpaidOnly, currencyFilter], () => load(true))
 // Když se vyčistí rok (vše/range), automaticky zrušit i měsíční filtr.
 watch(yearFilter, (y) => { if (y === '') monthFilter.value = '' })
 watch([dateFrom, dateTo], ([f, to]) => { if (f || to) monthFilter.value = '' })
@@ -388,6 +399,10 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
         </select>
         <button v-if="clientFilter !== ''" @click="clientFilter = ''"
           class="cursor-pointer h-9 px-2 text-xs text-neutral-500 hover:text-neutral-700" :title="t('project.clear_filter')">✕</button>
+        <select v-model="currencyFilter" class="h-9 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+          <option value="">{{ t('invoice.all_currencies') }}</option>
+          <option v-for="c in currencies" :key="c.id" :value="c.code">{{ c.code }}</option>
+        </select>
         <select v-model="yearFilter" :disabled="!!dateFrom || !!dateTo"
           class="h-9 px-3 border border-neutral-300 rounded-md bg-white text-sm disabled:opacity-50">
           <option value="">{{ t('invoice.all_years') }}</option>
