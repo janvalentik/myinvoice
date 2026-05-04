@@ -30,11 +30,29 @@ if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
 $date = date('Y-m-d');
 $file = "$backupDir/$dbName-$date.sql.gz";
 
-// Test dostupnosti dump nástroje
-$tool = shell_exec('mariadb-dump --version 2>&1') ? 'mariadb-dump' :
-        (shell_exec('mysqldump --version 2>&1')   ? 'mysqldump'   : null);
-if ($tool === null) {
-    fwrite(STDERR, "mariadb-dump ani mysqldump není v PATH.\n");
+// Test dostupnosti dump nástroje:
+//   1) explicitní cesta z configu (db.dump_tool)
+//   2) PATH (mariadb-dump → mysqldump)
+//   3) běžné instalační lokace na Windows
+$tool = (string) $config->get('db.dump_tool', '');
+if ($tool === '' || !@is_executable($tool)) {
+    $tool = shell_exec('mariadb-dump --version 2>&1') ? 'mariadb-dump' :
+            (shell_exec('mysqldump --version 2>&1')   ? 'mysqldump'   : '');
+}
+if ($tool === '' && stripos(PHP_OS, 'WIN') === 0) {
+    $candidates = array_merge(
+        glob('C:\\Program Files\\MariaDB*\\bin\\mariadb-dump.exe') ?: [],
+        glob('C:\\Program Files\\MariaDB*\\bin\\mysqldump.exe')    ?: [],
+        glob('C:\\Program Files\\MySQL\\*\\bin\\mysqldump.exe')    ?: [],
+        glob('C:\\inetpub\\MariaDB\\bin\\mariadb-dump.exe')        ?: [],
+        glob('C:\\inetpub\\MariaDB\\bin\\mysqldump.exe')           ?: [],
+        glob('C:\\xampp\\mysql\\bin\\mysqldump.exe')               ?: [],
+        glob('C:\\laragon\\bin\\mysql\\*\\bin\\mysqldump.exe')     ?: []
+    );
+    $tool = $candidates[0] ?? '';
+}
+if ($tool === '') {
+    fwrite(STDERR, "mariadb-dump ani mysqldump není v PATH (ani v běžných instalačních cestách). Nastav db.dump_tool v cfg.php.\n");
     exit(1);
 }
 

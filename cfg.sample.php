@@ -28,6 +28,7 @@ return [
         'pass'    => 'CHANGE-ME',
         'charset' => 'utf8mb4',
         'socket'  => null,                           // unix socket path (nebo null pro TCP); na Windows vždy null
+        'dump_tool' => '',                           // absolutní cesta k mariadb-dump / mysqldump pro cron-backup.php. Prázdné = auto-detekce z PATH a běžných instalačních lokací (Win: C:\Program Files\MariaDB*\bin, C:\inetpub\MariaDB\bin, XAMPP, Laragon).
     ],
     'redis' => [
         'enabled' => false,                           // false = fallback na DB sessions a in-memory cache
