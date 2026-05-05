@@ -463,7 +463,10 @@
     "vies_lookup_failed": "VIES lookup failed",
     "lookup_in_registries": "Lookup in registries",
     "dic_valid": "{dic} is valid — {name}",
-    "dic_invalid": "{dic} is invalid or does not exist"
+    "dic_invalid": "{dic} is invalid or does not exist",
+    "duplicate_ic": "A client with this Reg. No. already exists:",
+    "duplicate_dic": "A client with this VAT ID already exists:",
+    "open_existing": "open detail"
   },
   "project": {
     "title": "Projects",

@@ -44,8 +44,9 @@ final class ClientRepository
         if (!empty($filters['q'])) {
             // Escape % a _ wildcards aby uživatelský input nedělal slow-query DoS / nečekanou shodu
             $q = addcslashes((string) $filters['q'], '%_\\');
-            $where[] = '(c.company_name LIKE ? OR c.ic LIKE ?)';
+            $where[] = '(c.company_name LIKE ? OR c.ic LIKE ? OR c.dic LIKE ?)';
             $params[] = '%' . $q . '%';
+            $params[] = $q . '%';
             $params[] = $q . '%';
         }
         $whereSql = implode(' AND ', $where);

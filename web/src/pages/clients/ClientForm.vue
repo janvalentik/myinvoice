@@ -40,6 +40,8 @@ const errors = ref<Record<string, string[]>>({})
 const aresLoading = ref(false)
 const viesLoading = ref(false)
 const viesResult = ref<import('@/api/clients').ViesLookupResult | null>(null)
+const duplicateIc = ref<{ id: number; name: string } | null>(null)
+const duplicateDic = ref<{ id: number; name: string } | null>(null)
 
 onMounted(async () => {
   const [c, cur] = await Promise.all([codebooksApi.countries(), codebooksApi.currencies()])
@@ -95,11 +97,35 @@ async function loadFromAres() {
     form.value.city = d.city
     form.value.zip = d.zip
     form.value.country_iso2 = d.country_iso2 || 'CZ'
+    checkDuplicateIc()
+    checkDuplicateDic()
   } catch (e: any) {
     error.value = e?.response?.data?.error?.message || t('supplier.ares_failed')
   } finally {
     aresLoading.value = false
   }
+}
+
+async function checkDuplicateIc() {
+  if (isEdit.value) return
+  const ic = (form.value.ic || '').trim()
+  if (!ic) { duplicateIc.value = null; return }
+  try {
+    const res = await clientsApi.list({ q: ic, per_page: 5 })
+    const match = res.data.find(c => (c.ic || '').trim() === ic)
+    duplicateIc.value = match ? { id: match.id, name: match.company_name } : null
+  } catch { /* tichý fail — jen pomocná hláška */ }
+}
+
+async function checkDuplicateDic() {
+  if (isEdit.value) return
+  const dic = (form.value.dic || '').trim()
+  if (!dic) { duplicateDic.value = null; return }
+  try {
+    const res = await clientsApi.list({ q: dic, per_page: 5 })
+    const match = res.data.find(c => (c.dic || '').trim() === dic)
+    duplicateDic.value = match ? { id: match.id, name: match.company_name } : null
+  } catch { /* tichý fail — jen pomocná hláška */ }
 }
 
 async function checkVies() {
@@ -171,23 +197,33 @@ async function submit() {
               <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('client.ic') }}</label>
               <div class="flex gap-2">
                 <input autocomplete="off" v-model="form.ic" maxlength="8" placeholder="12345678"
+                  @blur="checkDuplicateIc"
                   class="flex-1 h-9 px-3 border border-neutral-300 rounded-md font-mono text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
                 <button type="button" @click="loadFromAres" :disabled="!form.ic || aresLoading"
                   class="px-3 h-9 text-sm bg-white border border-primary-300 text-primary-700 rounded-md hover:bg-primary-100 disabled:opacity-50">
                   {{ aresLoading ? '…' : 'ARES' }}
                 </button>
               </div>
+              <p v-if="duplicateIc" class="text-xs text-amber-700 mt-1">
+                ⚠ {{ t('client.duplicate_ic') }} <strong>{{ duplicateIc.name }}</strong>
+                <RouterLink :to="`/clients/${duplicateIc.id}`" class="text-primary-700 hover:underline ml-1">{{ t('client.open_existing') }} →</RouterLink>
+              </p>
             </div>
             <div>
               <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('client.dic') }}</label>
               <div class="flex gap-2">
                 <input autocomplete="off" v-model="form.dic" placeholder="CZ12345678"
+                  @blur="checkDuplicateDic"
                   class="flex-1 h-9 px-3 border border-neutral-300 rounded-md font-mono text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
                 <button type="button" @click="checkVies" :disabled="!form.dic || viesLoading"
                   class="px-3 h-9 text-sm bg-white border border-primary-300 text-primary-700 rounded-md hover:bg-primary-100 disabled:opacity-50">
                   {{ viesLoading ? '…' : 'VIES' }}
                 </button>
               </div>
+              <p v-if="duplicateDic" class="text-xs text-amber-700 mt-1">
+                ⚠ {{ t('client.duplicate_dic') }} <strong>{{ duplicateDic.name }}</strong>
+                <RouterLink :to="`/clients/${duplicateDic.id}`" class="text-primary-700 hover:underline ml-1">{{ t('client.open_existing') }} →</RouterLink>
+              </p>
             </div>
           </div>
           <div v-if="viesResult" class="mt-2 text-xs">

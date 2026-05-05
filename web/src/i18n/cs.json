@@ -463,7 +463,10 @@
     "vies_lookup_failed": "VIES lookup selhal",
     "lookup_in_registries": "Načtení z registrů",
     "dic_valid": "{dic} je platné — {name}",
-    "dic_invalid": "{dic} není platné nebo neexistuje"
+    "dic_invalid": "{dic} není platné nebo neexistuje",
+    "duplicate_ic": "Klient s tímto IČ již existuje:",
+    "duplicate_dic": "Klient s tímto DIČ již existuje:",
+    "open_existing": "otevřít detail"
   },
   "project": {
     "title": "Zakázky",
