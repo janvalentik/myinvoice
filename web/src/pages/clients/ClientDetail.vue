@@ -117,8 +117,8 @@ async function deleteClient() {
         <RouterLink to="/clients" class="text-sm text-neutral-600 hover:text-neutral-900">{{ t('client.back_to_list') }}</RouterLink>
         <h1 class="text-2xl font-semibold mt-1">{{ client.company_name }}</h1>
         <div class="text-sm text-neutral-500 mt-1 flex flex-wrap items-center gap-x-2">
-          <span v-if="client.ic" class="font-mono">{{ t('common.ic') }} {{ client.ic }}</span>
-          <span v-if="client.dic">· {{ t('common.dic') }} {{ client.dic }}</span>
+          <span v-if="client.ic"><span>{{ t('common.ic') }}</span> <span class="font-mono">{{ client.ic }}</span></span>
+          <span v-if="client.dic">· <span>{{ t('common.dic') }}</span> <span class="font-mono">{{ client.dic }}</span></span>
           <span v-if="client.archived_at" class="px-2 py-0.5 text-xs bg-neutral-100 text-neutral-600 rounded">{{ t('common.archived') }}</span>
         </div>
       </div>

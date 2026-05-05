@@ -7,6 +7,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { projectsApi, type Project } from '@/api/projects'
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
 import { formatMoney, formatDate, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass } from '@/composables/useFormat'
+import MonthlyRevenueChart from '@/components/charts/MonthlyRevenueChart.vue'
 import { useToast } from '@/composables/useToast'
 
 const toast = useToast()
@@ -24,6 +25,22 @@ const invoicesPage = ref(1)
 const invoicesPages = ref(1)
 
 const canDelete = computed(() => (project.value?.invoices_count ?? 0) === 0)
+
+// Pro graf: primární měna = nejčastější v datech, fallback default zakázky
+const primaryCurrency = computed(() => {
+  const tally: Record<string, number> = {}
+  for (const r of project.value?.revenue_by_month ?? []) tally[r.currency] = (tally[r.currency] ?? 0) + r.total
+  const top = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]
+  return top?.[0] || project.value?.currency || 'CZK'
+})
+const overdueAny = computed(() => (project.value?.unpaid_summary ?? []).some(u => u.overdue_count > 0))
+const monthlyChart = computed(() => {
+  const data = (project.value?.revenue_by_month ?? []).filter(r => r.currency === primaryCurrency.value)
+  return {
+    labels: data.map(r => r.month),
+    values: data.map(r => r.total),
+  }
+})
 
 async function load() {
   const id = Number(route.params.id)
@@ -177,6 +194,53 @@ async function deleteProject() {
     <div v-if="project.note" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
       <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-2">{{ t('project.note') }}</h3>
       <p class="text-sm text-neutral-700 whitespace-pre-wrap">{{ project.note }}</p>
+    </div>
+
+    <!-- KPI: nezaplaceno + po splatnosti -->
+    <div v-if="(project.unpaid_summary?.length ?? 0) > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('client.unpaid') }}</h3>
+        <div class="space-y-1">
+          <div v-for="u in project.unpaid_summary || []" :key="`u-${u.currency}`" class="flex items-baseline justify-between">
+            <span class="text-2xl font-semibold font-mono text-neutral-900">{{ formatMoney(u.unpaid_total, u.currency) }}</span>
+            <span class="text-xs text-neutral-500 ml-3 whitespace-nowrap">{{ t('client.n_invoices', { n: u.unpaid_count }) }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm" :class="overdueAny ? 'border-danger-500/40' : ''">
+        <h3 class="text-sm font-semibold uppercase tracking-wide mb-3" :class="overdueAny ? 'text-danger-500' : 'text-neutral-500'">{{ t('client.overdue') }}</h3>
+        <div class="space-y-1">
+          <div v-for="u in project.unpaid_summary || []" :key="`o-${u.currency}`" class="flex items-baseline justify-between">
+            <span class="text-2xl font-semibold font-mono" :class="u.overdue_total > 0 ? 'text-danger-500' : 'text-neutral-400'">{{ formatMoney(u.overdue_total, u.currency) }}</span>
+            <span class="text-xs ml-3 whitespace-nowrap" :class="u.overdue_count > 0 ? 'text-danger-500' : 'text-neutral-400'">{{ t('client.n_invoices', { n: u.overdue_count }) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Obrat: graf po měsících + sumace po letech -->
+    <div v-if="(project.revenue_by_month?.length ?? 0) > 0" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="md:col-span-2 bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <div class="flex items-baseline justify-between mb-3">
+          <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('client.revenue_by_month') }}</h3>
+          <span class="text-xs font-mono text-neutral-500">{{ primaryCurrency }}</span>
+        </div>
+        <MonthlyRevenueChart :labels="monthlyChart.labels" :values="monthlyChart.values" :currency="primaryCurrency" />
+      </div>
+      <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('client.revenue_by_year') }}</h3>
+        <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="r in project.revenue_by_year || []" :key="`${r.year}-${r.currency}`">
+              <td class="py-2 text-neutral-900 font-medium">{{ r.year }}</td>
+              <td class="py-2 text-right font-mono text-neutral-900">{{ formatMoney(r.total, r.currency) }}</td>
+              <td class="py-2 pl-3 text-right text-xs text-neutral-500 whitespace-nowrap">{{ t('client.year_invoices', { n: r.count }) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
     </div>
 
     <!-- Faktury -->

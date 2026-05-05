@@ -274,8 +274,10 @@ final class InvoiceRepository
                     'with_vat'    => 0.0,
                 ];
             }
-            // Storno (cancelled) a interní cancellation se do součtu nepočítají
-            if ($row['status'] !== 'cancelled' && $row['invoice_type'] !== 'cancellation') {
+            // Do obratu počítáme jen vystavené faktury + dobropisy (credit_note má záporné částky → odečte se).
+            // Vyloučeno: draft (koncepty), proforma (zálohovky), cancelled (storno), cancellation (interní storno).
+            if (in_array($row['status'], ['issued', 'sent', 'reminded', 'paid'], true)
+                && in_array($row['invoice_type'], ['invoice', 'credit_note'], true)) {
                 $grouped[$month]['totals_per_currency'][$cur]['without_vat'] += $row['total_without_vat'];
                 $grouped[$month]['totals_per_currency'][$cur]['vat']         += $row['total_vat'];
                 $grouped[$month]['totals_per_currency'][$cur]['with_vat']    += $row['total_with_vat'];

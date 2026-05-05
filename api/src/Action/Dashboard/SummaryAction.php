@@ -74,7 +74,8 @@ final class SummaryAction
     {
         // Obrat per měna pro YTD (letošní vs. minulý rok)
         // Záměrně počítáme i NEZAPLACENÉ faktury, pokud jsou vystavené (status: issued / sent / paid).
-        // Dobropisy (credit_note) sem NEZAHRNUJEME — zobrazují se separátně, aby neuměle nesnižovaly obrat.
+        // Dobropisy (credit_note) ZAHRNUJEME — mají záporné total_with_vat (viz CancelInvoiceAction),
+        // takže se SUMou automaticky odečtou od obratu. Koncepty (draft) a zálohovky (proforma) nezapočítáváme.
         //
         // change_pct: porovnává this_year (YTD) s prev_year_ytd — tj. minulý rok jen do stejné kalendářní
         // pozice (DATE_SUB(CURDATE(), INTERVAL 1 YEAR)) — fair YoY pro nedokončený aktuální rok.
@@ -92,7 +93,7 @@ final class SummaryAction
                  WHERE i.supplier_id = ?
                    AND YEAR(COALESCE(i.tax_date, i.issue_date)) IN (?, ?)
                    AND i.status IN ('issued', 'sent', 'reminded', 'paid')
-                   AND i.invoice_type = 'invoice'
+                   AND i.invoice_type IN ('invoice', 'credit_note')
                  GROUP BY cur.code";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$year, $prevYear, $prevYear, $sid, $year, $prevYear]);
@@ -235,7 +236,7 @@ final class SummaryAction
                  WHERE i.supplier_id = ?
                    AND YEAR(COALESCE(i.tax_date, i.issue_date)) = ?
                    AND i.status IN ('issued', 'sent', 'reminded', 'paid')
-                   AND i.invoice_type = 'invoice'
+                   AND i.invoice_type IN ('invoice', 'credit_note')
                  GROUP BY c.id, c.company_name, cur.code
                  ORDER BY total DESC
                  LIMIT 10";
@@ -274,7 +275,7 @@ final class SummaryAction
                  WHERE i.supplier_id = ?
                    AND COALESCE(i.tax_date, i.issue_date) >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 23 MONTH), '%Y-%m-01')
                    AND i.status IN ('issued', 'sent', 'reminded', 'paid')
-                   AND i.invoice_type = 'invoice'
+                   AND i.invoice_type IN ('invoice', 'credit_note')
                  GROUP BY cur.code, ym";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$sid]);

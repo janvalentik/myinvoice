@@ -34,6 +34,10 @@ export interface Project {
   revenue?: number
   last_invoice_date?: string | null
   invoice_count?: number
+  // Per-detail stats — populated by GetProjectAction
+  revenue_by_month?: Array<{ month: string; currency: string; total: number }>
+  revenue_by_year?:  Array<{ year: number; currency: string; total: number; count: number }>
+  unpaid_summary?:   Array<{ currency: string; unpaid_total: number; unpaid_count: number; overdue_total: number; overdue_count: number }>
 }
 
 export interface ProjectPayload {

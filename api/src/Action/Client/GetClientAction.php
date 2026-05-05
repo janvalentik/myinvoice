@@ -32,16 +32,18 @@ final class GetClientAction
         $stmt->execute([$id]);
         $client['invoices_count'] = (int) $stmt->fetchColumn();
 
-        // Obrat po měsících za poslední 3 roky (bez storno/cancellation, bez proforem — nejsou daňový doklad)
+        // Obrat po měsících za posledních 24 měsíců.
+        // Zahrnuje invoice + credit_note (dobropis má záporné částky, automaticky odečte).
+        // Vyloučeno: koncepty (draft), zálohovky (proforma), storno (cancelled), interní cancellation.
         $stmtM = $pdo->prepare(
             "SELECT DATE_FORMAT(COALESCE(i.tax_date, i.issue_date), '%Y-%m') AS month,
                     cur.code AS currency, SUM(i.total_with_vat) AS total
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.client_id = ?
-                AND i.status != 'cancelled'
+                AND i.status IN ('issued', 'sent', 'reminded', 'paid')
                 AND i.invoice_type IN ('invoice', 'credit_note')
-                AND COALESCE(i.tax_date, i.issue_date) >= DATE_SUB(CURDATE(), INTERVAL 36 MONTH)
+                AND COALESCE(i.tax_date, i.issue_date) >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
               GROUP BY month, cur.code
               ORDER BY month"
         );
@@ -51,14 +53,15 @@ final class GetClientAction
             $stmtM->fetchAll(\PDO::FETCH_ASSOC)
         );
 
-        // Obrat po letech (bez storno/cancellation, bez proforem — nejsou daňový doklad)
+        // Obrat po letech — stejná pravidla jako revenue_by_month: invoice + credit_note,
+        // vyloučí draft/proforma/cancelled/cancellation.
         $stmtY = $pdo->prepare(
             "SELECT YEAR(COALESCE(i.tax_date, i.issue_date)) AS year,
                     cur.code AS currency, SUM(i.total_with_vat) AS total, COUNT(*) AS count
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.client_id = ?
-                AND i.status != 'cancelled'
+                AND i.status IN ('issued', 'sent', 'reminded', 'paid')
                 AND i.invoice_type IN ('invoice', 'credit_note')
               GROUP BY year, cur.code
               ORDER BY year DESC"

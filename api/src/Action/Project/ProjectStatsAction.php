@@ -69,7 +69,7 @@ final class ProjectStatsAction
                JOIN clients  c ON c.id = p.client_id
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.supplier_id = ?
-                AND i.status != 'cancelled'
+                AND i.status IN ('issued', 'sent', 'reminded', 'paid')
                 AND i.invoice_type IN ('invoice', 'credit_note')
                 AND cur.code = ?
                 AND YEAR(COALESCE(i.tax_date, i.issue_date)) = ?
@@ -113,7 +113,7 @@ final class ProjectStatsAction
                FROM invoices i
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.supplier_id = ?
-                AND i.status != 'cancelled'
+                AND i.status IN ('issued', 'sent', 'reminded', 'paid')
                 AND i.invoice_type IN ('invoice', 'credit_note')
                 AND YEAR(COALESCE(i.tax_date, i.issue_date)) IN ($place)
            GROUP BY year, cur.code

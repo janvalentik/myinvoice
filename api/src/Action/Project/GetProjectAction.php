@@ -26,9 +26,81 @@ final class GetProjectAction
         if ($project === null || (int) ($project['supplier_id'] ?? 0) !== $sid) {
             return Json::error($response, 'not_found', 'Zakázka nenalezena.', 404);
         }
-        $stmt = $this->db->pdo()->prepare('SELECT COUNT(*) FROM invoices WHERE project_id = ?');
+        $pdo = $this->db->pdo();
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM invoices WHERE project_id = ?');
         $stmt->execute([$id]);
         $project['invoices_count'] = (int) $stmt->fetchColumn();
+
+        // Obrat po měsících za posledních 24 měsíců.
+        // Zahrnuje invoice + credit_note (dobropis má záporné částky, automaticky odečte).
+        // Vyloučeno: koncepty (draft), zálohovky (proforma), storno (cancelled), interní cancellation.
+        $stmtM = $pdo->prepare(
+            "SELECT DATE_FORMAT(COALESCE(i.tax_date, i.issue_date), '%Y-%m') AS month,
+                    cur.code AS currency, SUM(i.total_with_vat) AS total
+               FROM invoices i
+               JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.project_id = ?
+                AND i.status IN ('issued', 'sent', 'reminded', 'paid')
+                AND i.invoice_type IN ('invoice', 'credit_note')
+                AND COALESCE(i.tax_date, i.issue_date) >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+              GROUP BY month, cur.code
+              ORDER BY month"
+        );
+        $stmtM->execute([$id]);
+        $project['revenue_by_month'] = array_map(
+            fn (array $r) => ['month' => $r['month'], 'currency' => $r['currency'], 'total' => (float) $r['total']],
+            $stmtM->fetchAll(\PDO::FETCH_ASSOC)
+        );
+
+        // Obrat po letech — stejná pravidla jako revenue_by_month: invoice + credit_note,
+        // vyloučí draft/proforma/cancelled/cancellation.
+        $stmtY = $pdo->prepare(
+            "SELECT YEAR(COALESCE(i.tax_date, i.issue_date)) AS year,
+                    cur.code AS currency, SUM(i.total_with_vat) AS total, COUNT(*) AS count
+               FROM invoices i
+               JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.project_id = ?
+                AND i.status IN ('issued', 'sent', 'reminded', 'paid')
+                AND i.invoice_type IN ('invoice', 'credit_note')
+              GROUP BY year, cur.code
+              ORDER BY year DESC"
+        );
+        $stmtY->execute([$id]);
+        $project['revenue_by_year'] = array_map(
+            fn (array $r) => [
+                'year' => (int) $r['year'],
+                'currency' => $r['currency'],
+                'total' => (float) $r['total'],
+                'count' => (int) $r['count'],
+            ],
+            $stmtY->fetchAll(\PDO::FETCH_ASSOC)
+        );
+
+        // Nezaplaceno (issued/sent + invoice/credit_note) + Po splatnosti per měna
+        $stmtU = $pdo->prepare(
+            "SELECT cur.code AS currency,
+                    SUM(i.amount_to_pay) AS unpaid_total, COUNT(*) AS unpaid_count,
+                    SUM(CASE WHEN i.due_date <= CURDATE() THEN i.amount_to_pay ELSE 0 END) AS overdue_total,
+                    SUM(CASE WHEN i.due_date <= CURDATE() THEN 1 ELSE 0 END) AS overdue_count
+               FROM invoices i
+               JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.project_id = ?
+                AND i.status IN ('issued','sent','reminded')
+                AND i.invoice_type IN ('invoice','credit_note')
+              GROUP BY cur.code"
+        );
+        $stmtU->execute([$id]);
+        $project['unpaid_summary'] = array_map(
+            fn (array $r) => [
+                'currency'      => $r['currency'],
+                'unpaid_total'  => (float) $r['unpaid_total'],
+                'unpaid_count'  => (int) $r['unpaid_count'],
+                'overdue_total' => (float) $r['overdue_total'],
+                'overdue_count' => (int) $r['overdue_count'],
+            ],
+            $stmtU->fetchAll(\PDO::FETCH_ASSOC)
+        );
+
         return Json::ok($response, $project);
     }
 }
