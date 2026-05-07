@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-05-07
+
+### Fixed
+
+- **HTTP → HTTPS redirect blokuje LAN přístup přes IP** ([#6](https://github.com/radekhulan/myinvoice/issues/6))
+  — `web.config` (IIS) i `.htaccess` (Apache) měly redirect na HTTPS pro
+  všechno kromě `localhost`. Self-hosted Docker uživatelé přistupující
+  přes `http://192.168.x.x:8080` dostávali 301 → `https://192.168.x.x/...`,
+  což skončilo `SSL_ERROR_RX_RECORD_TOO_LONG` (stack TLS nedělá). Vyjímky
+  rozšířeny o **RFC1918 privátní IP** (`10.*`, `172.16-31.*`, `192.168.*`),
+  **loopback** (`127.*`), **`*.local`** mDNS jména a hlavičku
+  **`X-Forwarded-Proto: https`** (request přes reverse proxy s TLS terminací).
+  Production přístup přes veřejnou doménu redirect dál vynucuje.
+
 ## [2.1.0] — 2026-05-07
 
 ### Added

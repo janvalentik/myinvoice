@@ -9,9 +9,19 @@ Options -Indexes -MultiViews
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # 1) Force HTTPS
+    # 1) Force HTTPS — vyjma:
+    #    - loopback / localhost (lokální dev a Docker port-forward)
+    #    - RFC1918 privátní IP (LAN nasazení bez TLS — typicky self-hosted Docker)
+    #    - .local mDNS jména
+    #    - requests už HTTPS, nebo terminované TLS na reverse proxy (X-Forwarded-Proto)
     RewriteCond %{HTTPS} off
-    RewriteCond %{HTTP_HOST} !^localhost [NC]
+    RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+    RewriteCond %{HTTP_HOST} !^localhost(:[0-9]+)?$ [NC]
+    RewriteCond %{HTTP_HOST} !^127\. [NC]
+    RewriteCond %{HTTP_HOST} !^10\. [NC]
+    RewriteCond %{HTTP_HOST} !^192\.168\. [NC]
+    RewriteCond %{HTTP_HOST} !^172\.(1[6-9]|2[0-9]|3[0-1])\. [NC]
+    RewriteCond %{HTTP_HOST} !\.local(:[0-9]+)?$ [NC]
     RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
 
     # 2) Bezpečnostní bariéra: blokovat citlivé složky
