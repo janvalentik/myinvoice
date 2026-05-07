@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] — 2026-05-07
+
+### Fixed
+
+- **Logo v hlavičce emailu se renderovalo přes celou šířku** — Outlook,
+  Gmail web/native a Yahoo CSS `max-height` na `<img>` ignorují, takže
+  logo přerůstalo zamýšlených 48 px. Fix: `Mailer::addLogoDisplaySize()`
+  spočítá display rozměry server-side z PNG dimenzí (target height 48 px,
+  width proporční podle aspect ratio) a Twig je vyplní jako HTML
+  `width`/`height` atributy (univerzálně respektované všemi email
+  klienty). Stejný compute v `EmailBrandingAction::preview` pro live
+  preview iframe. Test: logo 480×234 → display 99×48.
+- **Zbytečná tenká čára pod hlavičkou emailu** — odstraněn
+  `border-bottom: 1px solid #E7E3EE` z header `<td>`. Gradient pozadí
+  a padding samy oddělují header od obsahu.
+
 ## [2.1.1] — 2026-05-07
 
 ### Fixed
