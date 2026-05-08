@@ -177,10 +177,65 @@ zachovány. Nový image se publikuje automaticky při každém release tagu
 > GitHub Releases API a v patičce zobrazí aktuální verzi + badge pokud je
 > dostupná novější. Admin v **Systém → Aktualizace** vidí release notes a
 > tlačítkem **„Aktualizovat"** zařadí upgrade do fronty. Vlastní pull image
-> + restart provádí host-side proces `cmd/docker-update-watcher.{sh,ps1}` —
-> nainstaluj ho jako systemd unit / Scheduled Task (návod v manuálu § 19.4).
-> Bez watcheru pořád funguje shell příkaz výše. Daily check ke svému běhu
-> potřebuje cron `php api/bin/cron-version-check.php` (1× denně).
+> + restart provádí host-side proces `cmd/docker-update-watcher.(sh/ps1)` —
+> viz **„Update watcher"** níže. Bez watcheru pořád funguje shell příkaz
+> výše. Daily check ke svému běhu potřebuje cron
+> `php api/bin/cron-version-check.php` (1× denně).
+
+#### Update watcher — jednoclick upgrade z UI
+
+Watcher je samostatný host-side proces, který sleduje flag soubor uvnitř
+kontejneru (`docker compose exec -T app test -f storage/upgrade-requested.json`)
+a když ho najde, spustí `cmd/docker-update.(sh/ps1)` — pull `:latest`
+image, restart stacku, migrace. Výsledek zapíše zpět do kontejneru,
+UI ho zobrazí jako „Upgrade úspěšně dokončen / selhal".
+
+**Test ve foregroundu** (než ho udělej daemon):
+
+```bash
+# Linux / macOS
+cd /opt/myinvoice && bash cmd/docker-update-watcher.sh
+```
+
+```powershell
+# Windows
+cd C:\inetpub\myinvoice
+powershell -NoProfile -ExecutionPolicy Bypass -File cmd\docker-update-watcher.ps1
+```
+
+**Produkce — daemon (Linux):**
+
+```bash
+sudo tee /etc/systemd/system/myinvoice-update-watcher.service <<'EOF'
+[Unit]
+Description=MyInvoice update watcher
+After=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/myinvoice
+ExecStart=/opt/myinvoice/cmd/docker-update-watcher.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now myinvoice-update-watcher
+```
+
+**Produkce — Scheduled Task (Windows):**
+
+```powershell
+schtasks /create /tn "MyInvoice Update Watcher" `
+  /tr "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\inetpub\myinvoice\cmd\docker-update-watcher.ps1" `
+  /sc onstart /ru SYSTEM /rl HIGHEST
+schtasks /run /tn "MyInvoice Update Watcher"
+```
+
+Detaily, recovery při zaseknutém upgradu a odlaďování v manuálu §
+[19 Aktualizace](manual/19_Aktualizace.md).
 
 ### Varianta B — build z source (pro vývoj)
 

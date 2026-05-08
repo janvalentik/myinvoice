@@ -49,11 +49,35 @@ uživatel s upgradem stejně nic neudělá).
 ## 19.4 Aktualizace v UI — Docker
 
 V **Systém → Aktualizace** klikni na **„Aktualizovat na vX.Y.Z"**.
-Aplikace zapíše flag soubor `storage/upgrade-requested.json` a UI začne
-pollovat. **Vlastní upgrade ale provádí host-side watcher** — proces
-běžící mimo container, který má přístup k `docker compose` na hostu.
+Aplikace zapíše flag soubor `storage/upgrade-requested.json` **uvnitř
+kontejneru** (Docker named volume `app-storage:/var/www/html/storage`)
+a UI začne pollovat. **Vlastní upgrade ale provádí host-side watcher**
+— proces běžící mimo container, který má přístup k `docker compose` na
+hostu a přes `docker compose exec` čte/píše do storage volume.
 
-### Instalace watcheru (jednorázově)
+### Test režim (jednorázově, ve foregroundu)
+
+Než nainstaluješ watcher jako daemon, otestuj ho ručně v PowerShell /
+bash okně:
+
+```bash
+# Linux / macOS
+cd /opt/myinvoice
+bash cmd/docker-update-watcher.sh
+```
+
+```powershell
+# Windows
+cd C:\inetpub\myinvoice
+powershell -NoProfile -ExecutionPolicy Bypass -File cmd\docker-update-watcher.ps1
+```
+
+Vidíš `[watcher] start, polling storage/upgrade-requested.json inside
+container every 30s` — watcher poslouchá. Klikni v UI **„Aktualizovat"**
+a do 30 s zachytí flag, spustí `docker-update.{sh,ps1}`, výsledek napíše
+do kontejneru. Watcher zastav `Ctrl+C`.
+
+### Instalace watcheru jako daemon (na produkci)
 
 #### Linux — systemd unit
 
@@ -83,37 +107,56 @@ Logy: `journalctl -u myinvoice-update-watcher -f`.
 #### Windows — Scheduled Task
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File C:\inetpub\myinvoice\cmd\docker-update-watcher.ps1"
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-Register-ScheduledTask -TaskName "MyInvoice Update Watcher" `
-  -Action $action -Trigger $trigger -Principal $principal
+schtasks /create /tn "MyInvoice Update Watcher" `
+  /tr "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\inetpub\myinvoice\cmd\docker-update-watcher.ps1" `
+  /sc onstart /ru SYSTEM /rl HIGHEST
+
+# Spusť hned (ne až po restartu)
+schtasks /run /tn "MyInvoice Update Watcher"
 ```
+
+Stav úlohy: `schtasks /query /tn "MyInvoice Update Watcher" /v /fo list`.
+Stop: `schtasks /end /tn "MyInvoice Update Watcher"`.
 
 ### Co watcher dělá
 
-1. Polluje `storage/upgrade-requested.json` každých 30 s.
-2. Když ho najde → přejmenuje na `upgrade-inflight.json` (zámek proti
+1. Každých 30 s: `docker compose exec -T app test -f storage/upgrade-requested.json`.
+2. Když ho najde → přečte `target_version` přes `cat`, přejmenuje na
+   `upgrade-inflight.json` přes `mv` uvnitř kontejneru (zámek proti
    double-triggeru).
-3. Spustí `cmd/docker-update.{sh,ps1}` — ten dělá:
+3. Spustí na hostu `cmd/docker-update.{sh,ps1}` — ten dělá:
    - `docker compose pull` (registry mode) nebo `git pull && build` (source mode)
    - `docker compose up -d` (restart stacku)
    - `php api/bin/migrate.php` (pending migrace)
-4. Výsledek (success / fail) zapíše do `storage/upgrade-result.json` +
-   plný log do `storage/upgrade-YYYYMMDDTHHMMSSZ.log`.
-5. UI v Systém → Aktualizace ho pollne a zobrazí.
+4. Po restartu kontejneru počká až 60 s, než bude zase responzivní
+   (`docker compose exec true`), pak zapíše výsledek (success / fail)
+   přes `cat > storage/upgrade-result.json` zpět do kontejneru.
+5. Plný log běhu na host: `/tmp/myinvoice-upgrade-YYYYMMDDTHHMMSSZ.log`
+   (Linux) nebo `%TEMP%\myinvoice-upgrade-...log` (Windows).
+6. UI v **Systém → Aktualizace** každých 5 s pollne `/api/admin/update/
+   status`, který načte `upgrade-result.json` z kontejneru a zobrazí
+   „Upgrade úspěšně dokončen" nebo „Upgrade selhal" s message.
 
 ### Pokud watcher neběží
 
-UI sice flag soubor zapíše, ale nikdo ho nezpracuje. Spusť na hostu
-ručně:
+UI sice flag soubor zapíše, ale nikdo ho nezpracuje (UI zůstane věčně
+ve stavu „Upgrade probíhá…"). Spusť na hostu ručně:
 
 ```bash
+# Linux / macOS
 cd /opt/myinvoice
 bash cmd/docker-update.sh
-rm -f storage/upgrade-requested.json
+docker compose -f docker-compose.production.yml exec app rm -f storage/upgrade-requested.json
 ```
+
+```powershell
+# Windows
+cd C:\inetpub\myinvoice
+.\cmd\docker-update.ps1
+docker compose -f docker-compose.production.yml exec app rm -f storage/upgrade-requested.json
+```
+
+(Pokud nepoužíváš production compose, vynechej `-f docker-compose.production.yml`.)
 
 ## 19.5 Aktualizace v UI — nativní instalace
 

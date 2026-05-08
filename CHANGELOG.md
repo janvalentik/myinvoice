@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.3] — 2026-05-08
+
+### Fixed
+
+- **PowerShell watcher cosmetic error spam** —
+  `cmd/docker-update-watcher.ps1` při běhu `docker compose pull` hlásil
+  červené `NativeCommandError` / `RemoteException` na progress řádky
+  (`Pulling fs layer`, `Downloading X MB`), i když exit code byl 0.
+  PowerShell 7 default routuje stderr z native commandů jako error
+  stream. Fix: `$PSNativeCommandUseErrorActionPreference = $false` na
+  začátku scriptu + `2>&1 | Tee-Object | Out-Host` místo `*>&1`.
+
+### Documentation
+
+- `README.md` — nová sekce „Update watcher — jednoclick upgrade z UI"
+  s test režimem (foreground) + produkční instalací (systemd / Scheduled
+  Task).
+- `manual/19_Aktualizace.md` — kapitola 19.4 přepsaná podle reality
+  v3.0.2+ (flag uvnitř kontejneru, exec poll, log na hostu /tmp místo
+  storage/, recovery přes `docker compose exec rm` ne hostový rm).
+
 ## [3.0.2] — 2026-05-08
 
 ### Fixed

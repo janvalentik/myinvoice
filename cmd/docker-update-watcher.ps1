@@ -20,6 +20,12 @@
 param()
 
 $ErrorActionPreference = 'Continue'   # nevalíme se na non-fatal errorech v poll smyčce
+
+# PS 7.3+ vypne "stderr z native commandů = error stream" — `docker compose pull`
+# zapisuje download progress do stderr, který by jinak PS označoval červeně
+# jako NativeCommandError, i když exit code je 0 (čistě kosmetický šum).
+$PSNativeCommandUseErrorActionPreference = $false
+
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $ProjectRoot
 
@@ -87,7 +93,9 @@ while ($true) {
 
         $log = Join-Path $env:TEMP "myinvoice-upgrade-$ts.log"
         try {
-            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'cmd\docker-update.ps1') *>&1 | Tee-Object -FilePath $log
+            # 2>&1 mergne stderr → success stream; bez `*>&1` PS 5.1 wrapper
+            # nevyhazuje cosmetické "RemoteException" pro stderr-as-error.
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'cmd\docker-update.ps1') 2>&1 | Tee-Object -FilePath $log | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $status  = 'applied'
                 $message = "Upgrade dokoncen. Log na hostu: $log"
