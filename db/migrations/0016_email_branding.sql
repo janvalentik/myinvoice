@@ -21,7 +21,7 @@ SET @col_exists := (
 
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE supplier ADD COLUMN email_branding_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER tagline',
-  'SELECT 1');
+  'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- email_accent_color
@@ -35,5 +35,5 @@ SET @col_exists := (
 
 SET @sql := IF(@col_exists = 0,
   "ALTER TABLE supplier ADD COLUMN email_accent_color VARCHAR(7) NOT NULL DEFAULT '#3B2D83' AFTER email_branding_enabled",
-  'SELECT 1');
+  'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

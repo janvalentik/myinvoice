@@ -6,6 +6,10 @@
 
 SET NAMES utf8mb4;
 
-ALTER TABLE clients
-  ADD COLUMN IF NOT EXISTS hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0.00
-    AFTER payment_due_default;
+-- Idempotentní napříč MariaDB + MySQL 8 (INFORMATION_SCHEMA guard).
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='clients' AND COLUMN_NAME='hourly_rate');
+SET @sql := IF(@col=0,
+  'ALTER TABLE clients ADD COLUMN hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER payment_due_default',
+  'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

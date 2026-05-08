@@ -6,6 +6,10 @@
 
 SET NAMES utf8mb4;
 
-ALTER TABLE supplier
-  ADD COLUMN IF NOT EXISTS commercial_register VARCHAR(255) NULL DEFAULT NULL
-    AFTER tagline;
+-- Idempotentní napříč MariaDB + MySQL 8 (INFORMATION_SCHEMA guard).
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='supplier' AND COLUMN_NAME='commercial_register');
+SET @sql := IF(@col=0,
+  'ALTER TABLE supplier ADD COLUMN commercial_register VARCHAR(255) NULL DEFAULT NULL AFTER tagline',
+  'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

@@ -7,6 +7,10 @@
 
 SET NAMES utf8mb4;
 
-ALTER TABLE invoices
-  ADD COLUMN IF NOT EXISTS exchange_rate_date DATE NULL DEFAULT NULL
-    AFTER exchange_rate;
+-- Idempotentní napříč MariaDB + MySQL 8 (INFORMATION_SCHEMA guard).
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='invoices' AND COLUMN_NAME='exchange_rate_date');
+SET @sql := IF(@col=0,
+  'ALTER TABLE invoices ADD COLUMN exchange_rate_date DATE NULL DEFAULT NULL AFTER exchange_rate',
+  'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
   KEY idx_rates_currency (currency_code, rate_date DESC)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE invoices
-  ADD COLUMN IF NOT EXISTS exchange_rate DECIMAL(14,6) NULL DEFAULT NULL
-    AFTER currency_id;
+-- Idempotentní napříč MariaDB + MySQL 8 (INFORMATION_SCHEMA guard).
+SET @col := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='invoices' AND COLUMN_NAME='exchange_rate');
+SET @sql := IF(@col=0,
+  'ALTER TABLE invoices ADD COLUMN exchange_rate DECIMAL(14,6) NULL DEFAULT NULL AFTER currency_id',
+  'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

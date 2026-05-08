@@ -41,6 +41,8 @@ RUN install-php-extensions \
  && apt-get update \
  && apt-get install -y --no-install-recommends tini librsvg2-bin \
  && a2enmod rewrite headers deflate expires \
+ && rm -f /etc/apache2/mods-enabled/mpm_* \
+ && a2enmod mpm_prefork \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
@@ -58,11 +60,16 @@ RUN { \
         echo 'opcache.validate_timestamps = 0'; \
     } > /usr/local/etc/php/conf.d/myinvoice.ini
 
-# Apache: doc root → /var/www/html, allow .htaccess
+# Apache: doc root → /var/www/html, allow .htaccess, dynamický port přes ${PORT}
+# (Apache 2.4 expanduje ${PORT} z env při parsingu konfigurace — funguje
+# pro Railway/Heroku/Fly.io, kde je port přidělen dynamicky. Default 80.)
+ENV PORT=80
 RUN sed -ri \
         -e 's!/var/www/html!/var/www/html!g' \
         -e 's!AllowOverride None!AllowOverride All!g' \
-        /etc/apache2/apache2.conf /etc/apache2/sites-available/000-default.conf
+        /etc/apache2/apache2.conf /etc/apache2/sites-available/000-default.conf \
+ && sed -ri 's!^Listen 80$!Listen ${PORT}!' /etc/apache2/ports.conf \
+ && sed -ri 's!\*:80>!*:${PORT}>!' /etc/apache2/sites-available/000-default.conf
 
 # Copy application code
 WORKDIR /var/www/html

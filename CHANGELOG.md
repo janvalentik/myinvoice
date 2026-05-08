@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-05-08
+
+Cloud-native release — image lze nasadit na rootless PaaS (Railway, Heroku,
+Fly.io) bez patchů. Reaguje na issue #9 od @TomasTriska88.
+
+### Added
+
+- **Dynamický port přes `${PORT}`** — `Dockerfile` nově nastavuje
+  `ENV PORT=80` a sed-em přepíše `Listen ${PORT}` v `ports.conf` a
+  `<VirtualHost *:${PORT}>` v `000-default.conf`. Apache 2.4 expanduje
+  `${PORT}` z env při parsingu, takže Railway/Heroku, kde je port přidělen
+  dynamicky, nasadí image out-of-the-box. Default 80 zachová zpětnou
+  kompatibilitu pro `docker compose` / VPS / sdílený hosting.
+- **Konfigurace přes ENV proměnné (12-factor)** —
+  `Config::applyEnvOverrides()` po načtení `cfg.php` aplikuje overridy
+  z env. Mapa pokrývá `app.*`, `db.*`, `redis.*`, `session.*`, `smtp.*`,
+  `captcha.*`, `logging.*`. Plus parser pro kompozitní `DATABASE_URL` /
+  `REDIS_URL` (Railway styl) a aliasy `MYSQL_*` / `REDIS_*` (Heroku).
+  V kontejnerovém deploymentu stačí `cfg.php` s prázdnou strukturou
+  (`<?php return [];`) a všechny citlivé údaje předat přes ENV.
+
+### Fixed
+
+- **MPM conflict při startu Apache** — base image `php:8.5-apache` za
+  jistých okolností končí s víc načtenými MPM moduly a Apache padá s
+  *More than one MPM loaded*. `Dockerfile` teď explicitně dělá
+  `rm -f /etc/apache2/mods-enabled/mpm_* && a2enmod mpm_prefork` po
+  instalaci ostatních modulů.
+- **Idempotence migrací na MySQL 8** — `ADD COLUMN/KEY IF NOT EXISTS` je
+  MariaDB-only syntaxe a na MySQL 8 padá s *1060 Duplicate column* nebo
+  *1061 Duplicate key name*. Migrace 0002–0010, 0014, 0015, 0016 převedeny
+  na `INFORMATION_SCHEMA` guard + `PREPARE/EXECUTE` (funguje na MariaDB
+  i MySQL 8). No-op cesta používá `DO 0` místo `SELECT 1`, aby PDO
+  nezůstávalo s nezpracovaným resultsetem (*HY000 / 2014 unbuffered
+  queries active*). Fresh install z prázdné DB i opakovaný run pass na
+  obou DBMS.
+
 ## [2.1.5] — 2026-05-07
 
 ### Added

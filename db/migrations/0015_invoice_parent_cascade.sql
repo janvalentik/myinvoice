@@ -22,11 +22,11 @@ SET @rule := (
 
 SET @sql_drop := IF(@rule IS NOT NULL AND @rule <> 'CASCADE',
   'ALTER TABLE invoices DROP FOREIGN KEY fk_inv_parent',
-  'SELECT 1');
+  'DO 0');
 PREPARE stmt FROM @sql_drop; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @sql_add := IF(@rule IS NOT NULL AND @rule <> 'CASCADE',
   'ALTER TABLE invoices ADD CONSTRAINT fk_inv_parent
      FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE',
-  'SELECT 1');
+  'DO 0');
 PREPARE stmt FROM @sql_add; EXECUTE stmt; DEALLOCATE PREPARE stmt;
