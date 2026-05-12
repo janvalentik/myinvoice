@@ -67,6 +67,7 @@ use MyInvoice\Action\Project\GetProjectAction;
 use MyInvoice\Action\Project\ListProjectsAction;
 use MyInvoice\Action\Project\ProjectStatsAction;
 use MyInvoice\Action\Project\UpdateProjectAction;
+use MyInvoice\Action\Auth\ApiMeAction;
 use MyInvoice\Action\Auth\ForgotPasswordAction;
 use MyInvoice\Action\Auth\LoginAction;
 use MyInvoice\Action\Auth\LogoutAction;
@@ -76,8 +77,12 @@ use MyInvoice\Action\Auth\SetupAction;
 use MyInvoice\Action\Auth\SetupAresLookupAction;
 use MyInvoice\Action\Auth\SetupSampleAction;
 use MyInvoice\Action\Auth\SetupStatusAction;
+use MyInvoice\Action\Auth\Tokens\CreateTokenAction;
+use MyInvoice\Action\Auth\Tokens\ListTokensAction;
+use MyInvoice\Action\Auth\Tokens\RevokeTokenAction;
 use MyInvoice\Action\Auth\TotpAction;
 use MyInvoice\Action\System\HealthAction;
+use MyInvoice\Action\System\OpenApiAction;
 use MyInvoice\Action\System\VersionAction;
 use MyInvoice\Action\Admin\UpdateAction;
 use Slim\App;
@@ -88,6 +93,11 @@ final class Routes
     {
         $app->get('/api/health',  HealthAction::class);
         $app->get('/api/version', VersionAction::class);
+
+        // Public REST API v1 — dokumentace
+        $app->get('/api/openapi.yaml', [OpenApiAction::class, 'spec']);
+        $app->get('/api/docs',         [OpenApiAction::class, 'docs']);       // Swagger UI (Try it out)
+        $app->get('/api/reference',    [OpenApiAction::class, 'reference']);  // Redoc (pretty static)
 
         // Admin — kontrola a upgrade nové verze (M9, issue „Kontrola a upgrade")
         $app->get  ('/api/admin/update/status',  [UpdateAction::class, 'status']);
@@ -102,6 +112,7 @@ final class Routes
             $g->post('/login',           LoginAction::class);
             $g->post('/logout',          LogoutAction::class);
             $g->get ('/me',              MeAction::class);
+            $g->get ('/api-me',          ApiMeAction::class);  // connection-test pro bearer i session
             $g->post('/change-password', ChangePasswordAction::class);
             $g->post('/forgot',          ForgotPasswordAction::class);
             $g->post('/reset',           ResetPasswordAction::class);
@@ -109,6 +120,10 @@ final class Routes
             $g->get ('/totp/status',     [TotpAction::class, 'status']);
             $g->post('/totp/setup',      [TotpAction::class, 'setup']);
             $g->post('/totp/enable',     [TotpAction::class, 'enable']);
+            // API tokeny (Personal Access Tokens) — správa jen ze session auth
+            $g->get   ('/tokens',                  ListTokensAction::class);
+            $g->post  ('/tokens',                  CreateTokenAction::class);
+            $g->delete('/tokens/{id:[0-9]+}',      RevokeTokenAction::class);
         });
 
         // ARES + VIES lookups (vyžadují auth)

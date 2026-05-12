@@ -9,6 +9,8 @@ use MyInvoice\Infrastructure\Cache\RedisFactory;
 use MyInvoice\Infrastructure\Cache\RedisProbe;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Middleware\ApiScopeMiddleware;
+use MyInvoice\Middleware\ApiVersionRewriteMiddleware;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Middleware\CsrfMiddleware;
 use MyInvoice\Middleware\FirstRunLockMiddleware;
@@ -90,18 +92,20 @@ final class Bootstrap
 
         // Slim 4 LIFO: poslední `add()` = NEJVĚTŠÍ vrstva = běží JAKO PRVNÍ.
         // Cílový order běhu (outside → inside):
-        //   IpAllowlist → FirstRunLock → Auth → RequireTotp → Role → RateLimit → CSRF → Routing → BodyParsing → Action
+        //   IpAllowlist → FirstRunLock → Auth → RequireTotp → Role → SupplierScope → ApiScope → RateLimit → CSRF → Routing → BodyParsing → Action
         // → add() v opačném pořadí (innermost první):
         $app->addBodyParsingMiddleware();                            // innermost
         $app->addRoutingMiddleware();
-        $app->add($container->get(CsrfMiddleware::class));           // potřebuje session z Auth
-        $app->add($container->get(RateLimitMiddleware::class));      // chrání forgot/setup/login/ARES + obecné limity
-        $app->add($container->get(SupplierScopeMiddleware::class));  // multi-supplier scope (X-Supplier-Id)
+        $app->add($container->get(CsrfMiddleware::class));           // potřebuje session z Auth (bearer skip)
+        $app->add($container->get(RateLimitMiddleware::class));      // chrání forgot/setup/login/ARES + per-user/per-token limity
+        $app->add($container->get(ApiScopeMiddleware::class));       // bearer-only: enforce read / read_write scope
+        $app->add($container->get(SupplierScopeMiddleware::class));  // multi-supplier scope (X-Supplier-Id / token's supplier_id)
         $app->add($container->get(RoleMiddleware::class));           // RBAC — kontrola role po Auth
-        $app->add($container->get(RequireTotpMiddleware::class));    // vynucení 2FA pokud cfg.auth.require_totp=true
-        $app->add($container->get(AuthMiddleware::class));           // načte session/usera
+        $app->add($container->get(RequireTotpMiddleware::class));    // vynucení 2FA pokud cfg.auth.require_totp=true (bearer skip)
+        $app->add($container->get(AuthMiddleware::class));           // načte session nebo bearer token
         $app->add($container->get(FirstRunLockMiddleware::class));   // 423 pokud users prázdná
         $app->add($container->get(IpAllowlistMiddleware::class));    // outermost user mw
+        $app->add(new ApiVersionRewriteMiddleware());                // /api/v1/* → /api/* před vším ostatním
 
         $displayErrors = (bool) $config->get('app.debug', false);
         $app->addErrorMiddleware($displayErrors, true, true, $container->get(LoggerInterface::class));

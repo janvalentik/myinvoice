@@ -8,7 +8,9 @@ use MyInvoice\Http\Json;
 use MyInvoice\I18n\Locale;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Service\Auth\ApiTokenService;
 use MyInvoice\Service\Auth\SessionManager;
+use MyInvoice\Service\IpMatcher;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Psr\Http\Server\MiddlewareInterface;
@@ -26,10 +28,15 @@ final class AuthMiddleware implements MiddlewareInterface
     public const ATTR_USER       = 'auth.user';
     public const ATTR_SESSION    = 'auth.session';
     public const ATTR_TOKEN      = 'auth.token';
+    public const ATTR_API_TOKEN  = 'auth.api_token';
+    public const ATTR_METHOD     = 'auth.method'; // 'session' | 'bearer'
 
     private const PUBLIC_PATHS = [
         '/api/health',
         '/api/version',
+        '/api/openapi.yaml',
+        '/api/docs',
+        '/api/reference',
         '/api/auth/setup-status',
         '/api/auth/setup',
         '/api/auth/setup-ares-lookup',
@@ -44,6 +51,8 @@ final class AuthMiddleware implements MiddlewareInterface
         private readonly SessionManager $sessions,
         private readonly Connection $db,
         private readonly ResponseFactory $responseFactory,
+        private readonly ApiTokenService $apiTokens,
+        private readonly IpMatcher $ipMatcher,
     ) {}
 
     public function process(Request $request, Handler $handler): Response
@@ -51,6 +60,43 @@ final class AuthMiddleware implements MiddlewareInterface
         // Resolve locale per-request: user.locale > Accept-Language > default
         Locale::set(self::detectLocale($request->getHeaderLine('Accept-Language')));
 
+        // 1) Bearer (API token) — pokud je hlavička, použij ji a session ignoruj.
+        $authHeader = $request->getHeaderLine('Authorization');
+        if (str_starts_with($authHeader, 'Bearer ')) {
+            $plaintext = substr($authHeader, 7);
+            $tokenRow = $this->apiTokens->validate($plaintext);
+            if ($tokenRow === null) {
+                $response = $this->responseFactory->createResponse(401);
+                return Json::error($response, 'invalid_token', 'Neplatný nebo expirovaný API token.', 401);
+            }
+
+            $user = [
+                'id'           => $tokenRow['user_id'],
+                'email'        => $tokenRow['user_email'],
+                'name'         => $tokenRow['user_name'],
+                'role'         => $tokenRow['user_role'],
+                'locale'       => $tokenRow['user_locale'],
+                'is_active'    => true,
+                'totp_enabled' => $tokenRow['user_totp_enabled'],
+            ];
+            Locale::set((string) ($user['locale'] ?? 'cs'));
+
+            $ip = $this->ipMatcher->clientIp(
+                $request->getServerParams(),
+                (array) $this->config->get('ip_allowlist.trusted_proxies', []),
+                (string) $this->config->get('ip_allowlist.header', 'X-Forwarded-For'),
+            );
+            $this->apiTokens->touch($tokenRow['id'], $ip);
+
+            $request = $request
+                ->withAttribute(self::ATTR_USER, $user)
+                ->withAttribute(self::ATTR_API_TOKEN, $tokenRow)
+                ->withAttribute(self::ATTR_METHOD, 'bearer');
+
+            return $handler->handle($request);
+        }
+
+        // 2) Session cookie (browser SPA)
         $cookieName = (string) $this->config->get('session.cookie_name', '__Host-myinvoice_session');
         $cookies    = $request->getCookieParams();
         $token      = (string) ($cookies[$cookieName] ?? '');
@@ -71,7 +117,8 @@ final class AuthMiddleware implements MiddlewareInterface
                 $request = $request
                     ->withAttribute(self::ATTR_USER, $user)
                     ->withAttribute(self::ATTR_SESSION, $session)
-                    ->withAttribute(self::ATTR_TOKEN, $token);
+                    ->withAttribute(self::ATTR_TOKEN, $token)
+                    ->withAttribute(self::ATTR_METHOD, 'session');
 
                 $this->sessions->touch($token);
             } else {

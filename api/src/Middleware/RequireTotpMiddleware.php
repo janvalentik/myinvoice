@@ -47,6 +47,11 @@ final class RequireTotpMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // Bearer (API token) auth — token sám je faktor, TOTP byl vyžadován při jeho tvorbě.
+        if ($request->getAttribute(AuthMiddleware::ATTR_METHOD) === 'bearer') {
+            return $handler->handle($request);
+        }
+
         $user = $request->getAttribute(AuthMiddleware::ATTR_USER);
         if (!is_array($user)) {
             // Neautentikovaný request — nech AuthMiddleware nebo public route logiku rozhodnout.

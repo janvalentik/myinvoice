@@ -11,11 +11,12 @@ declare(strict_types=1);
  *
  * Ponechává (globální číselníky + schema): countries, vat_rates, units,
  *       exchange_rates (cache ČNB kurzů — drahé refetchnout), migrations
- * Maže: users, sessions, password_resets, login_attempts, supplier, clients,
- *       projects, invoices, work_reports, activity_log, bank_statements,
- *       invoice_counters, invoice_pdfs (PDF historie), invoice_attachments,
- *       app_meta (version cache), ares_cache, vies_cache (volitelně),
- *       email_templates, project/client revenue cache, currencies (per-supplier!)
+ * Maže: users, sessions, password_resets, login_attempts, api_tokens,
+ *       supplier, clients, projects, invoices, work_reports, activity_log,
+ *       bank_statements, invoice_counters, invoice_pdfs (PDF historie),
+ *       invoice_attachments, app_meta (version cache), ares_cache, vies_cache
+ *       (volitelně), email_templates, project/client revenue cache,
+ *       currencies (per-supplier!)
  *
  * Pozn.: currencies jsou per-supplier (multi-tenant), takže s ním padají.
  * Po resetu setup.php založí novému supplier defaultní CZK + EUR.
@@ -107,6 +108,7 @@ $wipe = [
     'sessions',
     'password_resets',
     'login_attempts',
+    'api_tokens',                    // Personal Access Tokens (FK→users, ale TRUNCATE FK ignoruje)
     'activity_log',
     'email_templates',
     'app_meta',                      // version-check cache + jiné globální K/V; reset = fresh fetch

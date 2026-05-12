@@ -45,6 +45,11 @@ final class CsrfMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // Bearer (API token) auth nepoužívá cookies → CSRF nehrozí, skip.
+        if ($request->getAttribute(AuthMiddleware::ATTR_METHOD) === 'bearer') {
+            return $handler->handle($request);
+        }
+
         $path = $request->getUri()->getPath();
 
         // Public schvalovací endpointy — bez Origin/CSRF (klient přijde z emailu, Origin

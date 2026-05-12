@@ -32,6 +32,9 @@ final class RoleMiddleware implements MiddlewareInterface
     private const PUBLIC_OR_SELF = [
         '/api/health',
         '/api/version',
+        '/api/openapi.yaml',
+        '/api/docs',
+        '/api/reference',
         '/api/auth/setup-status',
         '/api/auth/setup',
         '/api/auth/setup-ares-lookup',

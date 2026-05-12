@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { RouterLink } from 'vue-router'
 import { authApi, type TotpSetup } from '@/api/auth'
 import { useToast } from '@/composables/useToast'
 
@@ -54,7 +55,12 @@ onMounted(loadStatus)
 
 <template>
   <div class="max-w-xl">
-    <h1 class="text-2xl font-semibold mb-4">{{ t('auth.totp_2fa') }}</h1>
+    <div class="flex items-center justify-between mb-4">
+      <h1 class="text-2xl font-semibold">{{ t('auth.totp_2fa') }}</h1>
+      <RouterLink to="/profile/api-tokens" class="text-sm text-primary-600 hover:underline">
+        {{ t('api_tokens.title') }} →
+      </RouterLink>
+    </div>
 
     <div class="bg-white border border-neutral-200 rounded-lg p-6 shadow-sm space-y-4">
       <div v-if="status">

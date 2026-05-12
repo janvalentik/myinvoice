@@ -54,20 +54,35 @@ final class RateLimitMiddleware implements MiddlewareInterface
 
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $userId = isset($user['id']) ? (int) $user['id'] : 0;
+        $apiToken = $request->getAttribute(AuthMiddleware::ATTR_API_TOKEN);
+        $tokenId = is_array($apiToken) ? (int) ($apiToken['id'] ?? 0) : 0;
 
         // Per-route limity — vrací [key, limit, window]
-        $rule = $this->ruleFor($path, $method, $ip, $userId, $request);
+        $rule = $this->ruleFor($path, $method, $ip, $userId, $tokenId, $request);
         if ($rule === null) {
             return $handler->handle($request);
         }
 
         [$key, $limit, $window] = $rule;
         $count = (int) ($r->get($key) ?? 0);
+        $ttl = (int) $r->ttl($key);
+        if ($ttl < 0) $ttl = $window;  // -1/-2 = neexistuje nebo bez TTL
+
+        // Headers se posílají u všech bearer-authed requestů (rfc draft-rate-limit
+        // používá X-RateLimit-*). U session/IP requestů nemá smysl — klient
+        // nemůže selektivně self-throttle per uživatel.
+        $sendHeaders = $tokenId > 0;
+        $remaining = max(0, $limit - $count);
 
         if ($count >= $limit) {
-            $ttl = (int) $r->ttl($key);
             $response = $this->responseFactory->createResponse(429);
             $response = $response->withHeader('Retry-After', (string) max(1, $ttl));
+            if ($sendHeaders) {
+                $response = $response
+                    ->withHeader('X-RateLimit-Limit',     (string) $limit)
+                    ->withHeader('X-RateLimit-Remaining', '0')
+                    ->withHeader('X-RateLimit-Reset',     (string) max(1, $ttl));
+            }
             return Json::error($response, 'rate_limited', 'Příliš mnoho pokusů. Zkus to později.', 429);
         }
 
@@ -75,15 +90,29 @@ final class RateLimitMiddleware implements MiddlewareInterface
         $r->incr($key);
         $r->expire($key, $window);
 
-        return $handler->handle($request);
+        $response = $handler->handle($request);
+        if ($sendHeaders) {
+            $response = $response
+                ->withHeader('X-RateLimit-Limit',     (string) $limit)
+                ->withHeader('X-RateLimit-Remaining', (string) max(0, $remaining - 1))
+                ->withHeader('X-RateLimit-Reset',     (string) max(1, $ttl));
+        }
+        return $response;
     }
 
     /**
      * @return array{0:string,1:int,2:int}|null  [redisKey, limit, windowSeconds]
      */
-    private function ruleFor(string $path, string $method, string $ip, int $userId, Request $request): ?array
+    private function ruleFor(string $path, string $method, string $ip, int $userId, int $tokenId, Request $request): ?array
     {
         $rl = (array) $this->config->get('rate_limits', []);
+
+        // Bearer (API token) — vlastní bucket per token, ne per user (jeden user
+        // může mít víc tokenů pro různé integrace s nezávislými limity).
+        if ($tokenId > 0) {
+            $limit = (int) ($rl['api_per_min_per_token'] ?? 600);
+            return ['rl:api:tok:' . $tokenId, $limit, 60];
+        }
 
         // Login — všichni
         if ($path === '/api/auth/login' && $method === 'POST') {

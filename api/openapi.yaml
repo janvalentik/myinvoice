@@ -1,0 +1,2326 @@
+openapi: 3.1.0
+info:
+  title: MyInvoice.cz REST API
+  version: "1.0"
+  summary: Veřejné REST API pro automatizaci fakturace
+  description: |
+    Veřejné API MyInvoice.cz pro integraci s e-shopy, CRM, automatizačními platformami
+    (Make, Zapier) a vlastními skripty.
+
+    ## Autentizace
+
+    Použij Personal Access Token (PAT) v hlavičce `Authorization`:
+
+    ```
+    Authorization: Bearer mi_pat_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    ```
+
+    Token vytvoříš v MyInvoice → **Nastavení → API tokeny**. Plain-text se zobrazí
+    pouze jednou při vytvoření — ulož si ho. Pokud token ztratíš, odvolej ho a vytvoř
+    nový.
+
+    Token má:
+    - **scope** — `read` (pouze GET) nebo `read_write` (všechny operace).
+    - **supplier** — pokud je token bound na konkrétního supplier-a, všechny operace
+      se odehrávají v jeho kontextu. Pokud je `supplier` `null`, klient může
+      přepínat přes hlavičku `X-Supplier-Id: <id>`.
+    - volitelnou expiraci.
+
+    ## Verzování
+
+    Stabilní veřejná cesta začíná `/api/v1/`. Pokud přidáme nekompatibilní změnu,
+    půjde do `/api/v2/` — `/api/v1/` zůstane funkční.
+
+    Každá response vrací hlavičku `X-API-Version: 1`.
+
+    ## Rate limity
+
+    Defaultně **600 requestů / minutu / token**. Při překročení vrátíme `429 Too Many Requests`
+    s hlavičkou `Retry-After` (sekundy).
+
+    ## Chyby
+
+    Všechny chyby mají formát:
+
+    ```json
+    { "error": { "code": "validation_failed", "message": "..." } }
+    ```
+
+  contact:
+    name: MyInvoice.cz
+    url: https://myinvoice.cz
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: /
+    description: Aktuální origin
+  - url: http://localhost:8080
+    description: Docker
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: System
+    description: Health-check, verze, dokumentace
+  - name: Auth
+    description: Identita aktuálního klienta
+  - name: Tokens
+    description: Správa API tokenů (jen ze session — webového UI)
+  - name: Clients
+    description: Klienti / odběratelé
+  - name: Invoices
+    description: Faktury
+  - name: Projects
+    description: Zakázky (vázané na klienta, jednotka pro reporting a fakturaci)
+  - name: WorkReports
+    description: Výkaz víceprací (po hodinách) k faktuře — vytvoření, schválení zákazníkem, PDF
+  - name: InvoiceComms
+    description: Email faktury, upomínky, archiv vystavených PDF, přílohy
+  - name: InvoiceOps
+    description: Pokročilé operace s fakturami (storno, klonování, hromadné akce, proforma→final)
+  - name: Lookup
+    description: ARES (CZ obchodní rejstřík), VIES (EU VAT validation)
+  - name: Reports
+    description: Dashboard summary, CSV exports, activity log
+  - name: Bank
+    description: Bankovní výpisy a párování plateb
+  - name: Settings
+    description: Konfigurace dodavatele a per-supplier overrides codebooku (read-only přes API)
+  - name: Codebooks
+    description: Číselníky (země, měny, DPH sazby, jednotky)
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [System]
+      summary: Health-check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+
+  /api/v1/version:
+    get:
+      tags: [System]
+      summary: Verze aplikace
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string, example: "3.3.1" }
+
+  /api/v1/auth/api-me:
+    get:
+      tags: [Auth]
+      summary: Identita aktuálního klienta
+      description: |
+        Vrátí informace o uživateli a supplier-ovi, pod kterým token / session
+        operuje. Slouží jako connection-test pro integrace.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiMe' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/clients:
+    get:
+      tags: [Clients]
+      summary: Seznam klientů
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: q
+          description: Fulltextové vyhledávání (název / IČO)
+          schema: { type: string }
+        - in: query
+          name: include_archived
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clients:
+                    type: array
+                    items: { $ref: '#/components/schemas/Client' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      tags: [Clients]
+      summary: Vytvoří klienta
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientInput' }
+      responses:
+        '201':
+          description: Vytvořeno
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+
+  /api/v1/clients/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Clients]
+      summary: Detail klienta
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Clients]
+      summary: Aktualizace klienta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Clients]
+      summary: Smazání klienta (pokud nemá vystavené doklady)
+      responses:
+        '200':
+          description: OK
+        '409':
+          description: Klient má vystavené doklady, použij archivaci
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/clients/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Clients]
+      summary: Archivuje klienta
+      description: |
+        Nastaví `archived_at = NOW()`. Archivovaný klient se nezobrazuje
+        v defaultním seznamu, jeho historické faktury zůstávají dohledatelné.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+
+  /api/v1/clients/{id}/unarchive:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Clients]
+      summary: Vrátí archivovaného klienta zpět do aktivních
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+
+  /api/v1/invoices:
+    get:
+      tags: [Invoices]
+      summary: Seznam faktur
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, issued, paid, cancelled]
+        - in: query
+          name: client_id
+          schema: { type: integer }
+        - in: query
+          name: from
+          description: Datum vystavení od (YYYY-MM-DD)
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          description: Datum vystavení do (YYYY-MM-DD)
+          schema: { type: string, format: date }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items: { $ref: '#/components/schemas/Invoice' }
+                  pagination: { $ref: '#/components/schemas/Pagination' }
+    post:
+      tags: [Invoices]
+      summary: Vytvoří draft faktury
+      description: |
+        Vytvoří fakturu ve stavu `draft`. Pro vystavení (přidělení čísla, zápis do
+        DB účetně) volej `POST /api/v1/invoices/{id}/issue`.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceInput' }
+      responses:
+        '201':
+          description: Vytvořeno
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+
+  /api/v1/invoices/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Invoices]
+      summary: Detail faktury
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Invoices]
+      summary: Aktualizace draftu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+        '409':
+          description: Faktura už není draft (vystavená/storno) — nelze editovat
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Invoices]
+      summary: Smazání draftu
+      responses:
+        '200':
+          description: OK
+        '409':
+          description: Vystavenou fakturu nelze smazat (použij storno)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/{id}/issue:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Invoices]
+      summary: Vystaví fakturu (z draftu)
+      description: |
+        Přidělí číslo dle nastavení supplier-a, archivuje PDF snapshot. Po vystavení
+        nelze měnit položky/částky.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+
+  /api/v1/invoices/{id}/mark-paid:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Invoices]
+      summary: Označí fakturu jako uhrazenou
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paid_at:
+                  type: string
+                  format: date
+                  description: Datum platby (default = dnes)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+
+  /api/v1/invoices/{id}/pdf:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Invoices]
+      summary: PDF faktury
+      responses:
+        '200':
+          description: PDF stream
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /api/v1/projects:
+    get:
+      tags: [Projects]
+      summary: Seznam zakázek
+      description: |
+        Vrátí stránkovaný seznam **neArchivovaných** zakázek v rámci aktuálního
+        supplier-a. Filtrování přes `filter[status]` a `filter[client_id]`.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+        - in: query
+          name: filter[status]
+          schema:
+            type: string
+            enum: [active, paused, closed]
+        - in: query
+          name: filter[client_id]
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [name, client, revenue, last_activity]
+            default: name
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, minimum: 5, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+                  meta: { $ref: '#/components/schemas/ProjectsPagination' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      tags: [Projects]
+      summary: Vytvoří zakázku
+      description: |
+        Klient (`client_id`) musí patřit aktuálnímu supplier-ovi. Currency se
+        validuje proti `currencies` skoupeným pod stejným supplier-em.
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '201':
+          description: Vytvořeno
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+
+  /api/v1/projects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Projects]
+      summary: Detail zakázky se statistikami
+      description: |
+        Vrátí celý záznam zakázky + odvozené metriky:
+        - `invoices_count` — kolik faktur zakázka má,
+        - `revenue_by_month` — obrat po měsících za posledních 24 měsíců (per currency),
+        - `revenue_by_year` — obrat po letech (per currency),
+        - `unpaid_summary` — nezaplaceno / po splatnosti per currency.
+
+        Metriky zahrnují jen vystavené faktury + dobropisy (`issued`, `sent`,
+        `reminded`, `paid`); zálohy a koncepty se nepočítají.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectDetail' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Projects]
+      summary: Aktualizace zakázky
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Projects]
+      summary: Smazání zakázky
+      description: |
+        Smaže zakázku, pokud nemá vystavené doklady. Pro zakázky s historií
+        použij `POST /api/v1/projects/{id}/archive`.
+      responses:
+        '200':
+          description: OK
+        '409':
+          description: Zakázka má vystavené doklady — použij archivaci
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/projects/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Projects]
+      summary: Archivuje zakázku
+      description: |
+        Nastaví `archived_at = NOW()`. Archivované zakázky se nezobrazují
+        v defaultním výpisu (lze je dohledat přes filtr).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+
+  /api/v1/clients/{client_id}/projects:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: client_id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Projects]
+      summary: Zakázky daného klienta (vč. archivovaných)
+      description: |
+        Light-weight výpis bez stránkování — vrátí všechny zakázky klienta včetně
+        archivovaných (řazené active → paused → closed → archived). Užitečné pro
+        plnění selectů ve frontu integrace.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProjectBrief' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/projects/stats:
+    get:
+      tags: [Projects]
+      summary: Agregované statistiky zakázek (pro dashboard)
+      parameters:
+        - $ref: '#/components/parameters/SupplierIdHeader'
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/invoices/{id}/work-report:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        description: ID faktury
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [WorkReports]
+      summary: Výkaz víceprací k faktuře
+      description: |
+        Vrátí výkaz včetně všech `items` (úkony s hodinami a sazbou) nebo
+        `null` pokud k faktuře žádný neexistuje.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/WorkReport'
+                  - { type: "null" }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [WorkReports]
+      summary: Vytvoří nebo aktualizuje výkaz
+      description: |
+        Idempotentní upsert (jedna fakturace = max 1 výkaz). Výkaz lze měnit
+        pouze pokud faktura má status `draft`. Admin může vynutit edit
+        pomocí query parametru `?force=1` (bez ohledu na status).
+
+        Suma `total_hours` a `total_amount` se přepočítá ze `items` na serveru.
+      parameters:
+        - in: query
+          name: force
+          description: Admin-only override editace u nedraftových faktur
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkReportInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkReport' }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '409':
+          description: Faktura není draft (a klient není admin s ?force=1)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [WorkReports]
+      summary: Smaže výkaz
+      responses:
+        '200':
+          description: OK
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/invoices/{id}/request-approval:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [WorkReports]
+      summary: Pošle výkaz zákazníkovi ke schválení
+      description: |
+        Pre-conditions:
+        - faktura je `draft` a má linknutý work-report,
+        - projekt má `requires_work_report_approval = true`.
+
+        Co se stane:
+        - vygeneruje se 32-bytový `approval_token`, který dostane zákazník
+          v emailu (link `/approval/{token}`),
+        - faktura přejde do `approval_status = "requested"` (status zůstává `draft`),
+        - alokuje se variabilní symbol a zafixují snapshoty supplier/client/bank
+          (faktura se po schválení vystaví bez dalších změn),
+        - zákazník dostane email `invoice_approval` s **PDF výkazu** v příloze
+          (ne fakturu — tu uvidí až po vystavení),
+        - příjemci: `project.billing_emails`, fallback `client.main_email`,
+        - audit log: `invoice.approval_requested`.
+
+        Po rozhodnutí zákazníka (přes veřejný link) můžeš stav zjistit
+        v `GET /api/v1/invoices/{id}` (pole `approval_*`). Pokud schválí,
+        může proběhnout auto-issue + auto-send dle nastavení supplier-a.
+      responses:
+        '200':
+          description: OK — email odeslán
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approval_token: { type: string, example: "a1b2…" }
+                  approval_status: { type: string, example: requested }
+                  recipients:
+                    type: array
+                    items: { type: string, format: email }
+        '409':
+          description: Faktura není draft / nemá výkaz / projekt nevyžaduje schválení
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/{id}/approval-status:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    put:
+      tags: [WorkReports]
+      summary: Ruční update schvalovacího stavu (admin override)
+      description: |
+        Použij když potřebuješ obejít veřejný link — např. zákazník schválil
+        telefonicky a chceš to v systému zaznamenat. Audit log loguje, kdo
+        rozhodnutí vložil ručně.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approval_status]
+              properties:
+                approval_status:
+                  type: string
+                  enum: [none, requested, approved, rejected]
+                approval_decided_by_email:
+                  type: string
+                  format: email
+                  description: Kdo schválil (pro audit)
+                approval_rejection_reason:
+                  type: string
+                  description: Důvod (pokud `rejected`)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+
+  /api/v1/invoices/{id}/pdfs:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [InvoiceComms]
+      summary: Archiv vystavených/odeslaných verzí PDF
+      description: |
+        Pokaždé, když se faktura vystaví, znovu-vystaví nebo pošle e-mailem,
+        se PDF archivuje. Archiv slouží jako důkaz, co přesně zákazník dostal —
+        i když se snapshot na faktuře později změnil (přes admin override).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PdfArchiveEntry' }
+
+  /api/v1/invoices/{id}/pdfs/{archiveId}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+      - in: path
+        name: archiveId
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [InvoiceComms]
+      summary: Stažení archivované verze PDF
+      responses:
+        '200':
+          description: PDF stream
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/invoices/{id}/send:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceComms]
+      summary: Pošle fakturu emailem klientovi
+      description: |
+        Vyrenderuje aktuální PDF, archivuje ho a odešle přes SMTP. Faktura musí
+        být `issued` nebo navazující stav. Předmět + tělo z šablony `invoice_send`
+        (per locale, per supplier override v Email šablonách).
+
+        Body je volitelné — když chybí, použijí se výchozí příjemci z klienta /
+        zakázky. Příjemce/CC/BCC jdou přepsat.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: array
+                  items: { type: string, format: email }
+                cc:
+                  type: array
+                  items: { type: string, format: email }
+                bcc:
+                  type: array
+                  items: { type: string, format: email }
+                subject:
+                  type: string
+                  description: Override předmětu emailu
+                body:
+                  type: string
+                  description: Override těla (HTML); proměnné z šablony se nesubstituují
+      responses:
+        '200':
+          description: OK — email odeslán
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  recipients:
+                    type: array
+                    items: { type: string, format: email }
+                  archived_pdf_id: { type: integer, format: int64 }
+        '409':
+          description: Faktura není ve stavu pro odeslání (draft)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/{id}/reminder:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceComms]
+      summary: Pošle upomínku po splatnosti
+      description: |
+        Šablona `invoice_reminder` (per locale, per supplier override). Klient
+        nemá vliv na obsah — text je z nastavení.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  reminder_count: { type: integer, description: Kolikátá upomínka }
+        '409':
+          description: Faktura není po splatnosti / je již zaplacená
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/{id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [InvoiceComms]
+      summary: Seznam příloh faktury
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attachments:
+                    type: array
+                    items: { $ref: '#/components/schemas/InvoiceAttachment' }
+    post:
+      tags: [InvoiceComms]
+      summary: Nahraje přílohu
+      description: |
+        Multipart upload (max ~10 MB). Příloha se přidá do dalšího emailu faktury.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Nahráno
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvoiceAttachment' }
+        '413':
+          description: Soubor je příliš velký
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/{id}/attachments/{attId}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+      - in: path
+        name: attId
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [InvoiceComms]
+      summary: Stažení přílohy
+      responses:
+        '200':
+          description: Soubor (typ podle původního MIME)
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+    delete:
+      tags: [InvoiceComms]
+      summary: Smaže přílohu
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/clients/lookup-ares:
+    post:
+      tags: [Lookup]
+      summary: Načte firmu z ARES (CZ obchodní rejstřík)
+      description: |
+        Vrátí strukturované údaje firmy podle IČO. Vhodné jako první krok
+        v „create client" flow — pošli IČO, dostaneš název, adresu, DIČ
+        a flag plátce DPH, ty pak pošleš do `POST /api/v1/clients`.
+
+        Cache 24h — opakované volání pro stejné IČO nezatíží ARES.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ic]
+              properties:
+                ic:
+                  type: string
+                  pattern: '^\d{8}$'
+                  example: "27082440"
+      responses:
+        '200':
+          description: "OK (`found: false` pokud IČO neexistuje v ARES)"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AresLookupResult' }
+        '400':
+          description: IČO není 8 číslic
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: ARES dočasně nedostupný
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/clients/lookup-vies:
+    post:
+      tags: [Lookup]
+      summary: Validuje EU DIČ přes VIES
+      description: |
+        Validace DIČ obchodního partnera v EU. Vrátí `valid: true/false`
+        a (pokud platné) registrované jméno a adresu. Cache 24h.
+
+        Reverse-charge fakturace pro EU plátce by měla DIČ validovat před
+        vystavením — VIES je oficiální zdroj pravdy EK.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vat_id]
+              properties:
+                vat_id:
+                  type: string
+                  description: DIČ ve formátu countryCode + číslo (např. DE123456789)
+                  example: "DE123456789"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ViesLookupResult' }
+        '400':
+          description: Neplatný formát DIČ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: VIES dočasně nedostupný
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/{id}/activity:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [InvoiceOps]
+      summary: Audit log faktury
+      description: |
+        Vrátí chronologický log všech akcí, které faktura prošla
+        (created, updated, issued, sent, paid, reminded, approval_requested,
+        approval_decided, cancelled, ...). Vhodné pro debugging integrace
+        a zobrazení timeline v custom UI.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActivityLogEntry' }
+
+  /api/v1/invoices/{id}/unmark-paid:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceOps]
+      summary: Vrátí fakturu z „paid" zpět do „issued"
+      description: "Reverzace omylem označené platby. Audit log: `invoice.unmark_paid`."
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+        '409':
+          description: Faktura není ve stavu `paid`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceOps]
+      summary: Storno vystavené faktury
+      description: |
+        Vystavená faktura **nelze smazat** — storno vytvoří záporný protiklad
+        (`invoice_type = cancellation`) se stejnou částkou, který původní fakturu
+        účetně ruší. Číselná řada je zachovaná (číslo původní faktury nezmizí).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Důvod storna (audit + volitelně do PDF)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  original:     { $ref: '#/components/schemas/Invoice' }
+                  cancellation: { $ref: '#/components/schemas/Invoice' }
+
+  /api/v1/invoices/{id}/clone:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceOps]
+      summary: Vytvoří kopii faktury jako nový draft
+      description: |
+        Kopíruje hlavičku + položky + work-report. Nový draft má dnešní
+        `issue_date`, prázdný `number`, status `draft`. Vhodné pro periodicky
+        opakované faktury (předplatné, paušál).
+      responses:
+        '201':
+          description: Vytvořen nový draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+
+  /api/v1/invoices/{id}/issue-final:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [InvoiceOps]
+      summary: Vystaví finální fakturu ze zaplacené zálohy (proforma → invoice)
+      description: |
+        Pouze pro `invoice_type = proforma` ve stavu `paid`. Vytvoří finální
+        daňový doklad navázaný na zálohu (`parent_id`). Číslo a snapshoty
+        se zafixují stejně jako u běžného vystavení.
+      responses:
+        '201':
+          description: Finální faktura vytvořena
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+        '409':
+          description: Zdrojový doklad není proforma `paid`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/invoices/bulk-reissue:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    post:
+      tags: [InvoiceOps]
+      summary: Hromadné znovu-vystavení faktur (admin)
+      description: |
+        Pro každou fakturu v `ids` re-renderuje PDF a uloží novou verzi do
+        archivu. Existující snapshoty zůstávají (jen přibyde nová verze).
+        Vhodné po globální změně nastavení supplier-a (logo, adresa apod.).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reissued_count: { type: integer }
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        invoice_id: { type: integer }
+                        reason: { type: string }
+
+  /api/v1/invoices/bulk-reminder:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    post:
+      tags: [InvoiceOps]
+      summary: Hromadné odeslání upomínek
+      description: |
+        Pošle upomínku pro všechny faktury v `ids` (nebo všechny po splatnosti
+        pokud `ids` chybí). Vhodné pro cron job „každý pondělí ráno upomínky".
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items: { type: integer, format: int64 }
+                  description: Konkrétní faktury; pokud chybí, všechny po splatnosti
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent_count: { type: integer }
+                  skipped_count: { type: integer }
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        invoice_id: { type: integer }
+                        reason: { type: string }
+
+  /api/v1/invoices/export.csv:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Reports]
+      summary: CSV export faktur
+      description: |
+        Stejné filtry jako `GET /api/v1/invoices`, ale vrátí CSV stream
+        místo JSON. Vhodné pro BI / Google Sheets / Excel import.
+
+        Sloupce: `id`, `number`, `client`, `issue_date`, `due_date`, `taxable_date`,
+        `currency`, `total_excl_vat`, `total_vat`, `total_incl_vat`, `status`, `paid_at`.
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, issued, sent, reminded, paid, cancelled]
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: client_id
+          schema: { type: integer }
+      responses:
+        '200':
+          description: CSV stream
+          content:
+            text/csv:
+              schema: { type: string }
+
+  /api/v1/dashboard/summary:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Reports]
+      summary: Dashboard summary — KPI, top klienti, obrat po měsících
+      description: |
+        Agregovaná data pro custom dashboardy. Obsah:
+        - **kpi**: obrat za rok (per měna) vs loni, počet vystavených, průměrná
+          doba splatnosti, status counts,
+        - **overdue**: faktury po splatnosti (počet + suma per měna),
+        - **unpaid_upcoming**: blížící se splatnost,
+        - **top_clients_ytd / top_clients_prev_year**: top 10 klientů dle obratu,
+        - **revenue_by_month**: 12 měsíců zpátky per měna,
+        - **pending_approvals**: počet žádostí o schválení výkazu (requested + overdue),
+        - **today / year / prev_year**.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSummary' }
+
+  /api/v1/bank-statements:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Bank]
+      summary: Seznam nahraných bankovních výpisů
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/BankStatement' }
+
+  /api/v1/bank-statements/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Bank]
+      summary: Detail výpisu vč. všech transakcí
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankStatementDetail' }
+
+  /api/v1/bank-transactions/{id}/match:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Bank]
+      summary: Ručně přiřadí transakci k faktuře (a označí ji paid)
+      description: |
+        Použij když automatický matching nezachytil platbu (variabilní symbol
+        chybí nebo neodpovídá). Označí transakci jako `matched`, fakturu jako
+        `paid` s `paid_at = transaction.posted_at`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoice_id]
+              properties:
+                invoice_id: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction: { $ref: '#/components/schemas/BankTransaction' }
+                  invoice: { $ref: '#/components/schemas/Invoice' }
+
+  /api/v1/bank-transactions/{id}/unmatch:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Bank]
+      summary: Odpojí transakci od faktury (a vrátí fakturu z paid → issued)
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/bank-transactions/{id}/ignore:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int64 }
+    post:
+      tags: [Bank]
+      summary: Označí transakci jako „ignorovat" (nesedí na žádnou fakturu)
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/settings/supplier:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Settings]
+      summary: Detail aktuálního dodavatele
+      description: |
+        Vrátí kompletní data supplier-a v jehož scope token operuje — adresa,
+        IČO/DIČ, bankovní účty, číslování faktur, default platební podmínky.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupplierFull' }
+
+  /api/v1/suppliers:
+    get:
+      tags: [Settings]
+      summary: Seznam všech dodavatelů, ke kterým má token přístup
+      description: |
+        Užitečné pro klienta, který chce zjistit `id` supplier-ů (pro X-Supplier-Id
+        header u tokenu bez bind, nebo pro multi-supplier reporting).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SupplierBrief' }
+
+  /api/v1/suppliers/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Settings]
+      summary: Detail konkrétního dodavatele
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupplierFull' }
+
+  /api/v1/settings/currencies:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Settings]
+      summary: Měny nakonfigurované pro aktuálního dodavatele
+      description: |
+        Per-supplier override hlavního codebooku — obsahuje i bank-accounts
+        per currency. Mutace (POST/PUT/DELETE) jsou jen přes UI, ne přes API.
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/settings/vat-rates:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Settings]
+      summary: DPH sazby aktuálního dodavatele
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/settings/units:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Settings]
+      summary: Měrné jednotky aktuálního dodavatele
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/settings/countries:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    get:
+      tags: [Settings]
+      summary: Země nakonfigurované pro aktuálního dodavatele
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/bank-statements/upload:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    post:
+      tags: [Bank]
+      summary: Nahraje bankovní výpis (GPC/CSV/ABO)
+      description: |
+        Multipart upload. Server detekuje formát z obsahu a parsuje transakce.
+        Auto-matching proti otevřeným fakturám se spustí po `POST /scan`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: GPC, CSV (FIO/KB/MB formáty) nebo ABO výpis
+      responses:
+        '201':
+          description: Naparsováno
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BankStatement' }
+        '400':
+          description: Neznámý formát / poškozený soubor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/bank-statements/scan:
+    parameters:
+      - $ref: '#/components/parameters/SupplierIdHeader'
+    post:
+      tags: [Bank]
+      summary: Auto-matching transakcí proti otevřeným fakturám
+      description: |
+        Pro všechny `unmatched` transakce zkusí najít fakturu podle:
+        - variabilního symbolu (přesný match) — preferovaná cesta,
+        - částky + protiúčtu (fallback).
+
+        Pokud najde unikátní match, transakce se označí `matched`, faktura
+        `paid` s `paid_at = transaction.posted_at`. Multi-match transakce
+        zůstávají nepřiřazené pro manuální rozhodnutí.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                statement_id:
+                  type: integer
+                  format: int64
+                  description: Pokud chybí, scan-uje všechny unmatched napříč všemi výpisy
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matched_count: { type: integer }
+                  multi_match_count:
+                    type: integer
+                    description: Transakce s víc kandidáty (nepárované, vyžadují ruční rozhodnutí)
+                  remaining_unmatched: { type: integer }
+
+  /api/v1/codebooks/countries:
+    get:
+      tags: [Codebooks]
+      summary: Seznam zemí
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  countries:
+                    type: array
+                    items: { $ref: '#/components/schemas/Country' }
+
+  /api/v1/codebooks/currencies:
+    get:
+      tags: [Codebooks]
+      summary: Seznam podporovaných měn
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  currencies:
+                    type: array
+                    items: { $ref: '#/components/schemas/Currency' }
+
+  /api/v1/codebooks/vat-rates:
+    get:
+      tags: [Codebooks]
+      summary: Seznam DPH sazeb
+      responses:
+        '200':
+          description: OK
+
+  /api/v1/codebooks/units:
+    get:
+      tags: [Codebooks]
+      summary: Seznam měrných jednotek
+      responses:
+        '200':
+          description: OK
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: mi_pat_
+      description: Personal Access Token získaný v Nastavení → API tokeny.
+
+  parameters:
+    SupplierIdHeader:
+      in: header
+      name: X-Supplier-Id
+      required: false
+      description: |
+        ID supplier-a (firmy), v jejíž kontextu má operace běžet. Vyžadováno
+        jen u **multi-supplier účtů s tokenem bez bind**. Pokud je token bound
+        na konkrétního supplier-a, hlavička se ignoruje.
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Neplatný nebo chybějící token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Zdroj nenalezen
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationFailed:
+      description: Validace selhala
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InsufficientScope:
+      description: Token nemá dostatečný scope (např. `read` na write operaci)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Překročen rate limit
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Sekundy do uvolnění
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: validation_failed }
+            message: { type: string, example: "Pole 'name' je povinné." }
+
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        per_page: { type: integer, example: 50 }
+        total: { type: integer, example: 423 }
+
+    ApiMe:
+      type: object
+      properties:
+        user:
+          type: object
+          properties:
+            id: { type: integer }
+            email: { type: string, format: email }
+            name: { type: string }
+            role: { type: string, enum: [admin, accountant, readonly] }
+        supplier:
+          oneOf:
+            - $ref: '#/components/schemas/SupplierBrief'
+            - { type: "null" }
+        auth_method:
+          type: string
+          enum: [bearer, session]
+        token:
+          oneOf:
+            - type: object
+              properties:
+                id: { type: integer }
+                name: { type: string }
+                prefix: { type: string, example: "mi_pat_abcd" }
+                scope: { type: string, enum: [read, read_write] }
+                expires_at: { type: string, format: date-time, nullable: true }
+            - { type: "null" }
+
+    SupplierBrief:
+      type: object
+      properties:
+        id: { type: integer }
+        company_name: { type: string }
+        display_name: { type: string, nullable: true }
+
+    Country:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string, example: CZ }
+        name_cs: { type: string }
+        name_en: { type: string }
+        in_eu: { type: boolean }
+
+    Currency:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string, example: CZK }
+        symbol: { type: string, example: "Kč" }
+
+    Money:
+      type: object
+      properties:
+        amount: { type: number, format: float, example: 12500.50 }
+        currency: { type: string, example: CZK }
+
+    Client:
+      type: object
+      properties:
+        id: { type: integer }
+        company_name: { type: string }
+        display_name: { type: string, nullable: true }
+        ic: { type: string, nullable: true, description: IČO }
+        dic: { type: string, nullable: true, description: DIČ }
+        street: { type: string }
+        city: { type: string }
+        zip: { type: string }
+        country_id: { type: integer }
+        email: { type: string, format: email, nullable: true }
+        phone: { type: string, nullable: true }
+        is_archived: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    ClientInput:
+      type: object
+      required: [company_name, street, city, zip, country_id]
+      properties:
+        company_name: { type: string }
+        display_name: { type: string }
+        ic: { type: string }
+        dic: { type: string }
+        street: { type: string }
+        city: { type: string }
+        zip: { type: string }
+        country_id: { type: integer }
+        email: { type: string, format: email }
+        phone: { type: string }
+
+    Invoice:
+      type: object
+      properties:
+        id: { type: integer }
+        supplier_id: { type: integer }
+        client_id: { type: integer }
+        project_id: { type: integer, nullable: true }
+        number: { type: string, nullable: true, description: "Přidělené číslo (po vystavení)" }
+        type:
+          type: string
+          enum: [normal, proforma, credit_note]
+        status:
+          type: string
+          enum: [draft, issued, paid, cancelled]
+        issue_date: { type: string, format: date }
+        due_date: { type: string, format: date }
+        taxable_date: { type: string, format: date, nullable: true }
+        currency: { type: string, example: CZK }
+        total: { type: number, format: float }
+        total_vat: { type: number, format: float }
+        variable_symbol: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceItem' }
+        created_at: { type: string, format: date-time }
+
+    InvoiceInput:
+      type: object
+      required: [client_id, items]
+      properties:
+        client_id: { type: integer }
+        project_id: { type: integer }
+        type:
+          type: string
+          enum: [normal, proforma, credit_note]
+          default: normal
+        issue_date: { type: string, format: date }
+        due_date: { type: string, format: date }
+        taxable_date: { type: string, format: date }
+        currency: { type: string, example: CZK }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/InvoiceItemInput' }
+        note: { type: string }
+
+    ProjectBilingEmail:
+      type: object
+      required: [position, email]
+      properties:
+        position: { type: integer, minimum: 1, maximum: 3 }
+        email: { type: string, format: email }
+        label: { type: string, nullable: true, example: "účetní" }
+
+    ProjectBrief:
+      type: object
+      description: Zkrácená reprezentace zakázky (pro výpisy a selecty).
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        status: { type: string, enum: [active, paused, closed] }
+        currency_id: { type: integer }
+        currency: { type: string, example: CZK }
+        hourly_rate: { type: number, format: float, example: 1500 }
+        payment_due_days: { type: integer, example: 14 }
+        project_number: { type: string, nullable: true }
+        contract_number: { type: string, nullable: true }
+        budget_total:   { type: number, nullable: true }
+        budget_yearly:  { type: number, nullable: true }
+        budget_monthly: { type: number, nullable: true }
+        archived_at: { type: string, format: date-time, nullable: true }
+
+    Project:
+      allOf:
+        - $ref: '#/components/schemas/ProjectBrief'
+        - type: object
+          properties:
+            client_id: { type: integer, format: int64 }
+            client_company_name: { type: string }
+            client_main_email: { type: string, format: email, nullable: true }
+            supplier_id: { type: integer }
+            note: { type: string, nullable: true }
+            requires_work_report_approval: { type: boolean }
+            billing_emails:
+              type: array
+              maxItems: 3
+              items: { $ref: '#/components/schemas/ProjectBilingEmail' }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    ProjectDetail:
+      allOf:
+        - $ref: '#/components/schemas/Project'
+        - type: object
+          properties:
+            invoices_count:
+              type: integer
+              description: Počet faktur navázaných na zakázku.
+            revenue_by_month:
+              type: array
+              items:
+                type: object
+                properties:
+                  month: { type: string, example: "2026-04" }
+                  currency: { type: string, example: CZK }
+                  total: { type: number, format: float }
+            revenue_by_year:
+              type: array
+              items:
+                type: object
+                properties:
+                  year: { type: integer, example: 2026 }
+                  currency: { type: string, example: CZK }
+                  total: { type: number, format: float }
+                  count: { type: integer }
+            unpaid_summary:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency: { type: string, example: CZK }
+                  unpaid_total:  { type: number, format: float }
+                  unpaid_count:  { type: integer }
+                  overdue_total: { type: number, format: float }
+                  overdue_count: { type: integer }
+
+    ProjectInput:
+      type: object
+      required: [client_id, name]
+      properties:
+        client_id:
+          type: integer
+          format: int64
+          description: Musí patřit aktuálnímu supplier-ovi.
+        name:
+          type: string
+          maxLength: 190
+          example: "Webové stránky 2026"
+        status:
+          type: string
+          enum: [active, paused, closed]
+          default: active
+        currency_id:
+          type: integer
+          description: Default = výchozí měna supplier-a.
+        hourly_rate:
+          type: number
+          format: float
+          example: 1500.00
+        payment_due_days:
+          type: integer
+          minimum: 0
+          maximum: 365
+          example: 14
+        project_number:
+          type: string
+          maxLength: 50
+          nullable: true
+        contract_number:
+          type: string
+          maxLength: 50
+          nullable: true
+        budget_total:
+          type: number
+          format: float
+          nullable: true
+        budget_yearly:
+          type: number
+          format: float
+          nullable: true
+        budget_monthly:
+          type: number
+          format: float
+          nullable: true
+        requires_work_report_approval:
+          type: boolean
+          default: false
+          description: |
+            Pokud `true`, faktury z této zakázky vyžadují schválení výkazu
+            víceprací zákazníkem před vystavením.
+        note:
+          type: string
+          nullable: true
+        billing_emails:
+          type: array
+          maxItems: 3
+          items: { $ref: '#/components/schemas/ProjectBilingEmail' }
+          description: |
+            Až 3 fakturační emaily (slot 1/2/3). Když je seznam neprázdný,
+            ti dostávají faktury z této zakázky místo emailů na klientovi.
+
+    WorkReportItem:
+      type: object
+      properties:
+        id: { type: integer }
+        description: { type: string, example: "Analýza požadavků a tech-spec" }
+        hours: { type: number, format: float, example: 8.5 }
+        rate:  { type: number, format: float, example: 1500 }
+        amount: { type: number, format: float, example: 12750, description: hours × rate }
+        order_index: { type: integer, example: 1 }
+        performed_on: { type: string, format: date, nullable: true }
+
+    WorkReportItemInput:
+      type: object
+      required: [description, hours, rate]
+      properties:
+        description: { type: string }
+        hours: { type: number, format: float, minimum: 0 }
+        rate:  { type: number, format: float, minimum: 0 }
+        order_index: { type: integer }
+        performed_on: { type: string, format: date }
+
+    WorkReport:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        invoice_id: { type: integer, format: int64 }
+        project_id: { type: integer, format: int64, nullable: true }
+        title: { type: string, example: "Květen 2026 — vývoj backendu" }
+        total_hours: { type: number, format: float }
+        total_amount: { type: number, format: float }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/WorkReportItem' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    WorkReportInput:
+      type: object
+      required: [title, items]
+      properties:
+        project_id:
+          type: integer
+          nullable: true
+          description: |
+            Volitelné — pokud faktura má `project_id`, výkaz se na něj naváže
+            automaticky. Pro faktury bez zakázky nechej `null`.
+        title:
+          type: string
+          maxLength: 190
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/WorkReportItemInput' }
+
+    PdfArchiveEntry:
+      type: object
+      description: |
+        Jeden snapshot vystaveného PDF. Soubor se ukládá s timestampem a typem
+        akce (issue / send / reissue) v `storage/invoices-pdf/`. Pro stažení
+        použij `GET /api/v1/invoices/{id}/pdfs/{archiveId}`.
+      properties:
+        id: { type: integer, format: int64 }
+        invoice_id: { type: integer, format: int64 }
+        kind:
+          type: string
+          enum: [issue, send, reissue, manual]
+          description: Co snapshot iniciovalo
+        filename: { type: string, example: "F2026-001.pdf" }
+        size_bytes: { type: integer }
+        sha256: { type: string, example: "9f86d081…" }
+        created_at: { type: string, format: date-time }
+        created_by_user_id: { type: integer, nullable: true }
+
+    InvoiceAttachment:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        invoice_id: { type: integer, format: int64 }
+        filename: { type: string, example: "podklad-vykaz.xlsx" }
+        mime_type: { type: string, example: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+        size_bytes: { type: integer, example: 18452 }
+        created_at: { type: string, format: date-time }
+
+    AresLookupResult:
+      type: object
+      description: |
+        Odpověď ARES lookup-u. Pokud IČO existuje, `found = true` (implicitní) a
+        ostatní pole jsou vyplněná. Pro neexistující IČO vrátíme `{ found: false }`.
+      properties:
+        found: { type: boolean, example: true }
+        source:
+          type: string
+          enum: [fresh, cache]
+          description: Zda data přišla z ARES API nebo z 24h cache
+        company_name: { type: string, example: "MyWebdesign.cz s.r.o." }
+        ic:  { type: string, example: "27082440" }
+        dic: { type: string, example: "CZ27082440" }
+        street: { type: string }
+        city: { type: string }
+        zip: { type: string, example: "301 00" }
+        country_iso2: { type: string, example: "CZ" }
+        is_vat_payer: { type: boolean }
+        date_active: { type: string, format: date, description: "Datum vzniku firmy" }
+        legal_form: { type: string, example: "112" }
+
+    ViesLookupResult:
+      type: object
+      properties:
+        valid: { type: boolean }
+        vat_id: { type: string, example: "DE123456789" }
+        country_code: { type: string, example: "DE" }
+        name: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        consultation_number:
+          type: string
+          nullable: true
+          description: |
+            VIES consultation number — důkazní záznam pro daňovou kontrolu, že DIČ
+            byl k danému datu platný.
+        request_date: { type: string, format: date-time }
+        source:
+          type: string
+          enum: [fresh, cache]
+
+    ActivityLogEntry:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        action:
+          type: string
+          example: "invoice.issued"
+          description: "Tečka-separátor: entity.verb (např. invoice.paid, project.archived, auth.login)"
+        entity_type: { type: string, nullable: true, example: "invoice" }
+        entity_id:   { type: integer, format: int64, nullable: true }
+        user_id:     { type: integer, format: int64, nullable: true, description: "Null = systémová akce (cron)" }
+        user_email:  { type: string, format: email, nullable: true }
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Akce-specifické metadata (citlivá pole se redaktují)
+        ip:         { type: string, nullable: true, example: "203.0.113.42" }
+        user_agent: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    DashboardSummary:
+      type: object
+      properties:
+        today: { type: string, format: date }
+        year: { type: integer, example: 2026 }
+        prev_year: { type: integer, example: 2025 }
+        kpi:
+          type: object
+          properties:
+            per_currency:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency: { type: string }
+                  this_year: { type: number }
+                  prev_year: { type: number }
+                  prev_year_ytd: { type: number }
+                  change_pct: { type: number, nullable: true }
+            issued_count_ytd: { type: integer }
+            overdue_count: { type: integer }
+            overdue_per_currency:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency: { type: string }
+                  count: { type: integer }
+                  total: { type: number }
+            avg_payment_days: { type: number, nullable: true }
+            status_counts_ytd:
+              type: object
+              additionalProperties: { type: integer }
+        overdue:
+          type: array
+          items: { $ref: '#/components/schemas/Invoice' }
+        unpaid_upcoming:
+          type: array
+          items: { $ref: '#/components/schemas/Invoice' }
+        top_clients_ytd:
+          type: array
+          items:
+            type: object
+            properties:
+              client_id: { type: integer }
+              company_name: { type: string }
+              currency: { type: string }
+              total: { type: number }
+              invoices_count: { type: integer }
+        top_clients_prev_year:
+          type: array
+          items: { type: object }
+        revenue_by_month:
+          type: array
+          items:
+            type: object
+            properties:
+              month: { type: string, example: "2026-04" }
+              currency: { type: string }
+              total: { type: number }
+        pending_approvals:
+          type: object
+          properties:
+            requested: { type: integer }
+            overdue: { type: integer, description: "Bez reakce > 5 dní" }
+
+    BankStatement:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        supplier_id: { type: integer }
+        filename: { type: string, example: "vypis_2026_05.gpc" }
+        format: { type: string, enum: [gpc, csv, abo], example: gpc }
+        period_from: { type: string, format: date }
+        period_to: { type: string, format: date }
+        account_number: { type: string, example: "1234567890/0100" }
+        currency: { type: string, example: CZK }
+        transactions_count: { type: integer }
+        matched_count: { type: integer }
+        unmatched_count: { type: integer }
+        ignored_count: { type: integer }
+        imported_by_user_id: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    BankStatementDetail:
+      allOf:
+        - $ref: '#/components/schemas/BankStatement'
+        - type: object
+          properties:
+            transactions:
+              type: array
+              items: { $ref: '#/components/schemas/BankTransaction' }
+
+    BankTransaction:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        statement_id: { type: integer, format: int64 }
+        posted_at: { type: string, format: date }
+        amount: { type: number, format: float, example: 12500.00 }
+        currency: { type: string, example: CZK }
+        variable_symbol: { type: string, nullable: true }
+        counter_account: { type: string, nullable: true }
+        counter_name: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        status:
+          type: string
+          enum: [unmatched, matched, ignored]
+        matched_invoice_id: { type: integer, format: int64, nullable: true }
+        matched_at: { type: string, format: date-time, nullable: true }
+        matched_by_user_id: { type: integer, nullable: true }
+
+    SupplierFull:
+      type: object
+      description: Kompletní data dodavatele (per-supplier konfigurace).
+      properties:
+        id: { type: integer }
+        company_name: { type: string }
+        display_name: { type: string, nullable: true }
+        street: { type: string }
+        city: { type: string }
+        zip: { type: string }
+        country_id: { type: integer }
+        ic: { type: string, nullable: true }
+        dic: { type: string, nullable: true }
+        is_vat_payer: { type: boolean }
+        commercial_register: { type: string, nullable: true, description: "Spisová značka u rejstříkového soudu" }
+        email: { type: string, format: email, nullable: true }
+        phone: { type: string, nullable: true }
+        web: { type: string, nullable: true }
+        default_currency_id: { type: integer }
+        default_payment_due_days: { type: integer }
+        default_hourly_rate: { type: number, format: float }
+        invoice_number_template:
+          type: string
+          nullable: true
+          example: "F{YYYY}-{####}"
+          description: "{YYYY}, {MM}, {####} placeholders. Per supplier konfigurace."
+        proforma_number_template: { type: string, nullable: true }
+        credit_note_number_template: { type: string, nullable: true }
+        bank_accounts:
+          type: array
+          items:
+            type: object
+            properties:
+              currency: { type: string }
+              account_number: { type: string }
+              bank_code: { type: string }
+              bank_name: { type: string }
+              iban: { type: string, nullable: true }
+              bic: { type: string, nullable: true }
+        auto_send_reminders: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    ProjectsPagination:
+      type: object
+      properties:
+        total:    { type: integer, example: 423 }
+        page:     { type: integer, example: 1 }
+        per_page: { type: integer, example: 50 }
+        pages:    { type: integer, example: 9 }
+
+    InvoiceItem:
+      type: object
+      properties:
+        id: { type: integer }
+        description: { type: string }
+        quantity: { type: number }
+        unit: { type: string, example: ks }
+        unit_price: { type: number }
+        vat_rate: { type: number, example: 21 }
+        total_excl_vat: { type: number }
+        total_incl_vat: { type: number }
+
+    InvoiceItemInput:
+      type: object
+      required: [description, quantity, unit_price]
+      properties:
+        description: { type: string }
+        quantity: { type: number }
+        unit: { type: string }
+        unit_price: { type: number }
+        vat_rate: { type: number, example: 21 }

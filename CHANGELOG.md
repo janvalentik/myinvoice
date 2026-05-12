@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.4.0] — 2026-05-12
+
+### Added
+
+- **Veřejné REST API v1** (issue #19). Personal Access Tokens (PAT) v hlavičce
+  `Authorization: Bearer mi_pat_…`, scopes `read` / `read_write`, volitelný
+  bind na konkrétního dodavatele, volitelná expirace. Step-up TOTP při tvorbě.
+  Veřejná cesta `/api/v1/*` (stávající `/api/*` zůstává plně funkční pro SPA).
+  Per-token rate limit 600 req/min + standardní `X-RateLimit-*` response headers
+  pro klientský self-throttling.
+- **Dvě dokumentační rozhraní** nad jediným OpenAPI 3.1 specem (`api/openapi.yaml`,
+  50 paths, 41 schemas):
+  - `/api/docs` — **Swagger UI 5** s „Try it out" a Authorize tlačítkem (token
+    persistuje v localStorage),
+  - `/api/reference` — **Redoc** s pretty static layoutem pro čtení a tisk,
+  - `/api/openapi.yaml` — raw spec pro import do Postman / Insomnia / Zapier / Make.
+- **Settings → API tokeny** — UI pro správu vlastních tokenů (list, vytvoření
+  s jednorázovým zobrazením plain-textu, revokace). Tokeny jsou v `activity_log`.
+- Migrace `0019_api_tokens.sql` — nová tabulka pro hashe (SHA-256) PAT tokenů.
+- Manuál: nová kapitola **20. REST API** s `curl` příklady, best practices,
+  multi-supplier guidance.
+- Dev tooling: `cmd/check-openapi-coverage.php` — auditor driftu mezi Slim
+  routes a `openapi.yaml` (vhodné do CI jako warning).
+- 25 nových testů (10 unit + 15 integration) pokrývajících token service,
+  bearer auth flow, scope enforcement, supplier scope binding, rate-limit
+  headers, expiry, CSRF skip, doc endpointy.
+
 ## [3.3.1] — 2026-05-11
 
 ### Fixed

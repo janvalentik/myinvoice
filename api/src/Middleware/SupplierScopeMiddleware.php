@@ -32,6 +32,15 @@ final class SupplierScopeMiddleware implements MiddlewareInterface
 
     public function process(Request $request, Handler $handler): Response
     {
+        // 0. Bearer (API token) — pokud je token bound na konkrétního supplier-a,
+        //    forcuj ho a ignoruj header / query (token nesmí "skočit" do jiné firmy).
+        $apiToken = $request->getAttribute(AuthMiddleware::ATTR_API_TOKEN);
+        if (is_array($apiToken) && ($apiToken['supplier_id'] ?? null) !== null) {
+            return $handler->handle(
+                $request->withAttribute(self::ATTR_CURRENT_ID, (int) $apiToken['supplier_id']),
+            );
+        }
+
         // 1. Header X-Supplier-Id (axios v SPA)
         $headerVal = trim($request->getHeaderLine(self::HEADER_NAME));
         $requested = ctype_digit($headerVal) ? (int) $headerVal : 0;
