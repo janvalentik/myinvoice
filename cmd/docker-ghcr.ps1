@@ -115,11 +115,13 @@ if (-not $ready) {
 # Migrace se spousti automaticky z docker-entrypoint.sh pred apache2-foreground.
 # Misto druheho explicitniho migrate (= race condition s entrypointem, viz issue
 # s duplicate PK v `migrations` tabulce) jen cekame, az app odpovi na HTTP.
+# Pouzivame /api/health - je v ALLOWED_PATHS pro FirstRunLockMiddleware, takze
+# vraci 200 i ve fresh-install state (kdy /api/version dostane 423 Locked).
 Write-Host "==> Waiting for app to become available (entrypoint runs migrations)..."
 $ready = $false
 for ($i = 1; $i -le 60; $i++) {
     try {
-        $resp = Invoke-WebRequest -Uri "http://localhost:$($envVars.APP_PORT)/api/version" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+        $resp = Invoke-WebRequest -Uri "http://localhost:$($envVars.APP_PORT)/api/health" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
         if ($resp.StatusCode -eq 200) { $ready = $true; Write-Host "    App ready."; break }
     } catch {}
     Start-Sleep -Seconds 2

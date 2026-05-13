@@ -12,19 +12,27 @@
 # Idempotentní — bezpečné spouštět opakovaně.
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$PROJECT_ROOT"
-
+# Detekce PROJECT_ROOT — skript se pouští dvěma způsoby:
+#   a) standalone install (curl 3 souborů do jedné složky): script vedle compose file
+#   b) z klonu repa: script v `cmd/`, compose file o úroveň výš
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="docker-compose.production.yml"
+if [[ -f "${SCRIPT_DIR}/${COMPOSE_FILE}" ]]; then
+  PROJECT_ROOT="${SCRIPT_DIR}"
+elif [[ -f "${SCRIPT_DIR}/../${COMPOSE_FILE}" ]]; then
+  PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+else
+  echo "ERROR: ${COMPOSE_FILE} not found next to script ani v ${SCRIPT_DIR}/.." >&2
+  echo "       Stáhni jej z https://raw.githubusercontent.com/radekhulan/myinvoice/master/${COMPOSE_FILE}" >&2
+  exit 1
+fi
+cd "$PROJECT_ROOT"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "ERROR: docker not found in PATH" >&2; exit 1
 fi
 if ! docker compose version >/dev/null 2>&1; then
   echo "ERROR: 'docker compose' (v2) plugin required" >&2; exit 1
-fi
-if [[ ! -f "$COMPOSE_FILE" ]]; then
-  echo "ERROR: $COMPOSE_FILE not found in $PROJECT_ROOT" >&2; exit 1
 fi
 
 COMPOSE=(docker compose -f "$COMPOSE_FILE")
@@ -110,9 +118,11 @@ done
 # Migrace se spouští automaticky z `docker-entrypoint.sh` před apache2-foreground.
 # Místo druhého explicitního migrate (= race condition s entrypointem, viz issue
 # s duplicate PK v `migrations` tabulce) jen čekáme, až app odpoví na HTTP.
+# Používáme /api/health — je v ALLOWED_PATHS pro FirstRunLockMiddleware, takže
+# vrací 200 i ve fresh-install state (kdy /api/version dostane 423 Locked).
 echo "==> Waiting for app to become available (entrypoint runs migrations)…"
 for i in {1..60}; do
-  if curl -fsS -o /dev/null "http://localhost:${APP_PORT}/api/version"; then
+  if curl -fsS -o /dev/null "http://localhost:${APP_PORT}/api/health"; then
     echo "    App ready."
     break
   fi
