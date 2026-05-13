@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { recurringApi, type RecurringTemplate, type RecurringTemplatePayload, type Frequency } from '@/api/recurring'
 import { clientsApi, type Client } from '@/api/clients'
 import { projectsApi, type Project } from '@/api/projects'
-import { codebooksApi, type VatRate, type Currency } from '@/api/codebooks'
+import { codebooksApi, type VatRate, type Currency, type Unit } from '@/api/codebooks'
 import { useToast } from '@/composables/useToast'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 
@@ -25,6 +25,11 @@ const clients = ref<Client[]>([])
 const projects = ref<Project[]>([])
 const currencies = ref<Currency[]>([])
 const vatRates = ref<VatRate[]>([])
+const units = ref<Unit[]>([])
+
+function defaultItemUnit(): string {
+  return units.value.find(u => u.is_default)?.code || units.value[0]?.code || 'ks'
+}
 
 type FormItem = {
   description: string
@@ -92,7 +97,7 @@ function blankItem(): FormItem {
   return {
     description: '',
     quantity: 1,
-    unit: 'ks',
+    unit: defaultItemUnit(),
     unit_price_without_vat: 0,
     vat_rate_id: defaultVatRateId(),
     order_index: form.value.items.length,
@@ -137,14 +142,16 @@ watch(() => form.value.auto_issue, (ai) => {
 onMounted(async () => {
   loading.value = true
   try {
-    const [cl, cur, vat] = await Promise.all([
+    const [cl, cur, vat, un] = await Promise.all([
       clientsApi.list({ archived: false }),
       codebooksApi.currencies(),
       codebooksApi.vatRates(),
+      codebooksApi.units(),
     ])
     clients.value = cl.data
     currencies.value = cur
     vatRates.value = vat
+    units.value = un
 
     if (form.value.currency_id === 0) {
       const def = cur.find(c => c.is_default && c.code === 'CZK') || cur[0]
@@ -433,7 +440,12 @@ async function submit() {
             <tr v-for="(it, idx) in form.items" :key="idx" class="border-t border-neutral-100">
               <td class="py-1.5 pr-2"><input v-model="it.description" type="text" class="w-full h-8 px-2 border border-neutral-200 rounded" /></td>
               <td class="py-1.5 pr-2"><input v-model.number="it.quantity" type="number" step="0.001" class="w-full h-8 px-2 border border-neutral-200 rounded text-right font-mono" /></td>
-              <td class="py-1.5 pr-2"><input v-model="it.unit" type="text" class="w-full h-8 px-2 border border-neutral-200 rounded" /></td>
+              <td class="py-1.5 pr-2">
+                <select v-model="it.unit" class="w-full h-8 px-1 border border-neutral-200 rounded bg-white text-sm">
+                  <option v-for="u in units" :key="u.id" :value="u.code">{{ u.code }}</option>
+                  <option v-if="it.unit && !units.some(u => u.code === it.unit)" :value="it.unit">{{ it.unit }}</option>
+                </select>
+              </td>
               <td class="py-1.5 pr-2"><input v-model.number="it.unit_price_without_vat" type="number" step="0.01" class="w-full h-8 px-2 border border-neutral-200 rounded text-right font-mono" /></td>
               <td class="py-1.5 pr-2">
                 <select v-model.number="it.vat_rate_id" class="w-full h-8 px-2 border border-neutral-200 rounded bg-white">
