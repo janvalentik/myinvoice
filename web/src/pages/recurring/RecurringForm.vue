@@ -88,6 +88,14 @@ function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+function dayFromDate(date: string): number | null {
+  const day = parseInt(date.slice(8, 10), 10)
+  if (!Number.isFinite(day) || day < 1) return null
+  return Math.min(28, day)
+}
+
+const formLoaded = ref(false)
+
 function defaultVatRateId(): number {
   const def = vatRates.value.find(v => v.is_default)
   return def?.id ?? vatRates.value[0]?.id ?? 0
@@ -165,6 +173,14 @@ watch(() => form.value.end_of_month, (eom) => {
   if (eom) form.value.day_of_month = null
 })
 
+watch(() => form.value.anchor_date, (newDate) => {
+  if (!formLoaded.value) return
+  if (!newDate) return
+  if (form.value.end_of_month) return
+  if (form.value.day_of_month != null) return
+  form.value.day_of_month = dayFromDate(newDate)
+})
+
 watch(() => form.value.auto_issue, (ai) => {
   if (!ai) form.value.auto_send_email = false
 })
@@ -191,6 +207,12 @@ onMounted(async () => {
     // Initialize first item only when creating (not editing)
     if (!isEdit.value && form.value.items.length === 0) {
       form.value.items.push(blankItem())
+    }
+
+    // Pre-fill day_of_month from anchor_date for new templates so the user sees the
+    // effective day instead of an empty field (server-side null fallback uses anchor's day too).
+    if (!isEdit.value && form.value.day_of_month == null && !form.value.end_of_month) {
+      form.value.day_of_month = dayFromDate(form.value.anchor_date)
     }
 
     // Pre-fill client_id from ?client_id=N (např. z ClientDetail "+ Nová šablona")
@@ -267,6 +289,7 @@ onMounted(async () => {
     }
   } finally {
     loading.value = false
+    formLoaded.value = true
   }
 })
 

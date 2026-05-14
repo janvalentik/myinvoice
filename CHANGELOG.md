@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.6.1] — 2026-05-14
+
+### Added
+
+- **Slevové položky na faktuře** ([PR #24](https://github.com/radekhulan/myinvoice/pull/24)).
+  Položka může mít zápornou cenu nebo zápornou množství (sleva, dobropis-jako-řádek)
+  za podmínky, že **celková částka faktury zůstane kladná** — nedá se vystavit faktura
+  s nulovým nebo záporným celkem. Validace `InvoiceAmountPolicy` je společná pro
+  invoice + recurring template; per-item chyby se hlásí dohromady (uživatel vidí
+  všechny v jednom round-tripu).
+  - Nový červený highlight řádku v editoru když má položka **současně** záporné
+    `qty` i `unit_price` (oboje záporné = math je sice kladné, ale je to skoro
+    vždy překlep).
+  - `canBeMarkedPaid()` honoruje `parent_invoice_id` — finální daňový doklad
+    k zaplacené proformě má `amount_to_pay=0` by design; mark-paid + bank-match
+    nadále fungují jako legitimní bookkeeping.
+  - Hint „negativní položky jsou OK pokud celkem > 0" se skryje u dobropisů
+    (`credit_note`), kde se očekává záporný total.
+
+### Fixed
+
+- **Recurring detail — chybějící součty.** `/recurring/{id}` teď pod tabulkou
+  položek zobrazuje **Bez DPH / DPH / Celkem** spočtené z položek šablony
+  (respektuje `reverse_charge`). Dosud se daly vidět jen řádky s jednotkovou
+  cenou, ale ne kolik vlastně bude faktura stát.
+- **Recurring form — den v měsíci se nepředvyplňoval.** Při zakládání nové
+  šablony se `day_of_month` autoplnil dnem z `anchor_date` (capped na 28).
+  Doposud zůstal prázdný a pak na pozadí backend padal na fallback „den
+  z anchor_date" — což nebylo z UI vidět a uživatelé to mylně chápali jako
+  default `1.`. Při změně `anchor_date` se prázdný den znovu doplní; ručně
+  zadaná hodnota se nepřepisuje.
+
+### Internal
+
+- Test refactor: `InvoiceAmountRegressionTest` → `InvoiceAmountSourceGuardsTest`
+  v nové testsuite `Architecture` (phpunit.xml). Test čte zdrojový kód a hlídá
+  call-sity — není to runtime test, je to static lint. 264/264 PHP testů PASS,
+  `vue-tsc --noEmit` clean.
+
+---
+
 ## [3.6.0] — 2026-05-13
 
 ### Breaking — Docker volume layout

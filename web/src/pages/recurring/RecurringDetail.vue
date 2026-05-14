@@ -53,6 +53,24 @@ function formatMoney(n: number, ccy: string): string {
   return n.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + ccy
 }
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+const totals = computed(() => {
+  if (!tpl.value?.items?.length) return { base: 0, vat: 0, total: 0 }
+  const reverseCharge = tpl.value.reverse_charge
+  let base = 0
+  let vat = 0
+  for (const it of tpl.value.items) {
+    const lineBase = round2((Number(it.quantity) || 0) * (Number(it.unit_price_without_vat) || 0))
+    const ratePct = reverseCharge ? 0 : (Number(it.vat_rate_percent) || 0)
+    base += lineBase
+    vat += round2(lineBase * (ratePct / 100))
+  }
+  return { base: round2(base), vat: round2(vat), total: round2(base + vat) }
+})
+
 function statusBadgeClass(s: RecurringStatus) {
   return {
     active:  'bg-success-50 text-success-700 border-success-200',
@@ -239,6 +257,25 @@ async function removeAction() {
             </tr>
           </tbody>
         </table>
+        <div v-if="tpl.items?.length" class="px-5 py-3 bg-neutral-50 border-t border-neutral-200">
+          <dl class="ml-auto max-w-xs space-y-1 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-neutral-500">{{ t('invoice.totals.without_vat') }}</dt>
+              <dd class="font-mono">{{ formatMoney(totals.base, tpl.currency ?? '') }}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-neutral-500">
+                {{ t('invoice.totals.vat') }}
+                <span v-if="tpl.reverse_charge" class="text-xs text-neutral-400">({{ t('invoice.reverse_charge') }})</span>
+              </dt>
+              <dd class="font-mono">{{ formatMoney(totals.vat, tpl.currency ?? '') }}</dd>
+            </div>
+            <div class="flex justify-between pt-1 mt-1 border-t border-neutral-200 font-medium">
+              <dt>{{ t('invoice.totals.total') }}</dt>
+              <dd class="font-mono">{{ formatMoney(totals.total, tpl.currency ?? '') }}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
 
       <!-- Vygenerované faktury -->
