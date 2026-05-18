@@ -1,8 +1,8 @@
-# 16. Importy (Pohoda XML, ISDOC)
+# 16. Importy (Pohoda XML, ISDOC, PDF/A-3)
 
-Pokud máš historické vystavené faktury v jiném systému (Pohoda, jiný fakturační
-software podporující ISDOC), můžeš je do MyInvoice **naimportovat** — nemusíš
-je opisovat ručně.
+Pokud máš historické vystavené faktury v jiném systému (Pohoda, iDoklad,
+Fakturoid, Superfaktura nebo jiný fakturační software podporující ISDOC),
+můžeš je do MyInvoice **naimportovat** — nemusíš je opisovat ručně.
 
 > **Importují se jen tvoje vystavené faktury** (ne přijaté, ne nákupní doklady
 > jiné firmy). Dodavatel ve vstupním souboru se musí shodovat s aktuálně
@@ -17,7 +17,8 @@ Formulář:
 - **Soubory** — přetáhni nebo klikni pro výběr. Akceptuje:
   - `.xml` (Pohoda dataPack)
   - `.isdoc` (ISDOC 6.0.x)
-  - `.zip` s libovolným počtem `.xml` / `.isdoc` uvnitř
+  - `.pdf` (PDF/A-3 s embedded ISDOC přílohou — viz § 16.6)
+  - `.zip` s libovolným počtem těchto souborů uvnitř
 - **Importovat** — odešle a vrátí report (kolik vytvořeno / přeskočeno / chyba).
 
 ## 16.2 Co se založí
@@ -59,7 +60,45 @@ Po importu vidíš tabulku:
 | Var. symbol | Z faktury |
 | Detail | Link na vytvořenou fakturu, badge `paid`/`issued`, štítky `+ klient` / `+ zakázka` (pokud něco vzniklo). U přeskočených/chybných: důvod. |
 
-## 16.6 Tipy
+## 16.6 PDF/A-3 import (embedded ISDOC)
+
+Většina českých fakturačních systémů (**iDoklad**, **Fakturoid**, **Superfaktura**,
+**Pohoda**, **MyInvoice**) dnes vkládá ISDOC XML přímo do PDF dokumentu jako
+přílohu — viz standard **PDF/A-3** + ISDOC spec. Pokud máš v ruce jen PDF
+faktury (typicky to, co ti přišlo emailem od dodavatele), můžeš ho importovat
+přímo — MyInvoice z něj vytáhne embedded `*.isdoc` přílohu a importuje stejně,
+jako kdybys nahrál samostatný `.isdoc` soubor.
+
+**Jak to poznáš, jestli PDF má embedded ISDOC?**
+
+- Otevři PDF v jakémkoli prohlížeči, klikni na ikonu **přílohy / sponky**.
+  Pokud uvidíš soubor typu `*.isdoc` (často `invoice.isdoc`, ale třeba iDoklad
+  ho pojmenuje `Vydaná faktura - 20230005-invoice.isdoc`), je to ono.
+- V `Adobe Reader` najdeš přílohu v levém panelu pod ikonou kancelářské sponky.
+- Můžeš to taky zjistit příkazem `pdfdetach -list <soubor>.pdf` (z balíku
+  `poppler-utils`), nebo jakýmkoli PDF prohlížečem podporujícím přílohy.
+
+**Co když PDF přílohu nemá?**
+
+Pak ho **nelze automaticky importovat** — pure PDF nemá strukturovaná data
+faktury, jen vizuální layout. Import vyhodí čitelnou chybu „PDF neobsahuje
+ISDOC přílohu". V tom případě:
+
+- Buď v původním systému (iDoklad, Pohoda …) **stáhni XML/ISDOC samostatně**
+  a importuj ten soubor.
+- Nebo fakturu zadej ručně.
+
+**Co se podporuje:**
+
+- ✅ PDF/A-3 s `/Type /EmbeddedFile` + filename končící `.isdoc` (oficiální
+  ISDOC PDF spec).
+- ✅ PDF s embedded ISDOC pod jiným jménem (content sniff podle ISDOC
+  namespace `http://isdoc.cz/namespace/2013`).
+- ❌ PDF s objekty v `compressed object streams` (`/Type /ObjStm`). Tohle
+  používá malá část producentů (např. starší TCPDF s aggressive optimization).
+  Pokud na takový soubor narazíš, vytáhni si ISDOC v původním systému ručně.
+
+## 16.7 Tipy
 
 - **Před importem nahraj klienty z ARES** — ne nutné, ale pokud máš čas, můžeš
   je založit ručně se správnou výchozí měnou a paušálem; import pak jen použije
@@ -71,4 +110,5 @@ Po importu vidíš tabulku:
   spustíš import. IČ z XML se ověří proti tomuto kontextu.
 - **Co dělat, když import vyhodí chybu** — soubor zkontroluj v textovém
   editoru, jestli má validní XML a očekávaný root element (`<dat:dataPack>`
-  pro Pohodu, `<Invoice>` v ISDOC namespace pro ISDOC).
+  pro Pohodu, `<Invoice>` v ISDOC namespace pro ISDOC). Pro PDF zkontroluj,
+  jestli má `.isdoc` přílohu (viz § 16.6).

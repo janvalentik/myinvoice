@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.7] — 2026-05-18
+
+### Added
+
+- **Import faktur z PDF (PDF/A-3 s embedded ISDOC).** V `/admin/imports`
+  jde teď nahrát i PDF soubor s embedded `*.isdoc` přílohou — typický
+  výstup českých fakturačních systémů (**iDoklad**, **Fakturoid**,
+  **Superfaktura**, **Pohoda**, **MyInvoice**). Nová služba
+  `PdfIsdocExtractor` rozpozná PDF/A-3 attachment, najde ISDOC podle
+  filename (`*.isdoc`, ne nutně `invoice.isdoc`) nebo přes content-sniff
+  ISDOC namespace, dekomprimuje FlateDecode stream a předá XML
+  existujícímu `IsdocParser`. Robustní vůči různým producentům: testováno
+  na mPDF (vlastní), Superfaktura (ISDOC 6.0.2) i iDoklad (ISDOC 6.0.1
+  s octet-stream Subtype a custom filename `Vydaná faktura-…isdoc`).
+  Pokud PDF embedded ISDOC nemá, uživatel uvidí čitelnou chybu „PDF
+  neobsahuje ISDOC přílohu". 7 nových unit testů `PdfIsdocExtractorTest`.
+  Frontend `accept` přijímá `.pdf` + `application/pdf`; manuál § 16.6
+  popisuje jak ověřit, že PDF přílohu má (Adobe Reader / `pdfdetach`).
+
+### Fixed
+
+- **ISDOC import — round-trip MyInvoice → ISDOC → MyInvoice ztrácel data.**
+  Exporter byl ve v3.6.2 přepracován na schema-validní ISDOC 6.0.2
+  (`<ForeignCurrencyCode>` místo `<CurrencyCode>`, wrapper
+  `<OrderReferences>/<OrderReference>/<SalesOrderID>` místo
+  `<OrderReference>/<ID>`, `<ContractReferences>/<ContractReference>/<ID>`,
+  rozdělená adresa `<StreetName>` + `<BuildingNumber>`), ale `IsdocParser`
+  zůstal na legacy cestách — při importu vlastního ISDOC souboru se
+  ztratila cizí měna (fallback na CZK), `project_number` i číslo popisné
+  v adrese. Parser teď čte schema-validní cesty jako primární a legacy
+  jako fallback, takže zůstává kompatibilní i s ISDOC od jiných systémů.
+  Pokryto 7 novými unit testy v `IsdocParserTest`.
+
 ## [3.6.6] — 2026-05-18
 
 ### Added

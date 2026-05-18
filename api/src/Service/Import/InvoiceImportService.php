@@ -41,6 +41,7 @@ final class InvoiceImportService
         private readonly ClientResolver $clientResolver,
         private readonly PohodaXmlParser $pohoda,
         private readonly IsdocParser $isdoc,
+        private readonly PdfIsdocExtractor $pdfIsdoc,
         private readonly SnapshotBuilder $snapshots,
         private readonly InvoiceCalculator $calculator,
     ) {}
@@ -122,6 +123,15 @@ final class InvoiceImportService
     private function parseOne(string $name, string $content, string $supplierIc): array
     {
         try {
+            // PDF/A-3 fakturu (typicky s embedded `*.isdoc` přílohou per ISDOC spec)
+            // unwrap přes extractor — pak pokračujeme stejnou cestou jako pro pure XML.
+            if ($this->isPdf($name, $content)) {
+                $extracted = $this->pdfIsdoc->extract($content);
+                if ($extracted === null) {
+                    return ['error' => 'PDF neobsahuje ISDOC přílohu (PDF/A-3). Nahraj prosím .isdoc / .xml soubor, nebo PDF, který má ISDOC embed.'];
+                }
+                $content = $extracted;
+            }
             $isIsdoc = str_contains(strtolower($name), '.isdoc')
                 || str_starts_with(ltrim($content), '<?xml') && str_contains($content, 'isdoc.cz/namespace');
             $parsed = $isIsdoc ? $this->isdoc->parse($content) : $this->pohoda->parse($content);
@@ -420,8 +430,16 @@ final class InvoiceImportService
     private function isZip(string $name, string $content): bool
     {
         if (str_ends_with(strtolower($name), '.zip')) return true;
-        // Magic bytes — PK\x03\x04 nebo PK\x05\x06 (empty zip)
+        // Magic bytes — PK\x03\x04 nebo PK\x05\x06 (empty zip).
+        // PDF má sice taky neuzipped magic, ale začíná `%PDF-`, takže nedojde
+        // k falešné shodě. Defenzivně přidáme explicit PDF guard.
+        if (str_starts_with($content, '%PDF-')) return false;
         return strncmp($content, "PK\x03\x04", 4) === 0 || strncmp($content, "PK\x05\x06", 4) === 0;
+    }
+
+    private function isPdf(string $name, string $content): bool
+    {
+        return str_ends_with(strtolower($name), '.pdf') || str_starts_with($content, '%PDF-');
     }
 
     /**

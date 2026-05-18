@@ -1151,7 +1151,7 @@
   },
   "imports": {
     "title": "Importy",
-    "subtitle": "Načtení vystavených faktur z Pohoda XML nebo ISDOC do systému.",
+    "subtitle": "Načtení vystavených faktur z Pohoda XML, ISDOC nebo PDF (PDF/A-3 s embedded ISDOC) do systému.",
     "supplier_required_title": "Dodavatel musí už existovat",
     "supplier_required_hint": "Faktury se naimportují pouze pokud IČ dodavatele v souboru odpovídá aktuálně zvolenému dodavateli v aplikaci. Soubor s jiným dodavatelem se přeskočí.",
     "status_rule_title": "Stav importované faktury",
@@ -1159,7 +1159,7 @@
     "imported_as_paid": "uloženo jako zaplacené",
     "imported_as_issued": "uloženo jako vystavené",
     "drop_or_click": "Přetáhni soubory sem nebo klikni pro výběr",
-    "formats_hint": "Podporované formáty: .xml (Pohoda dataPack), .isdoc, nebo .zip s libovolným počtem .xml/.isdoc uvnitř.",
+    "formats_hint": "Podporované formáty: .xml (Pohoda dataPack), .isdoc, .pdf (PDF/A-3 s embedded ISDOC — např. z iDoklad, Fakturoid, Superfaktura, MyInvoice), nebo .zip s libovolným počtem těchto souborů uvnitř.",
     "selected_files": "Vybrané soubory",
     "upload": "Importovat",
     "uploading": "Importuji…",

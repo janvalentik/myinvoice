@@ -1151,7 +1151,7 @@
   },
   "imports": {
     "title": "Imports",
-    "subtitle": "Load issued invoices from Pohoda XML or ISDOC into the system.",
+    "subtitle": "Load issued invoices from Pohoda XML, ISDOC or PDF (PDF/A-3 with embedded ISDOC) into the system.",
     "supplier_required_title": "Supplier must already exist",
     "supplier_required_hint": "Invoices are imported only when the supplier reg. no. (IČ) in the file matches the supplier currently selected in the app. Files for a different supplier are skipped.",
     "status_rule_title": "Status of imported invoice",
@@ -1159,7 +1159,7 @@
     "imported_as_paid": "stored as paid",
     "imported_as_issued": "stored as issued",
     "drop_or_click": "Drop files here or click to choose",
-    "formats_hint": "Supported formats: .xml (Pohoda dataPack), .isdoc, or .zip bundling any number of .xml/.isdoc.",
+    "formats_hint": "Supported formats: .xml (Pohoda dataPack), .isdoc, .pdf (PDF/A-3 with embedded ISDOC — e.g. from iDoklad, Fakturoid, Superfaktura, MyInvoice), or .zip bundling any number of these files.",
     "selected_files": "Selected files",
     "upload": "Import",
     "uploading": "Importing…",

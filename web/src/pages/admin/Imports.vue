@@ -81,7 +81,7 @@ const statusBadge = (s: string) => {
           <input
             type="file"
             multiple
-            accept=".xml,.isdoc,.zip,application/xml,application/zip,application/x-isdoc"
+            accept=".xml,.isdoc,.zip,.pdf,application/xml,application/zip,application/x-isdoc,application/pdf"
             @change="onPick"
             class="hidden"
           />

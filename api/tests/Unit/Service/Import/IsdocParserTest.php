@@ -159,4 +159,117 @@ XML;
         $result = $this->parser->parse($xml);
         self::assertTrue($result['invoices'][0]['reverse_charge']);
     }
+
+    // ─── Round-trip se schema-validním ISDOC 6.0.2 (od v3.6.2) ──────────────
+    //
+    // Tyto testy chrání proti regresi z 2026-05-18: exporter byl ve v3.6.2
+    // upraven proti oficiální XSD (ForeignCurrencyCode, OrderReferences/SalesOrderID,
+    // ContractReferences/ID, StreetName + BuildingNumber), ale parser zůstal
+    // na legacy cestách — round-trip MyInvoice → ISDOC → MyInvoice ztratil
+    // cizí měnu, project_number i číslo popisné. Tady ověřujeme, že parser
+    // čte oba formáty (legacy CurrencyCode i schema-validní ForeignCurrencyCode).
+
+    public function testForeignCurrencyCodeIsReadAsCurrency(): void
+    {
+        // Schema-validní podoba: <ForeignCurrencyCode> místo legacy <CurrencyCode>.
+        $xml = str_replace(
+            '<CurrencyCode>CZK</CurrencyCode>',
+            '<ForeignCurrencyCode>EUR</ForeignCurrencyCode>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame('EUR', $result['invoices'][0]['currency']);
+    }
+
+    public function testLegacyCurrencyCodeStillReadAsFallback(): void
+    {
+        // ISDOC od jiných systémů může pořád používat legacy <CurrencyCode>.
+        $xml = str_replace(
+            '<CurrencyCode>CZK</CurrencyCode>',
+            '<CurrencyCode>USD</CurrencyCode>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame('USD', $result['invoices'][0]['currency']);
+    }
+
+    public function testOrderReferencesWithSalesOrderID(): void
+    {
+        // Schema-validní wrapper struktura: <OrderReferences>/<OrderReference id="O1">/<SalesOrderID>.
+        $xml = str_replace(
+            '</AccountingCustomerParty>',
+            '</AccountingCustomerParty>'
+                . '<OrderReferences><OrderReference id="O1"><SalesOrderID>PRJ-2026-007</SalesOrderID></OrderReference></OrderReferences>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame('PRJ-2026-007', $result['invoices'][0]['project_number']);
+    }
+
+    public function testLegacyOrderReferenceIDStillRead(): void
+    {
+        // Starší / non-conforming forma: <OrderReference>/<ID> přímo v rootu.
+        $xml = str_replace(
+            '</AccountingCustomerParty>',
+            '</AccountingCustomerParty><OrderReference><ID>OLD-FORMAT-1</ID></OrderReference>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame('OLD-FORMAT-1', $result['invoices'][0]['project_number']);
+    }
+
+    public function testContractReferencesWrapperReadAsProjectNumberFallback(): void
+    {
+        // Pokud OrderReferences chybí, padáme zpět na ContractReferences/ContractReference/ID.
+        $xml = str_replace(
+            '</AccountingCustomerParty>',
+            '</AccountingCustomerParty>'
+                . '<ContractReferences><ContractReference id="C1"><ID>SML-2026-42</ID><IssueDate>2026-01-15</IssueDate></ContractReference></ContractReferences>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame('SML-2026-42', $result['invoices'][0]['project_number']);
+    }
+
+    public function testStreetNameAndBuildingNumberAreJoinedIntoStreet(): void
+    {
+        // Schema rozděluje adresu na <StreetName> + <BuildingNumber>; parser je
+        // při čtení slévá zpátky do jednoho `street` (model má jen jedno pole).
+        $xml = str_replace(
+            '<PartyIdentification>
+        <ID>12345678</ID>
+      </PartyIdentification>',
+            '<PartyIdentification><ID>12345678</ID></PartyIdentification>'
+                . '<PostalAddress>'
+                . '<StreetName>Vinohradská</StreetName>'
+                . '<BuildingNumber>2233/100</BuildingNumber>'
+                . '<CityName>Praha 3</CityName>'
+                . '<PostalZone>13000</PostalZone>'
+                . '<Country><IdentificationCode>CZ</IdentificationCode></Country>'
+                . '</PostalAddress>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame('Vinohradská 2233/100', $result['invoices'][0]['client']['street']);
+        self::assertSame('Praha 3', $result['invoices'][0]['client']['city']);
+    }
+
+    public function testStreetNameWithoutBuildingNumberStaysIntact(): void
+    {
+        // Pokud zdrojový ISDOC od jiného systému posílá adresu v jednom poli
+        // (jen <StreetName>), parser nesmí přidávat prázdný separator.
+        $xml = str_replace(
+            '<PartyIdentification>
+        <ID>12345678</ID>
+      </PartyIdentification>',
+            '<PartyIdentification><ID>12345678</ID></PartyIdentification>'
+                . '<PostalAddress>'
+                . '<StreetName>Karlova 5</StreetName>'
+                . '<CityName>Brno</CityName>'
+                . '</PostalAddress>',
+            $this->minimalIsdoc()
+        );
+        $result = $this->parser->parse($xml);
+        self::assertSame('Karlova 5', $result['invoices'][0]['client']['street']);
+    }
 }

@@ -81,7 +81,14 @@ final class IsdocParser
         $dueDate   = $this->text($xpath, 'i:PaymentMeans/i:Payment/i:Details/i:PaymentDueDate', $root) ?: $issueDate;
 
         $localCur = strtoupper($this->text($xpath, 'i:LocalCurrencyCode', $root) ?: 'CZK');
-        $foreignCur = strtoupper($this->text($xpath, 'i:CurrencyCode', $root) ?: '');
+        // Schema-validní ISDOC 6.0.2 používá <ForeignCurrencyCode>; starší soubory
+        // (i náš vlastní exporter před v3.6.2) používaly <CurrencyCode>. Čteme oboje
+        // pro kompatibilitu s exporty od jiných systémů i s naším round-tripem.
+        $foreignCur = strtoupper(
+            $this->text($xpath, 'i:ForeignCurrencyCode', $root)
+            ?: $this->text($xpath, 'i:CurrencyCode', $root)
+            ?: ''
+        );
         $currency = $foreignCur !== '' ? $foreignCur : $localCur;
         $rate = null;
         $rateRaw = $this->text($xpath, 'i:CurrRate', $root);
@@ -95,8 +102,15 @@ final class IsdocParser
         $partyEl = $xpath->query('i:AccountingCustomerParty/i:Party', $root)->item(0);
         $client = $partyEl instanceof \DOMElement ? $this->parseParty($xpath, $partyEl) : [];
 
-        // Project number — z OrderReference/ID nebo ContractReference/ID
-        $projectNumber = $this->text($xpath, 'i:OrderReference/i:ID', $root)
+        // Project number — schema-validní ISDOC 6.0.2 obaluje reference do wrapper
+        // kolekce (<OrderReferences>/<OrderReference>/<SalesOrderID>) a v contract
+        // referenci je @id atribut + <ID> element. Starší / non-conforming exporty
+        // používaly přímý <OrderReference>/<ID>. Čteme nové cesty jako primární
+        // a staré jako fallback pro kompat s ISDOC od jiných systémů.
+        $projectNumber = $this->text($xpath, 'i:OrderReferences/i:OrderReference/i:SalesOrderID', $root)
+            ?: $this->text($xpath, 'i:OrderReference/i:SalesOrderID', $root)
+            ?: $this->text($xpath, 'i:OrderReference/i:ID', $root)
+            ?: $this->text($xpath, 'i:ContractReferences/i:ContractReference/i:ID', $root)
             ?: $this->text($xpath, 'i:ContractReference/i:ID', $root)
             ?: null;
 
@@ -128,11 +142,19 @@ final class IsdocParser
      */
     private function parseParty(\DOMXPath $xpath, \DOMElement $party): array
     {
+        // Schema rozděluje adresu na <StreetName> + <BuildingNumber>; pro náš
+        // model držíme jednu jednolitou hodnotu `street`, takže je při čtení
+        // zase slijeme. Pokud BuildingNumber chybí (legacy exporty), použijeme
+        // jen StreetName beze změny.
+        $streetName = $this->text($xpath, 'i:PostalAddress/i:StreetName', $party);
+        $buildingNumber = $this->text($xpath, 'i:PostalAddress/i:BuildingNumber', $party);
+        $street = trim($streetName . ($buildingNumber !== '' ? ' ' . $buildingNumber : ''));
+
         return [
             'company_name' => $this->text($xpath, 'i:PartyName/i:Name', $party) ?: null,
             'ic'           => $this->text($xpath, 'i:PartyIdentification/i:ID', $party) ?: null,
             'dic'          => $this->text($xpath, 'i:PartyTaxScheme/i:CompanyID', $party) ?: null,
-            'street'       => $this->text($xpath, 'i:PostalAddress/i:StreetName', $party) ?: null,
+            'street'       => $street !== '' ? $street : null,
             'city'         => $this->text($xpath, 'i:PostalAddress/i:CityName', $party) ?: null,
             'zip'          => $this->text($xpath, 'i:PostalAddress/i:PostalZone', $party) ?: null,
             'country_iso2' => strtoupper($this->text($xpath, 'i:PostalAddress/i:Country/i:IdentificationCode', $party)) ?: null,
