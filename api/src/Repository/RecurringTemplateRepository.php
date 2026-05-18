@@ -174,10 +174,15 @@ final class RecurringTemplateRepository
 
     public function update(int $id, array $data): void
     {
+        // Pokud šablona ještě nikdy negenerovala (last_run_date IS NULL),
+        // přepiš next_run_date dle nového anchor_date — uživatel mohl změnit
+        // den/end_of_month/anchor a očekává, že se první generování posune.
+        // U už běžících šablon (last_run_date != NULL) necháme cyklus naplánovaný.
         $sql = 'UPDATE recurring_invoice_templates SET
                 client_id = ?, project_id = ?, name = ?,
                 frequency = ?, day_of_month = ?, end_of_month = ?,
                 anchor_date = ?, end_date = ?,
+                next_run_date = CASE WHEN last_run_date IS NULL THEN ? ELSE next_run_date END,
                 invoice_type = ?, currency_id = ?, language = ?, payment_method = ?,
                 reverse_charge = ?, payment_due_days = ?,
                 note_above_items = ?, note_below_items = ?,
@@ -192,6 +197,7 @@ final class RecurringTemplateRepository
             !empty($data['end_of_month']) ? 1 : 0,
             (string) $data['anchor_date'],
             !empty($data['end_date']) ? (string) $data['end_date'] : null,
+            (string) $data['anchor_date'],
             (string) ($data['invoice_type'] ?? 'invoice'),
             (int) $data['currency_id'],
             (string) ($data['language'] ?? 'cs'),
