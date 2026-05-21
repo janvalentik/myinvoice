@@ -19,6 +19,8 @@ import { formatMoney } from '@/composables/useFormat'
 import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 import VendorPicker from '@/components/purchase/VendorPicker.vue'
+import ClientFormModal from '@/components/modals/ClientFormModal.vue'
+import type { Client } from '@/api/clients'
 import PdfDropzone from '@/components/purchase/PdfDropzone.vue'
 import PaymentCurrencyBlock from '@/components/purchase/PaymentCurrencyBlock.vue'
 import ExchangeRateInput from '@/components/purchase/ExchangeRateInput.vue'
@@ -114,6 +116,15 @@ function onVendorSelected(v: any) {
       form.value.language = v.language
     }
   }
+}
+
+// === Quick "New vendor" modal — vytvoří klienta s is_vendor=true, is_customer=false ===
+const vendorModalOpen = ref(false)
+async function onVendorCreated(client: Client) {
+  form.value.vendor_id = client.id
+  vendorModalOpen.value = false
+  // Pre-fill defaults pokud má vendor currency/language
+  onVendorSelected(client)
 }
 
 const currencyCode = computed(() => {
@@ -487,10 +498,24 @@ function fieldErr(key: string): string | null {
 
         <!-- Vendor + document kind -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <VendorPicker
-            v-model="form.vendor_id"
-            @selected="onVendorSelected"
-          />
+          <div>
+            <div class="flex gap-2">
+              <div class="flex-1 min-w-0">
+                <VendorPicker
+                  v-model="form.vendor_id"
+                  @selected="onVendorSelected"
+                />
+              </div>
+              <button type="button" @click="vendorModalOpen = true"
+                class="cursor-pointer shrink-0 h-9 px-3 mt-[26px] inline-flex items-center gap-1.5 border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md text-sm font-medium"
+                :title="t('purchase_invoice.new_vendor')">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                <span class="hidden sm:inline">{{ t('purchase_invoice.new_vendor') }}</span>
+              </button>
+            </div>
+          </div>
           <div>
             <label class="block text-sm text-neutral-700 mb-1">{{ t('purchase_invoice.fields.document_kind') }}</label>
             <select v-model="form.document_kind" class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm">
@@ -759,5 +784,11 @@ function fieldErr(key: string): string | null {
         </p>
       </div>
     </div>
+
+    <!-- Quick "New vendor" modal — pre-fills is_vendor=true, is_customer=false -->
+    <ClientFormModal v-if="vendorModalOpen"
+      :defaults="{ is_vendor: true, is_customer: false }"
+      @created="onVendorCreated"
+      @close="vendorModalOpen = false" />
   </div>
 </template>

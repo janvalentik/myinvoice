@@ -182,15 +182,17 @@
       "hint": "Vyexportuje ZIP s originálními PDF od dodavatelů za zvolený měsíc. Faktury bez archivovaného PDF se přeskočí.",
       "pdf_priority_title": "Priorita vendor PDF",
       "pdf_priority_hint": "ZIP obsahuje archivované originální PDF od dodavatelů. Faktury bez archivovaného PDF se přeskočí (s warningem v X-Export-Warnings response header). Pro fakturu bez originálu lze v detailu vygenerovat naši vlastní PDF rekonstrukci (Exporty → Naše PDF).",
-      "per_invoice_export_title": "Export jednotlivých přijatých faktur",
-      "per_invoice_export_hint": "ISDOC a Pohoda XML pro přijatou fakturu najdeš v jejím detailu (tlačítko \"Exporty\"). Hromadný ZIP/dataPack pro více přijatých faktur naráz je v plánu pro v4.0.0.",
+      "bulk_isdoc_title": "Bulk ISDOC ZIP",
+      "bulk_isdoc_hint": "ZIP s jedním ISDOC 6.0 XML souborem per přijatá faktura za zvolený měsíc. Role inversion: dodavatel = vendor, customer = naše firma.",
+      "bulk_pohoda_title": "Pohoda dataPack",
+      "bulk_pohoda_hint": "Jeden Pohoda XML dataPack s <dataPackItem> per faktura za zvolený měsíc. Otevři v Pohoda → Soubor → Datová komunikace → XML import.",
       "download": "Stáhnout",
       "menu": "Exporty",
       "our_pdf": "Naše PDF (rekonstrukce)",
       "isdoc": "ISDOC XML",
-      "pohoda": "Pohoda XML",
-      "per_invoice_only": "jen per faktura"
+      "pohoda": "Pohoda XML"
     },
+    "new_vendor": "Nový dodavatel",
     "filters": {
       "all_statuses": "Všechny stavy",
       "all_kinds": "Všechny typy",

@@ -9,19 +9,28 @@ use MyInvoice\Bootstrap;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\PurchaseInvoiceRepository;
+use Twig\Environment;
+use Twig\Loader\FilesystemLoader;
 
 /**
- * Render přijaté faktury jako PDF (naše verze).
+ * Render přijaté faktury jako PDF (naše rekonstrukce).
  *
- * **Use case:** Když nemáme originální PDF od dodavatele (např. importováno z
- * iDoklad/Fakturoid jen metadata, nebo zadané ručně), můžeme vygenerovat naši
- * vlastní verzi PDF pro účetní archiv.
+ * **Use case:** Když nemáme originální PDF od dodavatele (importované jen metadata,
+ * nebo zadané ručně), generujeme vlastní PDF pro účetní archiv. Design = stejný
+ * vzhled jako naše vystavené faktury (jednotný styl, branded).
  *
- * Layout je minimalistický — pro plnohodnotný "dodavatelský look" doporučujeme
- * originál (pokud existuje v `pdf_path`).
+ * Layout:
+ *   - Header: vendor (jako "supplier" v rekonstrukci) + "Rekonstrukce" badge
+ *   - Parties: vendor (zleva) + naše firma jako odběratel (zprava)
+ *   - Meta: issue/tax/due dates + currency
+ *   - Items table
+ *   - Totals (bez DPH / DPH / s DPH)
+ *   - Footer s attribution + warning že originál je závazný
  */
 final class PurchaseInvoicePdfRenderer
 {
+    private ?Environment $twig = null;
+
     public function __construct(
         private readonly PurchaseInvoiceRepository $repo,
         private readonly Connection $db,
@@ -38,11 +47,42 @@ final class PurchaseInvoicePdfRenderer
             throw new \RuntimeException("Přijatá faktura #{$purchaseInvoiceId} nenalezena.");
         }
         $vendor = $this->loadVendor((int) $invoice['vendor_id']);
+        $ourCompany = $this->loadOurCompany($supplierId);
         $items = $invoice['items'] ?? [];
-        $totals = $invoice['totals'] ?? ['without_vat' => 0, 'vat' => 0, 'with_vat' => 0];
+
+        // Totals — preferuj sub-object, fallback na top-level columns
+        $totals = $invoice['totals'] ?? [
+            'without_vat' => $invoice['total_without_vat'] ?? 0,
+            'vat'         => $invoice['total_vat'] ?? 0,
+            'with_vat'    => $invoice['total_with_vat'] ?? 0,
+        ];
+
+        // Map items na shape co Twig očekává
+        $itemsNorm = array_map(fn ($it) => [
+            'description'            => $it['description'] ?? '',
+            'quantity'               => (float) ($it['quantity'] ?? 1),
+            'unit'                   => $it['unit'] ?? 'ks',
+            'unit_price_without_vat' => (float) ($it['unit_price_without_vat'] ?? 0),
+            'vat_rate'               => (float) ($it['vat_rate_snapshot'] ?? $it['vat_rate'] ?? 0),
+            'total_without_vat'      => (float) ($it['total_without_vat'] ?? 0),
+        ], $items);
+
+        $locale = $invoice['language'] ?? 'cs';
+        $docTypeLabel = $this->docTypeLabel($invoice['document_kind'] ?? 'invoice', $locale);
         $currency = $invoice['currency'] ?? 'CZK';
 
-        $html = $this->buildHtml($invoice, $vendor, $items, $totals, $currency);
+        $css = $this->loadCss();
+        $body = $this->twig()->render('purchase-invoice.twig', [
+            'invoice'        => $invoice,
+            'vendor'         => $vendor,
+            'our_company'    => $ourCompany,
+            'items'          => $itemsNorm,
+            'totals'         => $totals,
+            'currency'       => $currency,
+            'doc_type_label' => $docTypeLabel,
+            'locale'         => $locale,
+            'css'            => $css,
+        ]);
 
         $mpdf = new Mpdf([
             'mode' => 'utf-8',
@@ -50,13 +90,13 @@ final class PurchaseInvoicePdfRenderer
             'margin_left' => 15,
             'margin_right' => 15,
             'margin_top' => 15,
-            'margin_bottom' => 15,
+            'margin_bottom' => 18,
             'default_font' => 'dejavusans',
             'tempDir' => Bootstrap::rootDir() . '/storage/mpdf-temp',
         ]);
-        $mpdf->SetTitle('Přijatá faktura ' . ($invoice['vendor_invoice_number'] ?? '#' . $invoice['id']));
+        $mpdf->SetTitle(($docTypeLabel ?: 'Faktura') . ' ' . ($invoice['vendor_invoice_number'] ?? '#' . $invoice['id']));
         $mpdf->SetCreator('MyInvoice.cz');
-        $mpdf->WriteHTML($html);
+        $mpdf->WriteHTML($body);
         return $mpdf->Output('', 'S');
     }
 
@@ -73,176 +113,124 @@ final class PurchaseInvoicePdfRenderer
         return $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
     }
 
-    /**
-     * @param array<string,mixed> $invoice
-     * @param array<string,mixed> $vendor
-     * @param list<array<string,mixed>> $items
-     * @param array{without_vat:float, vat:float, with_vat:float} $totals
-     */
-    private function buildHtml(array $invoice, array $vendor, array $items, array $totals, string $currency): string
+    private function loadOurCompany(int $supplierId): array
     {
-        $h = fn (?string $s): string => htmlspecialchars((string) $s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $money = fn (float $v): string => number_format($v, 2, ',', ' ') . ' ' . $currency;
-        $date = fn (?string $d): string => $d ? date('j. n. Y', strtotime($d)) : '—';
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT s.id, s.company_name, s.street, s.city, s.zip, s.ic, s.dic,
+                    s.email, s.phone, COALESCE(c.iso2, 'CZ') AS country_iso2
+               FROM supplier s
+          LEFT JOIN countries c ON c.id = s.country_id
+              WHERE s.id = ?"
+        );
+        $stmt->execute([$supplierId]);
+        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+    }
 
-        $itemsHtml = '';
-        foreach ($items as $i => $item) {
-            $qty = (float) ($item['quantity'] ?? 1);
-            $price = (float) ($item['unit_price_without_vat'] ?? 0);
-            $vatRate = (float) ($item['vat_rate_snapshot'] ?? $item['vat_rate'] ?? 0);
-            $totalNoVat = (float) ($item['total_without_vat'] ?? ($qty * $price));
-            $itemsHtml .= '<tr>'
-                . '<td>' . ($i + 1) . '.</td>'
-                . '<td>' . $h($item['description'] ?? '') . '</td>'
-                . '<td class="num">' . number_format($qty, 2, ',', ' ') . ' ' . $h($item['unit'] ?? 'ks') . '</td>'
-                . '<td class="num">' . $money($price) . '</td>'
-                . '<td class="num">' . number_format($vatRate, 0) . '%</td>'
-                . '<td class="num">' . $money($totalNoVat) . '</td>'
-                . '</tr>';
+    private function docTypeLabel(string $kind, string $locale): string
+    {
+        if ($locale === 'en') {
+            return match ($kind) {
+                'receipt'     => 'Receipt',
+                'credit_note' => 'Credit note',
+                'advance'     => 'Advance',
+                default       => 'Invoice',
+            };
         }
-        if ($itemsHtml === '') {
-            $itemsHtml = '<tr><td colspan="6" class="empty">Žádné položky</td></tr>';
-        }
-
-        $reverseChargeNote = '';
-        if (!empty($invoice['reverse_charge'])) {
-            $reverseChargeNote = '<p class="rc-note"><strong>Daň odvádí zákazník (přenesená daňová povinnost).</strong></p>';
-        }
-
-        $noteAbove = !empty($invoice['note_above_items'])
-            ? '<div class="note-above">' . nl2br($h($invoice['note_above_items'])) . '</div>'
-            : '';
-        $noteBelow = !empty($invoice['note_below_items'])
-            ? '<div class="note-below">' . nl2br($h($invoice['note_below_items'])) . '</div>'
-            : '';
-
-        $varsymbol = $invoice['varsymbol'] ?? '';
-        $vendorInvNum = $invoice['vendor_invoice_number'] ?? '';
-        $docKindLabel = match ($invoice['document_kind'] ?? 'invoice') {
-            'receipt'     => 'Účtenka',
-            'credit_note' => 'Dobropis',
-            'advance'     => 'Záloha',
-            default       => 'Faktura',
+        return match ($kind) {
+            'receipt'     => 'Přijatá účtenka',
+            'credit_note' => 'Přijatý dobropis',
+            'advance'     => 'Přijatá záloha',
+            default       => 'Přijatá faktura',
         };
+    }
 
-        return <<<HTML
-<!DOCTYPE html>
-<html lang="cs">
-<head>
-<meta charset="UTF-8">
-<title>Přijatá {$docKindLabel} {$h($vendorInvNum)}</title>
-<style>
-  body { font-family: dejavusans, sans-serif; font-size: 9pt; color: #1f2937; }
-  h1 { font-size: 18pt; margin: 0 0 4pt; color: #111827; }
-  .header-block { width: 100%; margin-bottom: 12pt; }
-  .header-block td { vertical-align: top; padding: 0; }
-  .label { font-size: 7pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5pt; }
-  .vendor-name { font-weight: bold; font-size: 12pt; }
-  .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 12pt; }
-  .meta-table td { padding: 3pt 5pt; border: 1px solid #e5e7eb; font-size: 8pt; }
-  .meta-table .lbl { background: #f9fafb; color: #6b7280; width: 30%; }
-  table.items { width: 100%; border-collapse: collapse; margin-top: 8pt; }
-  table.items thead { background: #f3f4f6; }
-  table.items th, table.items td { padding: 4pt 6pt; border-bottom: 1px solid #e5e7eb; text-align: left; }
-  table.items th { font-size: 7pt; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5pt; }
-  table.items .num { text-align: right; font-family: 'DejaVu Sans Mono', monospace; }
-  table.items td.empty { text-align: center; color: #9ca3af; padding: 12pt; }
-  .totals { width: 50%; margin-left: 50%; margin-top: 8pt; border-collapse: collapse; }
-  .totals td { padding: 4pt 8pt; }
-  .totals .lbl { color: #6b7280; }
-  .totals .num { text-align: right; font-family: 'DejaVu Sans Mono', monospace; }
-  .totals tr.grand td { font-weight: bold; font-size: 11pt; border-top: 2px solid #111827; padding-top: 6pt; }
-  .note-above, .note-below { margin: 6pt 0; padding: 6pt; background: #f9fafb; font-size: 8pt; }
-  .rc-note { background: #fef3c7; padding: 6pt; margin: 8pt 0; border-left: 3px solid #f59e0b; font-size: 9pt; }
-  .footer-note { margin-top: 12pt; padding-top: 6pt; border-top: 1px solid #e5e7eb; font-size: 7pt; color: #9ca3af; text-align: center; }
-</style>
-</head>
-<body>
+    private function twig(): Environment
+    {
+        if ($this->twig === null) {
+            $loader = new FilesystemLoader([
+                Bootstrap::rootDir() . '/api/templates/purchase-invoice',
+            ]);
+            $this->twig = new Environment($loader, [
+                'autoescape' => 'html',
+                'strict_variables' => false,
+                'cache' => false,
+            ]);
+        }
+        return $this->twig;
+    }
 
-<table class="header-block">
-  <tr>
-    <td style="width: 60%;">
-      <h1>Přijatá {$docKindLabel}</h1>
-      <div class="label">Číslo dokladu od dodavatele</div>
-      <div style="font-size: 13pt; font-weight: bold;">{$h($vendorInvNum)}</div>
-    </td>
-    <td style="width: 40%; text-align: right;">
-      <div class="label">Naše interní číslo</div>
-      <div style="font-size: 11pt;">{$h($varsymbol)}</div>
-    </td>
-  </tr>
-</table>
+    /**
+     * Reuse existing invoice.css + dodá několik tříd specifických pro reconstruction.
+     */
+    private function loadCss(): string
+    {
+        $cssPath = Bootstrap::rootDir() . '/styles/invoice.css';
+        $base = is_file($cssPath) ? (string) file_get_contents($cssPath) : '';
+        $extra = <<<CSS
 
-<table class="header-block">
-  <tr>
-    <td style="width: 50%; padding-right: 8pt;">
-      <div class="label">Dodavatel</div>
-      <div class="vendor-name">{$h($vendor['company_name'] ?? '')}</div>
-      <div>{$h($vendor['street'] ?? '')}</div>
-      <div>{$h($vendor['zip'] ?? '')} {$h($vendor['city'] ?? '')}</div>
-      <div>{$h($vendor['country_iso2'] ?? 'CZ')}</div>
-HTML
-        . (!empty($vendor['ic']) ? '<div>IČ: ' . $h($vendor['ic']) . '</div>' : '')
-        . (!empty($vendor['dic']) ? '<div>DIČ: ' . $h($vendor['dic']) . '</div>' : '')
-        . <<<HTML
-    </td>
-    <td style="width: 50%;">
-      <table class="meta-table">
-        <tr><td class="lbl">Datum vystavení</td><td>{$date($invoice['issue_date'])}</td></tr>
-        <tr><td class="lbl">Datum zdanitelného plnění</td><td>{$date($invoice['tax_date'])}</td></tr>
-        <tr><td class="lbl">Datum splatnosti</td><td>{$date($invoice['due_date'])}</td></tr>
-        <tr><td class="lbl">Datum přijetí</td><td>{$date($invoice['received_at'])}</td></tr>
-        <tr><td class="lbl">Variabilní symbol</td><td>{$h($varsymbol)}</td></tr>
-        <tr><td class="lbl">Měna</td><td>{$h($currency)}</td></tr>
-      </table>
-    </td>
-  </tr>
-</table>
-
-{$noteAbove}
-
-{$reverseChargeNote}
-
-<table class="items">
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Popis</th>
-      <th class="num">Množství</th>
-      <th class="num">Jedn. cena</th>
-      <th class="num">DPH</th>
-      <th class="num">Celkem bez DPH</th>
-    </tr>
-  </thead>
-  <tbody>
-    {$itemsHtml}
-  </tbody>
-</table>
-
-<table class="totals">
-  <tr>
-    <td class="lbl">Celkem bez DPH</td>
-    <td class="num">{$money((float) $totals['without_vat'])}</td>
-  </tr>
-  <tr>
-    <td class="lbl">DPH celkem</td>
-    <td class="num">{$money((float) $totals['vat'])}</td>
-  </tr>
-  <tr class="grand">
-    <td class="lbl">Celkem s DPH</td>
-    <td class="num">{$money((float) $totals['with_vat'])}</td>
-  </tr>
-</table>
-
-{$noteBelow}
-
-<div class="footer-note">
-  Naše rekonstrukce přijaté faktury z dat v MyInvoice.cz. Originál od dodavatele je referenční dokument.<br>
-  Vygenerováno: {$date(date('Y-m-d'))}
-</div>
-
-</body>
-</html>
-HTML;
+/* ── PŘIJATÁ FAKTURA — rekonstrukce specific ── */
+.reconstruction-badge {
+    display: inline-block;
+    background: #FEF3C7;
+    color: #92400E;
+    font-size: 7pt;
+    font-weight: bold;
+    padding: 1.2pt 5pt;
+    border-radius: 8pt;
+    margin-top: 2mm;
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+}
+.meta-info {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4mm 0 5mm;
+    border-top: 0.5pt solid #E5E7EB;
+    border-bottom: 0.5pt solid #E5E7EB;
+}
+.meta-info td {
+    padding: 3mm 3mm;
+    border-right: 0.5pt solid #E5E7EB;
+    width: 25%;
+    vertical-align: top;
+}
+.meta-info td:last-child { border-right: none; }
+.meta-info .label {
+    display: block;
+    font-size: 7pt;
+    color: #6B7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    margin-bottom: 1mm;
+}
+.meta-info .value {
+    display: block;
+    font-size: 10pt;
+    font-weight: 500;
+    color: #15131D;
+}
+.note-above, .note-below {
+    margin: 3mm 0;
+    padding: 3mm 4mm;
+    background: #F9FAFB;
+    border-left: 2pt solid #3B2D83;
+    font-size: 9pt;
+}
+.rc-note {
+    background: #FEF3C7;
+    border-left: 3pt solid #F59E0B;
+    padding: 3mm 4mm;
+    margin: 3mm 0;
+    font-size: 9pt;
+    color: #92400E;
+}
+table.items td.empty {
+    text-align: center;
+    color: #9CA3AF;
+    padding: 8mm;
+    font-style: italic;
+}
+CSS;
+        return $base . $extra;
     }
 }

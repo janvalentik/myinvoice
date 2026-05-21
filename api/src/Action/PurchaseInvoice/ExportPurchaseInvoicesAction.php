@@ -10,6 +10,7 @@ use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Service\ActivityLogger;
+use MyInvoice\Service\Export\PurchaseInvoiceExportService;
 use MyInvoice\Service\IpMatcher;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -37,6 +38,7 @@ final class ExportPurchaseInvoicesAction
         private readonly Config $config,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly PurchaseInvoiceExportService $exporter,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -56,9 +58,8 @@ final class ExportPurchaseInvoicesAction
             $dateBy = 'tax';
         }
         $format = (string) ($q['format'] ?? 'pdf-zip');
-        if ($format !== 'pdf-zip') {
-            return Json::error($response, 'unsupported_format',
-                "Pro přijaté faktury je v fázi 1 podporován jen pdf-zip.", 400);
+        if (!in_array($format, ['pdf-zip', 'isdoc', 'pohoda'], true)) {
+            return Json::error($response, 'unsupported_format', "Neplatný format ({$format}).", 400);
         }
 
         $sid = SupplierGuard::currentId($request);
@@ -66,6 +67,15 @@ final class ExportPurchaseInvoicesAction
         if (empty($rows)) {
             return Json::error($response, 'no_invoices', "Za měsíc {$month} nejsou žádné přijaté faktury.", 404);
         }
+
+        // ISDOC bulk ZIP nebo Pohoda dataPack → delegujeme do separate metod
+        if ($format === 'isdoc') {
+            return $this->exportIsdocZip($response, $request, $rows, $month, $sid);
+        }
+        if ($format === 'pohoda') {
+            return $this->exportPohodaDataPack($response, $request, $rows, $month, $sid);
+        }
+        // (pdf-zip pokračuje níže — original code)
 
         $archiveRoot = $this->resolveArchiveRoot();
         $archiveRootReal = realpath($archiveRoot);
@@ -180,5 +190,125 @@ final class ExportPurchaseInvoicesAction
         $uploads = (string) $this->config->get('storage.uploads_dir', '');
         if ($uploads !== '') return dirname($uploads) . '/purchase-invoices';
         return __DIR__ . '/../../../../storage/purchase-invoices';
+    }
+
+    /**
+     * Bulk ISDOC export — ZIP s jedním ISDOC XML per faktura.
+     *
+     * @param list<array<string,mixed>> $rows
+     */
+    private function exportIsdocZip(Response $response, Request $request, array $rows, string $month, int $supplierId): Response
+    {
+        $tmpZip = tempnam(sys_get_temp_dir(), 'pinv-isdoc-') . '.zip';
+        $zip = new ZipArchive();
+        if ($zip->open($tmpZip, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return Json::error($response, 'zip_failed', 'Nelze vytvořit ZIP.', 500);
+        }
+
+        $included = 0;
+        $errors = [];
+        foreach ($rows as $r) {
+            try {
+                $xml = $this->exporter->toIsdocXml((int) $r['id'], $supplierId);
+            } catch (\Throwable $e) {
+                $errors[] = "{$r['varsymbol']} — " . $e->getMessage();
+                continue;
+            }
+            $vs = (string) ($r['varsymbol'] ?? ('id-' . $r['id']));
+            $vendor = (string) ($r['vendor_company_name'] ?? 'vendor');
+            $base = preg_replace('/[^A-Za-z0-9._\\-]/u', '_', $vs . '-' . $vendor) ?: 'invoice';
+            $zip->addFromString('Prijata-' . substr($base, 0, 100) . '.isdoc', $xml);
+            $included++;
+        }
+        $zip->close();
+
+        if ($included === 0) {
+            @unlink($tmpZip);
+            return Json::error($response, 'no_invoices_processed',
+                'Nepodařilo se vyexportovat žádnou fakturu.', 500, ['errors' => $errors]);
+        }
+
+        $content = (string) file_get_contents($tmpZip);
+        @unlink($tmpZip);
+
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        $this->logger->log('purchase_invoices.exported', $user['id'] ?? null, null, null, [
+            'format' => 'isdoc-zip', 'month' => $month, 'included' => $included,
+        ], $this->ipMatcher->clientIpFromRequest($request->getServerParams()), $request->getHeaderLine('User-Agent'));
+
+        $response->getBody()->write($content);
+        return $response
+            ->withHeader('Content-Type', 'application/zip')
+            ->withHeader('Content-Disposition', "attachment; filename=\"prijate-isdoc-{$month}.zip\"")
+            ->withHeader('Cache-Control', 'no-store')
+            ->withHeader('X-Export-Warnings', count($errors) > 0 ? (string) count($errors) : '0');
+    }
+
+    /**
+     * Bulk Pohoda dataPack — jeden XML s `<dataPackItem>` per faktura.
+     *
+     * Strategy: vyrobíme jednoduchý dataPack wrapper kolem N invoice XML.
+     *
+     * @param list<array<string,mixed>> $rows
+     */
+    private function exportPohodaDataPack(Response $response, Request $request, array $rows, string $month, int $supplierId): Response
+    {
+        $ids = (string) bin2hex(random_bytes(4));
+        $packId = "PI-{$month}-{$ids}";
+
+        $items = [];
+        $errors = [];
+        $itemSeq = 0;
+        foreach ($rows as $r) {
+            try {
+                $xml = $this->exporter->toPohodaXml((int) $r['id'], $supplierId);
+            } catch (\Throwable $e) {
+                $errors[] = "{$r['varsymbol']} — " . $e->getMessage();
+                continue;
+            }
+            // Extract inner `<pur:purchase>` element from individual XML — pragmatic
+            // string-level extraction (full DOM parse je overkill pro PoC).
+            $itemSeq++;
+            $items[] = [
+                'id'   => $itemSeq,
+                'vs'   => (string) ($r['varsymbol'] ?? ('id-' . $r['id'])),
+                'xml'  => $xml,
+            ];
+        }
+
+        if (empty($items)) {
+            return Json::error($response, 'no_invoices_processed',
+                'Nepodařilo se vyexportovat žádnou fakturu.', 500, ['errors' => $errors]);
+        }
+
+        // Wrap do dataPack — jednoduchý XML string concat. Funguje pro Pohoda 2.x.
+        $dataPack = '<?xml version="1.0" encoding="utf-8"?>' . "\n";
+        $dataPack .= '<dat:dataPack version="2.0"';
+        $dataPack .= ' id="' . htmlspecialchars($packId, ENT_QUOTES | ENT_XML1) . '"';
+        $dataPack .= ' ico="" application="MyInvoice.cz"';
+        $dataPack .= ' note="Bulk export přijatých za ' . htmlspecialchars($month, ENT_QUOTES | ENT_XML1) . '"';
+        $dataPack .= ' xmlns:dat="http://www.stormware.cz/schema/version_2/data.xsd"';
+        $dataPack .= ' xmlns:pur="http://www.stormware.cz/schema/version_2/purchase.xsd"';
+        $dataPack .= ' xmlns:typ="http://www.stormware.cz/schema/version_2/type.xsd">' . "\n";
+        foreach ($items as $it) {
+            $dataPack .= '  <dat:dataPackItem version="2.0" id="' . $it['id'] . '_' . htmlspecialchars($it['vs'], ENT_QUOTES | ENT_XML1) . '">' . "\n";
+            // Strip XML declaration z individual XML (jen content)
+            $inner = preg_replace('/^<\?xml[^?]*\?>\s*/', '', $it['xml']) ?? $it['xml'];
+            $dataPack .= '    ' . $inner . "\n";
+            $dataPack .= '  </dat:dataPackItem>' . "\n";
+        }
+        $dataPack .= '</dat:dataPack>' . "\n";
+
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        $this->logger->log('purchase_invoices.exported', $user['id'] ?? null, null, null, [
+            'format' => 'pohoda-datapack', 'month' => $month, 'included' => count($items),
+        ], $this->ipMatcher->clientIpFromRequest($request->getServerParams()), $request->getHeaderLine('User-Agent'));
+
+        $response->getBody()->write($dataPack);
+        return $response
+            ->withHeader('Content-Type', 'application/xml; charset=utf-8')
+            ->withHeader('Content-Disposition', "attachment; filename=\"prijate-pohoda-{$month}.xml\"")
+            ->withHeader('Cache-Control', 'no-store')
+            ->withHeader('X-Export-Warnings', count($errors) > 0 ? (string) count($errors) : '0');
     }
 }

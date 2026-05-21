@@ -182,15 +182,17 @@
       "hint": "Exports a ZIP with original vendor PDFs for the selected month. Invoices without archived PDF are skipped.",
       "pdf_priority_title": "Vendor PDF priority",
       "pdf_priority_hint": "ZIP contains archived original PDFs from vendors. Invoices without archived PDF are skipped (warning in X-Export-Warnings response header). For invoices without original you can generate our own PDF reconstruction in detail view (Exports → Our PDF).",
-      "per_invoice_export_title": "Per-invoice export of received invoices",
-      "per_invoice_export_hint": "ISDOC and Pohoda XML for received invoice are available in detail view (\"Exports\" button). Bulk ZIP/dataPack for multiple received invoices is planned for v4.0.0.",
+      "bulk_isdoc_title": "Bulk ISDOC ZIP",
+      "bulk_isdoc_hint": "ZIP with one ISDOC 6.0 XML file per received invoice for the chosen month. Role inversion: vendor = supplier, customer = our company.",
+      "bulk_pohoda_title": "Pohoda dataPack",
+      "bulk_pohoda_hint": "One Pohoda XML dataPack with <dataPackItem> per invoice for the chosen month. Open in Pohoda → File → Data communication → XML import.",
       "download": "Download",
       "menu": "Exports",
       "our_pdf": "Our PDF (reconstruction)",
       "isdoc": "ISDOC XML",
-      "pohoda": "Pohoda XML",
-      "per_invoice_only": "per-invoice only"
+      "pohoda": "Pohoda XML"
     },
+    "new_vendor": "New vendor",
     "filters": {
       "all_statuses": "All statuses",
       "all_kinds": "All types",

@@ -25,7 +25,8 @@ function download() {
   // (vyžaduje VAT klasifikační kódy + naše vlastní PurchaseInvoicePdfRenderer pro fallback).
 }
 
-const isComingSoon = computed(() => format.value !== 'pdf-zip')
+// All 3 formats live (pdf-zip + isdoc + pohoda)
+const isComingSoon = computed(() => false)
 </script>
 
 <template>
@@ -65,9 +66,6 @@ const isComingSoon = computed(() => format.value !== 'pdf-zip')
               <span class="text-sm font-medium">{{ opt.label }}</span>
             </div>
             <p class="text-xs text-neutral-500 mt-1">{{ opt.hint }}</p>
-            <span v-if="opt.val !== 'pdf-zip'" class="inline-block mt-1 text-[10px] uppercase tracking-wide bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">
-              {{ t('purchase_invoice.export.per_invoice_only') }}
-            </span>
           </label>
         </div>
       </div>
@@ -89,15 +87,18 @@ const isComingSoon = computed(() => format.value !== 'pdf-zip')
         </div>
       </div>
 
-      <!-- Info pro PDF: priorita vendor PDF -->
+      <!-- Info per format -->
       <div v-if="format === 'pdf-zip'" class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700">
         <strong>{{ t('purchase_invoice.export.pdf_priority_title') }}:</strong>
         {{ t('purchase_invoice.export.pdf_priority_hint') }}
       </div>
-
-      <div v-else class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700">
-        <strong>{{ t('purchase_invoice.export.per_invoice_export_title') }}:</strong>
-        {{ t('purchase_invoice.export.per_invoice_export_hint') }}
+      <div v-else-if="format === 'isdoc'" class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700">
+        <strong>{{ t('purchase_invoice.export.bulk_isdoc_title') }}:</strong>
+        {{ t('purchase_invoice.export.bulk_isdoc_hint') }}
+      </div>
+      <div v-else-if="format === 'pohoda'" class="rounded-md bg-primary-50 border border-primary-200 px-3 py-2 text-sm text-primary-700">
+        <strong>{{ t('purchase_invoice.export.bulk_pohoda_title') }}:</strong>
+        {{ t('purchase_invoice.export.bulk_pohoda_hint') }}
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2">
