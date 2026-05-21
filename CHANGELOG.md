@@ -164,6 +164,30 @@ PDF, CRM dashboard, výkazy DPH a daň z příjmů, public REST API v1.
 - **AI auto-paid varsymbol** — `markAlreadyPaid()` přímý SQL UPDATE
   obcházel `TransitionPurchaseInvoiceStatusAction` (která generuje varsymbol
   při draft→received). Fix: volá `ensureVarsymbol()` před UPDATE.
+- **Vystavené faktury — `vat_classification_code` chyběl** ve výkazech DPH /
+  KH. `InvoiceRepository::replaceItems()` neukládala kód vůbec →
+  VatClassificationMapper SKIPNUL všechny řádky → DPH přiznání na výstupu
+  byly nuly. Centralizovaný fallback v `replaceItems()` + ostatní vstupní
+  cesty (Pohoda import, bulk reissue, cancel→credit note).
+- **Country-aware auto-klasifikace** pro vystavené i přijaté faktury —
+  podle ISO-2 země protistrany:
+  - Vystavené: CZ → `'1'`/`'2'`/`'3'`, EU 0 % → `'22'` (služby), non-EU 0 % → `'26'` (vývoz)
+  - Přijaté: CZ → `'40'`/`'41'` (+ RC → `'5'`), EU 0 % → `'24'` (acquire EU),
+    non-EU 0 % → `'25'` (dovoz)
+- **Vendor costs multi-currency** — `pi_agg` sumace v `ClientRepository`
+  mixovala EUR + CZK do jednoho totalu. Fix: přepočet přes
+  `pi.exchange_rate * total_with_vat` (CZK ccy → multiplier 1).
+- **Re-import dedup guard** — `findIdByVendorInvoice()` ve všech importerech
+  proti `UNIQUE KEY uq_pi_vendor_invoice` violation (SQL 23000).
+- **Pagination v `/purchase-invoices`** — natvrdo `per_page: 200` → load-more
+  pattern (analog vystavených), default per_page z `cfg.pagination`.
+- **Namespace fix** v `PurchaseInvoiceCnbApplier` — `Service\Cnb` →
+  `Service\Currency\CnbExchangeRateClient` (DI container 500 v ISDOC / iDoklad /
+  Fakturoid / AI importu).
+- **Backfill `--force`** flag — re-classifikace existujících kódů
+  (idempotent: skip pokud derived == current).
+- **Privacy** — User-Agent v `FakturoidClient` anonymizován z osobního
+  e-mailu na URL repa.
 
 ### Security
 
