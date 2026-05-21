@@ -1,4 +1,4 @@
-# 19. Bezpečnost (2FA, IP allowlist, role, activity log)
+# 20. Bezpečnost (2FA, IP allowlist, role, activity log)
 
 Bezpečnost MyInvoice stojí na 4 vrstvách:
 
@@ -8,7 +8,7 @@ Bezpečnost MyInvoice stojí na 4 vrstvách:
 4. **Autorizace** — role-based access (admin / accountant / readonly)
 5. **Audit** — activity log všech mutací
 
-## 19.1 Hesla
+## 20.1 Hesla
 
 | Vrstva | Detail |
 |---|---|
@@ -22,11 +22,11 @@ Bezpečnost MyInvoice stojí na 4 vrstvách:
 > 💡 **Passphrase je bezpečnější než krátké složité heslo.** „korelace medvědí
 > dýně přístav 2026" má 49 znaků a je odolnější vůči brute-force než „Hu1@n!22".
 
-## 19.2 Dvoufaktorové ověření (TOTP)
+## 20.2 Dvoufaktorové ověření (TOTP)
 
 TOTP = time-based one-time password (RFC 6238). Nejznámější standard pro 2FA.
 
-### 19.2.1 Aktivace
+### 20.2.1 Aktivace
 
 **Můj profil → 2FA → Aktivovat**.
 
@@ -41,9 +41,9 @@ TOTP = time-based one-time password (RFC 6238). Nejznámější standard pro 2FA
 > ⚠️ MyInvoice **nepoužívá záložní jednorázové kódy** (recovery codes).
 > Při ztrátě autentikátoru použij CLI rescue:
 > `php api/bin/reset-2fa.php <email>` —
-> viz [§ 19.2.3](#1823-ztrata-telefonu--deaktivace).
+> viz [§ 20.2.3](#2023-ztrata-telefonu--deaktivace).
 
-### 19.2.2 Přihlášení s 2FA
+### 20.2.2 Přihlášení s 2FA
 
 Po zadání e-mailu + hesla aplikace vyzve k 6-cifernému kódu z autentikátoru.
 
@@ -52,7 +52,7 @@ Po zadání e-mailu + hesla aplikace vyzve k 6-cifernému kódu z autentikátoru
 Pokud autentikátor nemáš po ruce, nezbývá než provést rescue reset
 (následující sekce).
 
-### 19.2.3 Ztráta telefonu / deaktivace
+### 20.2.3 Ztráta telefonu / deaktivace
 
 Aplikace nemá UI pro deaktivaci 2FA — doporučený postup je CLI rescue tool:
 
@@ -76,7 +76,7 @@ WHERE email = 'tvuj@email.cz';
 > (phpMyAdmin / Adminer / mysql CLI) připravený předem. Při ztrátě telefonu
 > by jinak nikdo nešel do aplikace.
 
-### 19.2.4 Vynucení 2FA pro všechny uživatele
+### 20.2.4 Vynucení 2FA pro všechny uživatele
 
 Pokud chceš, aby **každý** uživatel po přihlášení musel mít aktivní TOTP,
 nastav v `cfg.php` (nebo `cfg.local.php`):
@@ -113,7 +113,7 @@ Chování:
 > konfiguraci by uživatelé skončili v silent-500 — health endpoint vrací
 > warning, viz [§ 99 Řešení problémů](99_Reseni_problemu.md).
 
-## 19.3 Brute-force ochrana
+## 20.3 Brute-force ochrana
 
 | Pokusy během | Akce |
 |---|---|
@@ -123,7 +123,7 @@ Chování:
 
 Implementace: **Redis** pokud běží, jinak **MariaDB MEMORY engine** fallback.
 
-## 19.4 IP allowlist (volitelné)
+## 20.4 IP allowlist (volitelné)
 
 V `cfg.php → ip_allowlist.allow` můžeš omezit přístup jen na vybrané IP /
 CIDR rozsahy.
@@ -150,7 +150,7 @@ Doporučení v produkci:
 > deploy. Není v UI **schválně** — v případě omylu by ses zablokoval
 > a nemohl si ho přes UI sundat.
 
-## 19.5 RBAC (role-based access)
+## 20.5 RBAC (role-based access)
 
 Tři role:
 
@@ -163,7 +163,7 @@ Tři role:
 Per endpoint je v API kódu definovaná minimální role. UI se podle aktuální
 role uživatele schovává tlačítka, na která nemá nárok.
 
-## 19.6 CSRF + Origin check
+## 20.6 CSRF + Origin check
 
 Každý mutating request (POST / PUT / PATCH / DELETE) musí mít:
 
@@ -173,7 +173,7 @@ Každý mutating request (POST / PUT / PATCH / DELETE) musí mít:
 Bez nich → 403 `csrf_failed` / `origin_mismatch`. UI to obsluhuje
 automaticky (token v Pinia store, header v axios interceptoru).
 
-## 19.7 Activity log
+## 20.7 Activity log
 
 Každá mutace (vytvoření / změna / vystavení / smazání) se loguje. Záznamy
 obsahují:
@@ -188,15 +188,15 @@ obsahují:
   u `client.updated`)
 - Datum + čas
 
-Viz [18. Nastavení → § 15.6](18_Nastaveni.md) pro UI.
+Viz [19. Nastavení → § 15.6](19_Nastaveni.md) pro UI.
 
-### 19.7.1 Co log NEUKLÁDÁ
+### 20.7.1 Co log NEUKLÁDÁ
 
 - **Hesla** — ani staré, ani nové
 - **PII klientů** mimo to, co bylo změněno (jen fields seznam, ne hodnoty)
 - **Bankovní transakce** — log obsahuje jen ID importovaného výpisu
 
-## 19.8 DKIM podpis e-mailů
+## 20.8 DKIM podpis e-mailů
 
 Pro **deliverabilitu** (aby gmail / o365 / seznam tvé maily nepoznačily jako
 spam) doporučujeme aktivovat DKIM:
@@ -208,12 +208,12 @@ spam) doporučujeme aktivovat DKIM:
 
 Detaily v `README.md` v rootu repa.
 
-## 19.9 Bezpečnostní audit
+## 20.9 Bezpečnostní audit
 
 V `source/07-security-audit.md` najdeš výsledky interního auditu — všechny
 identifikované findings (P1/P2/P3) jsou vyřešené nebo odůvodněně vynechané.
 
-## 19.10 Tipy
+## 20.10 Tipy
 
 - **Vždycky 2FA pro admin** — pokud admin účet padne, padá vše. Žádná výmluva.
 - **Pravidelně rotuj hesla** každých 6–12 měsíců.

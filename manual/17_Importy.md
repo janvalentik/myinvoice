@@ -1,4 +1,4 @@
-# 16. Importy (Pohoda XML, ISDOC, PDF/A-3)
+# 17. Importy (Pohoda XML, ISDOC, PDF/A-3)
 
 Pokud máš historické vystavené faktury v jiném systému (Pohoda, iDoklad,
 Fakturoid, Superfaktura nebo jiný fakturační software podporující ISDOC),
@@ -8,7 +8,7 @@ můžeš je do MyInvoice **naimportovat** — nemusíš je opisovat ručně.
 > jiné firmy). Dodavatel ve vstupním souboru se musí shodovat s aktuálně
 > zvoleným dodavatelem v aplikaci.
 
-## 16.1 Obrazovka importů
+## 17.1 Obrazovka importů
 
 V hlavním menu **Systém → Importy**.
 
@@ -17,11 +17,11 @@ Formulář:
 - **Soubory** — přetáhni nebo klikni pro výběr. Akceptuje:
   - `.xml` (Pohoda dataPack)
   - `.isdoc` (ISDOC 6.0.x)
-  - `.pdf` (PDF/A-3 s embedded ISDOC přílohou — viz § 16.6)
+  - `.pdf` (PDF/A-3 s embedded ISDOC přílohou — viz § 17.6)
   - `.zip` s libovolným počtem těchto souborů uvnitř
 - **Importovat** — odešle a vrátí report (kolik vytvořeno / přeskočeno / chyba).
 
-## 16.2 Co se založí
+## 17.2 Co se založí
 
 Pro každou fakturu v souboru:
 
@@ -31,7 +31,7 @@ Pro každou fakturu v souboru:
 | **Zakázka** | Když má faktura `číslo zakázky` (ISDOC `OrderReference/ID`, Pohoda `numberOrder`), přiřadí se k zakázce s tím číslem (vytvoří se, pokud chybí). Pokud nemá číslo zakázky, ale klient má v importovaném balíku **více různých e-mailů**, vytvoří se per-email zakázka s názvem `{Firma} – {email}`. Jinak `bez zakázky`. |
 | **Faktura** | Přepíše se do `invoices` se zachovaným původním varsymbolem. Položky, sazby DPH, kurz, měna se převezmou. Snapshoty (klient/dodavatel/banka) se zafixují z aktuálních dat. |
 
-## 16.3 Stav (paid vs issued) — pravidlo 30 dní
+## 17.3 Stav (paid vs issued) — pravidlo 30 dní
 
 Aby ses nemusel po importu zabývat starými fakturami:
 
@@ -42,14 +42,14 @@ Aby ses nemusel po importu zabývat starými fakturami:
   uloží jako **Vystavená**. Můžeš platbu spárovat standardním flow přes
   bankovní výpis nebo ručně označit jako zaplacenou.
 
-## 16.4 Co se přeskočí
+## 17.4 Co se přeskočí
 
 - **Cizí dodavatel** — celý soubor se přeskočí, pokud IČO dodavatele v souboru
   neodpovídá aktuálnímu dodavateli v aplikaci. (Hláška v reportu.)
 - **Duplicita** — pokud faktura s daným varsymbolem u tohoto dodavatele už
   existuje, přeskočí se. V reportu se zobrazí důvod a id existující faktury.
 
-## 16.5 Report
+## 17.5 Report
 
 Po importu vidíš tabulku:
 
@@ -60,7 +60,7 @@ Po importu vidíš tabulku:
 | Var. symbol | Z faktury |
 | Detail | Link na vytvořenou fakturu, badge `paid`/`issued`, štítky `+ klient` / `+ zakázka` (pokud něco vzniklo). U přeskočených/chybných: důvod. |
 
-## 16.6 PDF/A-3 import (embedded ISDOC)
+## 17.6 PDF/A-3 import (embedded ISDOC)
 
 Většina českých fakturačních systémů (**iDoklad**, **Fakturoid**, **Superfaktura**,
 **Pohoda**, **MyInvoice**) dnes vkládá ISDOC XML přímo do PDF dokumentu jako
@@ -111,17 +111,17 @@ ISDOC přílohu". V tom případě:
   Vzácné, ale existuje. Workaround: stáhni si ISDOC samostatně v původním
   systému.
 
-## 16.7 Tipy
+## 17.7 Tipy
 
 - **Před importem nahraj klienty z ARES** — ne nutné, ale pokud máš čas, můžeš
   je založit ručně se správnou výchozí měnou a paušálem; import pak jen použije
   existující ID a nebude tahat ARES.
 - **Pohoda → MyInvoice** — exportuj v Pohodě data balíček (XML), nahraj sem.
   Pohoda neukládá `číslo zakázky` per fakturu, takže se importují bez zakázky
-  (pokud klient nemá více emailů — viz § 16.2).
+  (pokud klient nemá více emailů — viz § 17.2).
 - **Multi-supplier** — přepni v aplikaci na cílového dodavatele předtím, než
   spustíš import. IČO z XML se ověří proti tomuto kontextu.
 - **Co dělat, když import vyhodí chybu** — soubor zkontroluj v textovém
   editoru, jestli má validní XML a očekávaný root element (`<dat:dataPack>`
   pro Pohodu, `<Invoice>` v ISDOC namespace pro ISDOC). Pro PDF zkontroluj,
-  jestli má `.isdoc` přílohu (viz § 16.6).
+  jestli má `.isdoc` přílohu (viz § 17.6).

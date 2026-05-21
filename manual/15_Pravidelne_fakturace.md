@@ -1,4 +1,4 @@
-# 14. Pravidelné fakturace (Recurring invoices)
+# 15. Pravidelné fakturace (Recurring invoices)
 
 Šablony pro automatické generování faktur v pravidelných intervalech. Hodí se
 pro paušální platby (hosting, předplatné, retainer …), kde se fakturuje stále
@@ -9,7 +9,7 @@ stejná částka stejnému klientovi.
 faktury. Volitelně je rovnou **vystaví** (přidělí číslo faktury) a/nebo
 **odešle klientovi e-mailem**.
 
-## 14.1 Kdy použít
+## 15.1 Kdy použít
 
 - Pravidelný měsíční / čtvrtletní / pololetní / roční paušál
 - Stejné položky a stejné částky (drobné posouvání měsíce v popisech řeší
@@ -20,13 +20,13 @@ Pro **jednorázové znovuvystavení** stávající faktury (např. „udělej ze
 faktury 5/2026 fakturu 6/2026") slouží klasický **klon faktury** v detailu
 faktury — ne pravidelná šablona.
 
-## 14.2 Vytvoření šablony
+## 15.2 Vytvoření šablony
 
 V menu **Systém → Pravidelné fakturace** klikni **+ Nová šablona**, nebo
 v detailu existující faktury tlačítko **Vytvořit šablonu z této faktury**
 (předvyplní klienta, položky, měnu, jazyk i payment method).
 
-### 14.2.1 Sekce „Periodicita"
+### 15.2.1 Sekce „Periodicita"
 
 - **Periodicita** — Měsíčně / Čtvrtletně / Pololetně / Ročně
 - **Den v měsíci** — 1–28 (28 je nejvyšší možná hodnota; cap kvůli únoru)
@@ -38,7 +38,7 @@ v detailu existující faktury tlačítko **Vytvořit šablonu z této faktury**
 - **Datum ukončení** (volitelné) — po překročení tohoto data se šablona
   automaticky pozastaví (status **Vypršela**) a cron ji přeskakuje.
 
-### 14.2.2 Sekce „Faktura"
+### 15.2.2 Sekce „Faktura"
 
 Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu:
 
@@ -58,14 +58,14 @@ Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu
       31.5.2026. Měsíc v popiscích položek se synchronizuje k DUZP, takže
       „Hosting 05/2026" zůstane „05/2026" i když je vystavena 1.6.
 
-### 14.2.3 Položky
+### 15.2.3 Položky
 
 Položky šablony se 1:1 kopírují na každou vygenerovanou fakturu (popis, mn.,
 cena/j, sazba DPH). DPH sazba se v okamžiku generování přebíjí aktuální
 hodnotou z číselníku (`vat_rates`) — pokud stát mezitím změní sazby, šablona
 se sama přizpůsobí.
 
-### 14.2.4 Sekce „Automatizace"
+### 15.2.4 Sekce „Automatizace"
 
 - **Synchronizovat měsíc v popiscích položek s DUZP** — pokud je v popisu
   vzorec `M/YYYY` (např. „Hosting 03/2026"), automaticky se **nahradí**
@@ -86,7 +86,7 @@ se sama přizpůsobí.
 **Default pro nové šablony** je obojí zapnuté → plně automatická pravidelná
 fakturace.
 
-## 14.3 Lifecycle šablony
+## 15.3 Lifecycle šablony
 
 Šablona má tři stavy:
 
@@ -106,7 +106,7 @@ plánovaný cron termín pro orientaci; pokud zvolíš datum v budoucnu, modal
 upozorní žlutým warningem, že daňově by `issue_date` mělo odpovídat reálnému
 datu vystavení.
 
-## 14.4 Cron
+## 15.4 Cron
 
 Skript `api/bin/cron-generate-recurring-invoices.php` — spouštěj ho **jednou
 denně**:
@@ -123,14 +123,14 @@ za cyklus a posune o jeden krok — zbytek backlog se doplní postupně další
 dny. Tím se zabrání tomu, aby po výpadku cron vygeneroval naráz 30 faktur
 za poslední měsíc.
 
-## 14.5 Kill-switch (Nastavení → Dodavatel)
+## 15.5 Kill-switch (Nastavení → Dodavatel)
 
 V **Nastavení → Můj dodavatel** je přepínač **„Generovat pravidelné
 fakturace cronem"**. Pokud je vypnutý, cron tohoto dodavatele úplně
 přeskočí — všechny šablony se zastaví, dokud ho zase nezapneš. Manuální
 tlačítko **Vygenerovat teď** funguje nezávisle.
 
-## 14.6 Vazba na vygenerované faktury
+## 15.6 Vazba na vygenerované faktury
 
 Každá faktura vytvořená šablonou má vazbu `recurring_template_id` (sloupec
 v `invoices`). V detailu faktury se zobrazí badge **↻ Pravidelná** s odkazem
@@ -139,7 +139,7 @@ na šablonu, ze které pochází.
 Když šablonu smažeš, vygenerované faktury zůstanou (databáze má `ON DELETE
 SET NULL` — vazba se vyčistí, faktura zůstane platná).
 
-## 14.7 Activity log
+## 15.7 Activity log
 
 Vše se zaznamenává:
 
@@ -150,7 +150,7 @@ Vše se zaznamenává:
 - `cron.generate_recurring` — sumář jednoho běhu cronu (počet kandidátů,
   vygenerovaných, vystavených, odeslaných, chyb)
 
-## 14.8 REST API
+## 15.8 REST API
 
 Pravidelné fakturace mají vlastní REST endpointy pod `/api/recurring/*`:
 

@@ -1,11 +1,11 @@
-# 20. Aktualizace na novou verzi
+# 21. Aktualizace na novou verzi
 
 MyInvoice.cz denně kontroluje GitHub Releases API a v Systém → **Aktualizace**
 (jen admin) zobrazí aktuální i poslední dostupnou verzi spolu s release
 notes. Aplikaci se updatuje buď z UI (jedním tlačítkem), nebo ručně přes
 shell — záleží na typu instalace.
 
-## 20.1 Co všechno se aktualizuje
+## 21.1 Co všechno se aktualizuje
 
 Aktualizace zahrnuje všechny tři vrstvy aplikace:
 
@@ -18,7 +18,7 @@ Zachovají se: `cfg.php`, `cfg.local.php`, `private/`, `storage/`, `log/` —
 tj. všechno, co obsahuje konfiguraci a uživatelská data. Migrace nikdy
 nepřepisují existující data, jen přidávají sloupce/tabulky/indexy.
 
-## 20.2 Daily check — jak to funguje
+## 21.2 Daily check — jak to funguje
 
 Cron skript `api/bin/cron-version-check.php` se spouští 1× denně, volá
 GitHub API a cachuje výsledek do tabulky `app_meta` (klíče
@@ -37,7 +37,7 @@ blocking síťový call při každém načtení stránky.
 Pokud cron nenastavíš, kontrola se nikdy nespustí — admin musí kliknout
 **„Zkontrolovat teď"** v UI.
 
-## 20.3 Footer aplikace + badge nové verze
+## 21.3 Footer aplikace + badge nové verze
 
 V patičce každé stránky vidíš `vX.Y.Z` — to je verze, která teď běží.
 Pokud je k dispozici nová verze a jsi přihlášený jako admin, badge
@@ -46,7 +46,7 @@ Pokud je k dispozici nová verze a jsi přihlášený jako admin, badge
 Neadminové vidí jen verzi bez badge (badge je čistě admin signál — běžný
 uživatel s upgradem stejně nic neudělá).
 
-## 20.4 Aktualizace v UI — Docker
+## 21.4 Aktualizace v UI — Docker
 
 V **Systém → Aktualizace** klikni na **„Aktualizovat na vX.Y.Z"**.
 Aplikace zapíše flag soubor `upgrade-requested.json` **uvnitř kontejneru**
@@ -160,7 +160,7 @@ docker compose -f docker-compose.production.yml exec app rm -f storage/upgrade-r
 
 (Pokud nepoužíváš production compose, vynechej `-f docker-compose.production.yml`.)
 
-## 20.5 Migrace na single-volume layout (3.5.x → 3.6.0)
+## 21.5 Migrace na single-volume layout (3.5.x → 3.6.0)
 
 > ⚠️ **Tohle je breaking změna pro existující Docker instalace 3.5.x a starší.**
 > Default Compose layout se mění ze 3-volume (`app-log` + `app-storage` + `app-private`)
@@ -232,7 +232,7 @@ docker run --rm -v myinvoice_app-storage:/old:ro -v myinvoice_app-data:/new alpi
   sh -c "cp -a /old/. /new/storage/"
 ```
 
-## 20.6 Aktualizace v UI — nativní instalace
+## 21.6 Aktualizace v UI — nativní instalace
 
 Pro nativní deployment (sdílený hosting / VPS bez Dockeru) UI v této
 verzi (v3.0.0) zatím **neimplementuje** automatický download release
@@ -268,7 +268,7 @@ Node nemáš (typicky sdílený hosting), je nejjednodušší cesta:
 > 🛈 Phase 2 (plánováno na příští minor release) doplní automatický
 > download bundle + extrakci přímo z UI tlačítka, takže krok 1+2 odpadne.
 
-## 20.7 Co když upgrade selže
+## 21.7 Co když upgrade selže
 
 ### Docker watcher
 
@@ -299,9 +299,9 @@ cd web && pnpm install && pnpm build && cd ..
 ```
 
 Pokud `migrate.php` selhal, vrátit se nejde — musíš debugovat konkrétní
-migraci. Záloha DB je tvoje odpovědnost (kapitola **§ 14 Exporty**).
+migraci. Záloha DB je tvoje odpovědnost (kapitola **§ 16 Exporty**).
 
-## 20.8 Dohled na nové verze bez UI
+## 21.8 Dohled na nové verze bez UI
 
 Pokud nemáš administrátorský přístup do UI, ale chceš vědět, kdy je
 nová verze, můžeš pollovat veřejný endpoint:

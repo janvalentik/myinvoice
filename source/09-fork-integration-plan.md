@@ -55,7 +55,7 @@ Současný layout: horizontální topbar + admin dropdown. Po fázi 1 přejdeme 
 
 ### 3. Manuál (`manual/`)
 Stávající strukturu 01–21 + 99 zachovám, vsuvky pojmenuji s podpísmenkem (per MEMORY `project_manual_renumber.md` — full renumber je odložen). Nové soubory:
-- `09a_Prijate_faktury.md` (fáze 1)
+- `10_Prijate_faktury.md` (fáze 1; přečíslováno z `09a_` v 4.0.0)
 - `14a_Opakovane_prijate_faktury.md` (fáze 4)
 - `16a_Import_iDoklad_Fakturoid.md` (fáze 2)
 - `12a_Parovani_plateb.md` (fáze 3)
@@ -320,7 +320,7 @@ Routes v `api/src/routes.php`, všechny chráněné `AuthMiddleware` + `Supplier
 Klíče `purchase_invoice.*` (~80 klíčů: titles, statuses, document_kinds, form labels, tooltips, errors), `nav.section_purchase`, `nav.purchase_invoices`. Plně CS + EN.
 
 ### 1.6 Manuál
-`manual/09a_Prijate_faktury.md` — workflow draft→received→booked→paid, jak importovat scan, jak svázat s úhradou. Screenshoty (`manual/img/09a_*.webp`).
+`manual/10_Prijate_faktury.md` — workflow draft→received→booked→paid, jak importovat scan, jak svázat s úhradou. Screenshoty (`manual/img/09a_*.webp`).
 Update: `01_Uvod.md` (feature list), `INDEX.md`, `manual/index.php`.
 
 ### 1.7 OpenAPI

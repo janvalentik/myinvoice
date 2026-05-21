@@ -73,9 +73,9 @@ takže aktualizace je otázkou jednoho příkazu.
 > 🔔 **Upgrade přímo z UI:** od **v3.0.0** vidí admin v **Systém →
 > Aktualizace** stav verze + tlačítko *Aktualizovat*, které pull image
 > + restart spustí přes host-side watcher. Detaily včetně instalace
-> watcheru jako systemd unit / Scheduled Task → § 2.1.9 nebo § 19.4.
+> watcheru jako systemd unit / Scheduled Task → § 2.1.9 nebo § 21.4.
 > Pro denní kontrolu nové verze nezapomeň naplánovat
-> `php api/bin/cron-version-check.php` (1× denně, viz § 19.2).
+> `php api/bin/cron-version-check.php` (1× denně, viz § 21.2).
 
 > **WSL2 / Linux po klonu:** pokud `./cmd/docker-ghcr.sh` hlásí
 > `Permission denied` nebo `/usr/bin/env: 'bash\r': No such file…`,
@@ -237,7 +237,7 @@ MYINVOICE_MIGRATE_DELAY=3       # pauza mezi pokusy (sekundy)
 MYINVOICE_DATA_DIR=/data        # od v3.6.0 default v compose souborech; sjednocuje
                                 # log/, storage/, private/ a cfg.local.php pod /data
 MYINVOICE_AUTH_REQUIRE_TOTP=true # od v3.3.0 — vynutit 2FA pro všechny uživatele
-                                # (default false; viz § 18.2.4)
+                                # (default false; viz § 20.2.4)
 ```
 
 Default je `20` pokusů s pauzou `3` sekundy. Pokud proměnné nenastavíš, použije
@@ -249,7 +249,7 @@ log/, storage/, private/dkim/ **i `cfg.local.php`** — per-instance konfigurace
 z setup wizardu tak přežije image update. Viz **[2.1.5.3 Single-volume úložiště](#2153-single-volume-úložiště)** níže.
 Pokud upgraduješ z 3.5.x nebo staršího 3-volume layoutu, `cmd/docker-update.{sh,ps1}`
 detekuje starý layout a před `up -d` automaticky spustí
-`cmd/docker-migrate-volumes.{sh,ps1}` — viz [§ 20.5](20_Aktualizace.md#205-migrace-na-single-volume-layout-35x--360).
+`cmd/docker-migrate-volumes.{sh,ps1}` — viz [§ 21.5](21_Aktualizace.md#215-migrace-na-single-volume-layout-35x--360).
 
 **`cfg.docker.php` mount je nově volitelný** — image obsahuje stub `cfg.php`
 (`<?php return [];`) a vše lze předat přes ENV (12-factor). Pro full-ENV deploy
@@ -307,7 +307,7 @@ docker volume ls | grep myinvoice                           # vidíš pouze app-
 
 **Nikdy nepřepínej layout bez migrace** — aplikace by nahlížela do prázdného
 `/data` a tvářila se, že data zmizela. `cmd/docker-update.{sh,ps1}` to dělá
-automaticky před `up -d`. Detaily v § [20.5 Migrace na single-volume layout](20_Aktualizace.md#205-migrace-na-single-volume-layout-35x--360).
+automaticky před `up -d`. Detaily v § [21.5 Migrace na single-volume layout](21_Aktualizace.md#215-migrace-na-single-volume-layout-35x--360).
 
 Shrnutí: `cmd/docker-migrate-volumes.{sh,ps1}` snapshotne `cfg.local.php`
 z běžícího kontejneru, zkopíruje data ze starých volumes do nového `app-data`
@@ -323,7 +323,7 @@ docker run --rm \
   alpine tar czf /backup/myinvoice-data-$(date +%F).tar.gz -C /data .
 ```
 
-Plus dump MariaDB (viz § [19.7 Záloha a obnova](20_Aktualizace.md)) — to jsou dohromady **dvě entity** k zálohování (db + app-data).
+Plus dump MariaDB (viz § [21.7 Záloha a obnova](21_Aktualizace.md)) — to jsou dohromady **dvě entity** k zálohování (db + app-data).
 
 ### 2.1.6 Daily ops
 
@@ -494,7 +494,7 @@ Stav úlohy: `schtasks /query /tn "MyInvoice Update Watcher" /v /fo list`.
 
 Watcher jen reaguje na *kliknutí*. Aby admin **viděl**, že je dostupná
 nová verze (badge v patičce + status na `/admin/update`), musí běžet
-denní cron `cmd/cron-version-check.(sh/cmd)` — viz § 19.2.
+denní cron `cmd/cron-version-check.(sh/cmd)` — viz § 21.2.
 
 #### Plné detaily
 

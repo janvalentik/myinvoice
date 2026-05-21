@@ -1,4 +1,4 @@
-# 17. Více dodavatelů z jedné instalace
+# 18. Více dodavatelů z jedné instalace
 
 MyInvoice umožňuje fakturovat za **libovolný počet dodavatelů (firem / IČO)**
 z jedné instalace. Typické scénáře:
@@ -13,7 +13,7 @@ Data jsou **plně izolovaná** — klienti jednoho dodavatele nejsou viditelní
 pro druhého, faktury mají vlastní řadu varsymbolů, číselné cykly,
 e-mailové šablony atd.
 
-## 17.1 Jak to vidět v UI
+## 18.1 Jak to vidět v UI
 
 Po přihlášení se v horní liště zobrazí **přepínač dodavatele**:
 
@@ -28,7 +28,7 @@ Při přepnutí:
 - Pokud jsi byl na detailu / editoru entity, přesměruje na seznam (entita
   patří jinému dodavateli, neviděl bys ji)
 
-## 17.2 Přidání nového dodavatele
+## 18.2 Přidání nového dodavatele
 
 V hlavním menu **Systém → Dodavatelé**.
 
@@ -48,7 +48,7 @@ Tabulka:
 
 Tlačítko **+ Nový dodavatel** vpravo nahoře.
 
-### 17.2.1 Modal nového dodavatele
+### 18.2.1 Modal nového dodavatele
 
 ![Nový dodavatel — ARES](img/14_dodavatel_novy.webp)
 
@@ -63,7 +63,7 @@ Tlačítko **+ Nový dodavatel** vpravo nahoře.
 
 Po **Vytvořit** je dodavatel okamžitě v dropdownu, můžeš na něj přepnout.
 
-## 17.3 Co je per-dodavatel (izolované)
+## 18.3 Co je per-dodavatel (izolované)
 
 Každý dodavatel má vlastní:
 
@@ -72,14 +72,14 @@ Každý dodavatel má vlastní:
 - **Číselnou řadu varsymbolů** (každý dodavatel má samostatné `2605001`,
   `2605002`, …)
 - **Šablonu čísla faktury** — vlastní formát per typ dokladu (`{YY}{MM}{CCC}`,
-  `JD{YYYY}-{CC}`, …) + reset cyklu (rok / měsíc / nikdy) — viz § 17.5.4
+  `JD{YYYY}-{CC}`, …) + reset cyklu (rok / měsíc / nikdy) — viz § 18.5.4
 - **Výchozí nastavení** — splatnost, hodinová sazba, DPH
 - **E-mailové šablony** (faktura nová / upomínka / reset hesla)
 - **Pohoda kódy** pro export
 - **From: jméno + Reply-To** v odchozích e-mailech
 - **Statistiky** (dashboard ukazuje data jen aktuálního dodavatele)
 
-## 17.4 Co je sdílené (cross-supplier)
+## 18.4 Co je sdílené (cross-supplier)
 
 - **Uživatelé + role** — uživatel vidí všechny dodavatele
 - **Číselníky** (DPH sazby, země) — společné systémové
@@ -88,18 +88,18 @@ Každý dodavatel má vlastní:
 - **SMTP konfigurace** — globální (`From:` jméno se ale řídí per-dodavatel)
 - **Cron skripty** — projedou všechny dodavatele
 
-## 17.5 Editace dodavatele
+## 18.5 Editace dodavatele
 
 **Systém → Dodavatelé → klik na řádek → Editovat**.
 
 Záložky:
 
-### 17.5.1 Základní údaje
+### 18.5.1 Základní údaje
 
 Stejné jako při založení (IČO, název, adresa, kontakt). Změna se projeví na
 NOVÝCH fakturách. Vystavené mají vlastní snapshot.
 
-### 17.5.2 E-mail branding
+### 18.5.2 E-mail branding
 
 **From / Reply-To** se odvozuje automaticky:
 
@@ -160,7 +160,7 @@ firemní identitu, jen drobně označuje použitou platformu.
 > Docker image `ghcr.io/radekhulan/myinvoice` má `librsvg2-bin` zabalené, takže
 > SVG funguje out-of-the-box. PNG / JPG funguje vždy přes GD (built-in).
 
-### 17.5.3 Číslování faktur
+### 18.5.3 Číslování faktur
 
 V detailu dodavatele najdeš sekci **Číslování faktur** se šablonami pro každý
 typ dokladu a volbou cyklu, kdy se pořadové číslo resetuje.
@@ -209,9 +209,9 @@ s chybou „Chybí counter".
 - V editoru konceptu vidíš **placeholder** s předpokládaným číslem (preview).
 - Při Vystavení (Issue) se atomicky vezme další counter z DB a uloží jako
   immutable `varsymbol`.
-- V editoru konceptu můžeš číslo přepsat ručně — viz [§ 10.2.5](10_Faktura_editor.md#1025-číslo-dokladu--ruční-override-volitelné).
+- V editoru konceptu můžeš číslo přepsat ručně — viz [§ 11.2.5](11_Faktura_editor.md#1125-číslo-dokladu--ruční-override-volitelné).
 
-### 17.5.4 Pohoda kódy
+### 18.5.4 Pohoda kódy
 
 | Pole | Význam | Příklad |
 |---|---|---|
@@ -220,15 +220,15 @@ s chybou „Chybí counter".
 | Činnost | `pohoda_activity_code` | `100` |
 | Předkontace | `pohoda_classification_code` | `300` |
 
-Viz [15. Exporty → § 13.4.2](15_Exporty.md).
+Viz [16. Exporty → § 13.4.2](16_Exporty.md).
 
-## 17.6 Smazání dodavatele
+## 18.6 Smazání dodavatele
 
 Zatím **není v UI** — vyžaduje SQL zásah z důvodu integrity (faktury,
 klienti, zakázky). Pokud potřebuješ, kontaktuj IT — `php api/bin/reset.php
 --supplier=N` (TODO).
 
-## 17.7 X-Supplier-Id v API
+## 18.7 X-Supplier-Id v API
 
 Aktuální dodavatel se posílá v každém API requestu jako header
 `X-Supplier-Id: N`. UI ho posílá z localStorage (`myinvoice.current_supplier_id`).
@@ -238,7 +238,7 @@ dodavatel = ten z setup wizardu.
 
 Pro programátory: viz `source/04-api.md` v repu.
 
-## 17.8 Tipy
+## 18.8 Tipy
 
 - **Při založení dodavatele použij ARES** — ušetří 5 minut opisování.
 - **Nevynechej Pohoda kódy** pokud plánuješ používat Pohoda XML export.

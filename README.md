@@ -235,7 +235,7 @@ schtasks /run /tn "MyInvoice Update Watcher"
 ```
 
 Detaily, recovery při zaseknutém upgradu a odlaďování v manuálu §
-[19 Aktualizace](manual/20_Aktualizace.md).
+[21 Aktualizace](manual/21_Aktualizace.md).
 
 ### Varianta B — build z source (pro vývoj)
 
