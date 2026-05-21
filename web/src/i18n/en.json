@@ -80,6 +80,8 @@
       "without_vat": "Total without VAT",
       "vat": "VAT",
       "with_vat": "Total with VAT",
+      "rounding": "Rounding",
+      "with_vat_rounded": "Total after rounding",
       "advance_paid": "Advance paid",
       "to_pay": "Amount due"
     },
@@ -100,6 +102,7 @@
       "hint": "Fill in if paying USD invoice from CZK/EUR account. Diff is used for FX gain/loss tracking."
     },
     "actions": {
+      "new": "+ New received invoice",
       "save": "Save",
       "save_and_receive": "Save and mark received",
       "mark_received": "Mark as received",
@@ -941,6 +944,8 @@
     "revenue_by_project_table": "Revenue by project (numbers)",
     "no_project": "(no project)",
     "invoices_short": "Invoices",
+    "issued_invoices": "Issued invoices",
+    "received_invoices": "Received invoices",
     "year_invoices": "{n} invoices",
     "unpaid": "Unpaid",
     "overdue": "Overdue",

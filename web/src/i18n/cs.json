@@ -80,6 +80,8 @@
       "without_vat": "Celkem bez DPH",
       "vat": "DPH",
       "with_vat": "Celkem s DPH",
+      "rounding": "Zaokrouhlení",
+      "with_vat_rounded": "Celkem po zaokrouhlení",
       "advance_paid": "Uhrazená záloha",
       "to_pay": "K úhradě"
     },
@@ -100,6 +102,7 @@
       "hint": "Vyplň, pokud platíš USD fakturu z CZK / EUR účtu. Rozdíl se použije pro výpočet kurzové ztráty/zisku."
     },
     "actions": {
+      "new": "+ Nová přijatá faktura",
       "save": "Uložit",
       "save_and_receive": "Uložit a označit jako přijaté",
       "mark_received": "Označit jako přijaté",
@@ -941,6 +944,8 @@
     "revenue_by_project_table": "Obrat podle zakázek (čísla)",
     "no_project": "(bez zakázky)",
     "invoices_short": "Faktur",
+    "issued_invoices": "Vystavené faktury",
+    "received_invoices": "Přijaté faktury",
     "year_invoices": "{n} faktur",
     "unpaid": "Nezaplaceno",
     "overdue": "Po splatnosti",

@@ -4,6 +4,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { clientsApi, type Client } from '@/api/clients'
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
+import { purchaseInvoicesApi, type PurchaseInvoice } from '@/api/purchaseInvoices'
 import { recurringApi, type RecurringTemplate } from '@/api/recurring'
 import { formatMoney, formatDate, statusLabel, typeLabel, statusBadgeClass, isOverdue, invoiceRowClass } from '@/composables/useFormat'
 import MonthlyRevenueChart from '@/components/charts/MonthlyRevenueChart.vue'
@@ -25,6 +26,8 @@ const invoicesTotal = ref(0)
 const invoicesPage = ref(1)
 const invoicesPages = ref(1)
 const recurringTemplates = ref<RecurringTemplate[]>([])
+const purchaseInvoices = ref<PurchaseInvoice[]>([])
+const purchaseInvoicesLoading = ref(false)
 
 // Pro graf: primární měna = nejčastější v datech, fallback default
 const primaryCurrency = computed(() => {
@@ -66,21 +69,25 @@ async function load() {
   const id = Number(route.params.id)
   loading.value = true
   invoicesLoading.value = true
+  purchaseInvoicesLoading.value = true
   invoicesPage.value = 1
   try {
-    const [c, grouped, rec] = await Promise.all([
+    const [c, grouped, rec, purchaseGrouped] = await Promise.all([
       clientsApi.get(id),
       invoicesApi.listGrouped({ client_id: id, page: 1 }),
       recurringApi.list({ client_id: id }).catch(() => [] as RecurringTemplate[]),
+      purchaseInvoicesApi.listGrouped({ vendor_id: id }).catch(() => ({ data: [] as Array<{invoices: PurchaseInvoice[]}> })),
     ])
     client.value = c
     invoices.value = grouped.data.flatMap(g => g.invoices)
     invoicesTotal.value = grouped.meta.total
     invoicesPages.value = grouped.meta.pages ?? 1
     recurringTemplates.value = rec
+    purchaseInvoices.value = (purchaseGrouped.data ?? []).flatMap((g: any) => g.invoices ?? [])
   } finally {
     loading.value = false
     invoicesLoading.value = false
+    purchaseInvoicesLoading.value = false
   }
 }
 
@@ -378,10 +385,10 @@ async function deleteClient() {
       </div>
     </div>
 
-    <!-- Faktury -->
-    <div class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+    <!-- Vystavené faktury — visible pokud is_customer NEBO existují vystavené faktury -->
+    <div v-if="client.is_customer !== false || invoices.length > 0" class="bg-white border border-neutral-200 rounded-lg shadow-sm">
       <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
-        <h3 class="font-semibold">{{ t('nav.invoices') }} <span v-if="invoicesTotal" class="text-neutral-400 font-normal">({{ invoicesTotal }})</span></h3>
+        <h3 class="font-semibold">{{ t('client.issued_invoices') }} <span v-if="invoicesTotal" class="text-neutral-400 font-normal">({{ invoicesTotal }})</span></h3>
         <RouterLink :to="`/invoices/new?client_id=${client.id}`"
           class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md inline-flex items-center">
           {{ t('invoice.new') }}
@@ -465,6 +472,47 @@ async function deleteClient() {
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
         </button>
       </div>
+    </div>
+
+    <!-- Přijaté faktury — visible pokud is_vendor NEBO existují přijaté faktury -->
+    <div v-if="client.is_vendor === true || purchaseInvoices.length > 0" class="bg-white border border-neutral-200 rounded-lg shadow-sm">
+      <div class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
+        <h3 class="font-semibold">{{ t('client.received_invoices') }} <span v-if="purchaseInvoices.length" class="text-neutral-400 font-normal">({{ purchaseInvoices.length }})</span></h3>
+        <RouterLink :to="`/purchase-invoices/new`"
+          class="px-3 h-8 text-sm bg-primary-600 hover:bg-primary-700 text-white rounded-md inline-flex items-center">
+          {{ t('purchase_invoice.actions.new') }}
+        </RouterLink>
+      </div>
+      <div v-if="purchaseInvoicesLoading" class="p-8 text-center text-neutral-500 text-sm">{{ t('common.loading') }}</div>
+      <div v-else-if="!purchaseInvoices.length" class="p-8 text-center text-neutral-500 text-sm">
+        {{ t('common.no_data') }}
+      </div>
+      <div v-else class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+          <tr>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.vendor_invoice_number') }}</th>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.issue_date') }}</th>
+            <th class="text-left px-4 py-2.5 font-medium">{{ t('purchase_invoice.fields.due_date') }}</th>
+            <th class="text-right px-4 py-2.5 font-medium">{{ t('purchase_invoice.totals.with_vat') }}</th>
+            <th class="text-center px-4 py-2.5 font-medium">{{ t('invoice.status_label') }}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+          <tr v-for="pi in purchaseInvoices" :key="pi.id" class="cursor-pointer hover:bg-neutral-50"
+              @click="router.push(`/purchase-invoices/${pi.id}`)">
+            <td class="px-4 py-2.5 font-mono">{{ pi.vendor_invoice_number || `#${pi.id}` }}</td>
+            <td class="px-4 py-2.5 text-neutral-600">{{ formatDate(pi.issue_date) }}</td>
+            <td class="px-4 py-2.5 text-neutral-600">{{ formatDate(pi.due_date) }}</td>
+            <td class="px-4 py-2.5 text-right font-mono">{{ formatMoney(pi.total_with_vat, pi.currency || 'CZK') }}</td>
+            <td class="px-4 py-2.5 text-center">
+              <span class="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                :class="pi.status === 'paid' ? 'bg-success-50 text-success-600' :
+                        pi.status === 'cancelled' ? 'bg-neutral-100 text-neutral-500' :
+                        'bg-primary-50 text-primary-700'">{{ pi.status }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table></div>
     </div>
 
     <!-- Pravidelné fakturace -->

@@ -574,6 +574,14 @@ final class PurchaseInvoiceRepository
     /**
      * Update totálů z items (volá PurchaseInvoiceCalculator).
      */
+    /** Update jen rounding pole (volá AI import po extract). */
+    public function setRounding(int $id, int $supplierId, float $rounding): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE purchase_invoices SET rounding = ? WHERE id = ? AND supplier_id = ?'
+        )->execute([$rounding, $id, $supplierId]);
+    }
+
     public function updateTotals(int $id, float $withoutVat, float $vat, float $withVat, float $rounding): void
     {
         $this->db->pdo()

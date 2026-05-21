@@ -62,10 +62,12 @@ final class PurchaseInvoiceCalculator
             $updateItem->execute([$r['base'], $r['vat'], $r['with'], (int) $item['id']]);
         }
 
-        // Persist invoice totals (amount_to_pay je generated column)
+        // Persist invoice totals (amount_to_pay je generated column).
+        // POZOR: rounding NEpřepisujeme — uchová value z DB (typicky AI import extract
+        // 'total_with_vat_rounded' rozdíl, nebo manuální user edit).
         $stmt = $pdo->prepare(
             'UPDATE purchase_invoices
-                SET total_without_vat = ?, total_vat = ?, total_with_vat = ?, rounding = 0
+                SET total_without_vat = ?, total_vat = ?, total_with_vat = ?
               WHERE id = ?'
         );
         $stmt->execute([

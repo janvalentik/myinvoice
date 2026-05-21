@@ -216,6 +216,11 @@ final class AiPdfExtractor
         $id = $this->repo->createDraft($payload, $userId, $supplierId);
         $this->repo->replaceItems($id, $items);
         $this->calc->recompute($id);
+        // Apply rounding po recompute (createDraft ignoruje, recompute zachovává).
+        $rounding = (float) ($payload['rounding'] ?? 0);
+        if (abs($rounding) > 0.001) {
+            $this->repo->setRounding($id, $supplierId, $rounding);
+        }
         return $id;
     }
 
