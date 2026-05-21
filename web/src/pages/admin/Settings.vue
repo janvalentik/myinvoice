@@ -355,9 +355,13 @@ async function removeCurrency(c: CurrencyAccount) {
           </div>
         </div>
 
-        <!-- Číslování faktur — per-supplier templ + period (migrace 0014) -->
-        <div class="mt-6 pt-4 border-t border-neutral-200">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">{{ t('settings.numbering_section') }}</h3>
+      </section>
+
+      <!-- Číslování faktur — samostatný box -->
+      <section class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.numbering_section') }}</h2>
+        <div>
+          <h3 class="sr-only">{{ t('settings.numbering_section') }}</h3>
           <p class="text-xs text-neutral-500 mb-1">{{ t('settings.numbering_hint_intro') }}</p>
           <ul class="text-xs text-neutral-500 mb-3 space-y-0.5 ml-2">
             <li><code class="bg-neutral-100 px-1 rounded">{YYYY}</code> &mdash; {{ t('settings.numbering_hint_yyyy') }} <span class="text-neutral-400">(2026)</span></li>
@@ -414,9 +418,13 @@ async function removeCurrency(c: CurrencyAccount) {
           </div>
         </div>
 
-        <!-- Daňové nastavení (pro EPO výkazy DPH/KH/DPFO/DPPO) -->
-        <div class="mt-6 pt-4 border-t border-neutral-200">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">{{ t('settings.tax_section') }}</h3>
+      </section>
+
+      <!-- Daňové nastavení (EPO výkazy DPH/KH/DPFO/DPPO) — samostatný box -->
+      <section class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.tax_section') }}</h2>
+        <div>
+          <h3 class="sr-only">{{ t('settings.tax_section') }}</h3>
           <p class="text-xs text-neutral-500 mb-3">{{ t('settings.tax_hint') }}</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
@@ -485,9 +493,13 @@ async function removeCurrency(c: CurrencyAccount) {
           </div>
         </div>
 
-        <!-- Pohoda XML export config (volitelné) -->
-        <div class="mt-6 pt-4 border-t border-neutral-200">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">{{ t('settings.pohoda_section') }}</h3>
+      </section>
+
+      <!-- Pohoda XML export config (volitelné) — samostatný box -->
+      <section class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-4">{{ t('settings.pohoda_section') }}</h2>
+        <div>
+          <h3 class="sr-only">{{ t('settings.pohoda_section') }}</h3>
           <p class="text-xs text-neutral-500 mb-3">{{ t('settings.pohoda_hint') }}</p>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>

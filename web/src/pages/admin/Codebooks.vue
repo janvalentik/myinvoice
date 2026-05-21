@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { settingsApi, type VatRate, type Country, type CurrencyAccount, type Unit } from '@/api/settings'
 import { suppliersApi, type SupplierListItem, type SupplierCreatePayload } from '@/api/suppliers'
 import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategories'
+import { vatClassificationsApi, type VatClassification } from '@/api/vatClassifications'
 import { clientsApi } from '@/api/clients'
 import { useSupplierStore } from '@/stores/supplier'
 import { useAuthStore } from '@/stores/auth'
@@ -15,7 +16,7 @@ const toast = useToast()
 const supplierStore = useSupplierStore()
 const auth = useAuthStore()
 
-type Tab = 'suppliers' | 'currencies' | 'vat' | 'countries' | 'units' | 'expense_categories'
+type Tab = 'suppliers' | 'currencies' | 'vat' | 'countries' | 'units' | 'expense_categories' | 'vat_classifications'
 const tab = ref<Tab>('suppliers')
 
 const currencies = ref<CurrencyAccount[]>([])
@@ -364,8 +365,99 @@ async function removeExpense(c: ExpenseCategory) {
   }
 }
 
-// Načti při přepnutí na tab=expense_categories
-watch(tab, (newTab) => { if (newTab === 'expense_categories') loadExpenseCategories() })
+// ─── VAT classifications (kódy DPHDP3 + KH) ──────────────────────────
+const vatClassifications = ref<VatClassification[]>([])
+const vatClsDraft = reactive({
+  id: 0,
+  code: '',
+  label: '',
+  direction: 'both' as 'sale' | 'purchase' | 'both',
+  dphdp3_line: '',
+  kh_section: '',
+  vat_rate: null as number | null,
+  is_reverse_charge: false,
+  display_order: 100,
+  archived: false,
+})
+const vatClsOpen = ref(false)
+const vatClsEditMode = ref<'create' | 'edit'>('create')
+
+async function loadVatClassifications() {
+  vatClassifications.value = await vatClassificationsApi.list(undefined, true)
+}
+
+function newVatCls() {
+  Object.assign(vatClsDraft, { id: 0, code: '', label: '', direction: 'both',
+    dphdp3_line: '', kh_section: '', vat_rate: null, is_reverse_charge: false,
+    display_order: 100, archived: false })
+  vatClsEditMode.value = 'create'
+  vatClsOpen.value = true
+}
+
+function editVatCls(c: VatClassification) {
+  Object.assign(vatClsDraft, {
+    id: c.id, code: c.code, label: c.label, direction: c.direction,
+    dphdp3_line: c.dphdp3_line || '', kh_section: c.kh_section || '',
+    vat_rate: c.vat_rate, is_reverse_charge: c.is_reverse_charge,
+    display_order: c.display_order, archived: c.archived,
+  })
+  vatClsEditMode.value = 'edit'
+  vatClsOpen.value = true
+}
+
+async function saveVatCls() {
+  try {
+    if (vatClsEditMode.value === 'edit') {
+      await vatClassificationsApi.update(vatClsDraft.id, {
+        label: vatClsDraft.label,
+        direction: vatClsDraft.direction,
+        dphdp3_line: vatClsDraft.dphdp3_line || null,
+        kh_section: vatClsDraft.kh_section || null,
+        vat_rate: vatClsDraft.vat_rate,
+        is_reverse_charge: vatClsDraft.is_reverse_charge,
+        display_order: vatClsDraft.display_order,
+        archived: vatClsDraft.archived,
+      })
+    } else {
+      await vatClassificationsApi.create({
+        code: vatClsDraft.code,
+        label: vatClsDraft.label,
+        direction: vatClsDraft.direction,
+        dphdp3_line: vatClsDraft.dphdp3_line || null,
+        kh_section: vatClsDraft.kh_section || null,
+        vat_rate: vatClsDraft.vat_rate,
+        is_reverse_charge: vatClsDraft.is_reverse_charge,
+        display_order: vatClsDraft.display_order,
+      })
+    }
+    vatClsOpen.value = false
+    toast.success(t('common.saved'))
+    await loadVatClassifications()
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
+  }
+}
+
+async function removeVatCls(c: VatClassification) {
+  if (c.supplier_id === null) {
+    toast.error(t('vat_classifications.cannot_delete_global'))
+    return
+  }
+  if (!confirm(t('vat_classifications.delete_confirm', { code: c.code }))) return
+  try {
+    await vatClassificationsApi.delete(c.id)
+    toast.success(t('common.deleted'))
+    await loadVatClassifications()
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
+  }
+}
+
+// Načti při přepnutí na tab=expense_categories / vat_classifications
+watch(tab, (newTab) => {
+  if (newTab === 'expense_categories') loadExpenseCategories()
+  if (newTab === 'vat_classifications') loadVatClassifications()
+})
 </script>
 
 <template>
@@ -377,7 +469,7 @@ watch(tab, (newTab) => { if (newTab === 'expense_categories') loadExpenseCategor
 
     <!-- Tabs — Dodavatelé jako první volba (multi-tenant firmy embed do Codebooks) -->
     <div class="border-b border-neutral-200 mb-4 flex gap-1 overflow-x-auto">
-      <button v-for="tt in (['suppliers', 'currencies', 'vat', 'expense_categories', 'countries', 'units'] as const)" :key="tt"
+      <button v-for="tt in (['suppliers', 'currencies', 'vat', 'vat_classifications', 'expense_categories', 'countries', 'units'] as const)" :key="tt"
         @click="tab = tt"
         class="cursor-pointer px-4 py-2 text-sm border-b-2 transition whitespace-nowrap"
         :class="tab === tt
@@ -386,6 +478,7 @@ watch(tab, (newTab) => { if (newTab === 'expense_categories') loadExpenseCategor
         {{ tt === 'suppliers' ? t('nav.suppliers')
           : tt === 'currencies' ? t('codebooks.tab_currencies')
           : tt === 'vat' ? t('codebooks.tab_vat')
+          : tt === 'vat_classifications' ? t('codebooks.tab_vat_classifications')
           : tt === 'expense_categories' ? t('codebooks.tab_expense_categories')
           : tt === 'countries' ? t('codebooks.tab_countries')
           : t('codebooks.tab_units') }}
@@ -842,7 +935,138 @@ watch(tab, (newTab) => { if (newTab === 'expense_categories') loadExpenseCategor
       </div>
     </section>
 
+    <!-- ====== VAT CLASSIFICATIONS ====== -->
+    <section v-else-if="tab === 'vat_classifications'">
+      <div class="flex justify-between mb-3 gap-2">
+        <p class="text-sm text-neutral-500">{{ t('vat_classifications.hint') }}</p>
+        <button @click="newVatCls"
+          class="cursor-pointer h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          {{ t('vat_classifications.new') }}
+        </button>
+      </div>
+
+      <div v-if="vatClassifications.length === 0" class="bg-white border border-dashed border-neutral-300 rounded-lg p-8 text-center text-sm text-neutral-500">
+        {{ t('vat_classifications.empty') }}
+      </div>
+
+      <div v-else class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
+            <tr>
+              <th class="px-3 py-2 text-left font-medium w-20">{{ t('vat_classifications.code') }}</th>
+              <th class="px-3 py-2 text-left font-medium">{{ t('vat_classifications.label') }}</th>
+              <th class="px-3 py-2 text-center font-medium w-24">{{ t('vat_classifications.direction') }}</th>
+              <th class="px-3 py-2 text-center font-medium w-20">{{ t('vat_classifications.dphdp3_line') }}</th>
+              <th class="px-3 py-2 text-center font-medium w-20">{{ t('vat_classifications.kh_section') }}</th>
+              <th class="px-3 py-2 text-right font-medium w-16">{{ t('vat_classifications.vat_rate') }}</th>
+              <th class="px-3 py-2 w-32"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="c in vatClassifications" :key="c.id" :class="['hover:bg-neutral-50', c.archived ? 'opacity-50' : '']">
+              <td class="px-3 py-2 font-mono text-xs font-medium">
+                {{ c.code }}
+                <span v-if="c.is_reverse_charge" class="ml-1 text-xs px-1 py-0.5 rounded bg-warning-50 text-warning-600">RC</span>
+              </td>
+              <td class="px-3 py-2 text-xs">
+                {{ c.label.length > 80 ? c.label.slice(0, 80) + '…' : c.label }}
+                <span v-if="c.supplier_id === null" class="ml-2 text-xs px-1.5 py-0.5 rounded bg-primary-50 text-primary-700">{{ t('vat_classifications.global') }}</span>
+                <span v-if="c.archived" class="ml-2 text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500">{{ t('vat_classifications.archived') }}</span>
+              </td>
+              <td class="px-3 py-2 text-center text-xs">
+                <span :class="c.direction === 'sale' ? 'text-success-600' : c.direction === 'purchase' ? 'text-warning-600' : 'text-neutral-600'">
+                  {{ t('vat_classifications.direction_' + c.direction) }}
+                </span>
+              </td>
+              <td class="px-3 py-2 text-center font-mono text-xs">{{ c.dphdp3_line ?? '—' }}</td>
+              <td class="px-3 py-2 text-center font-mono text-xs">{{ c.kh_section ?? '—' }}</td>
+              <td class="px-3 py-2 text-right font-mono text-xs">{{ c.vat_rate !== null ? c.vat_rate.toFixed(0) + '%' : '—' }}</td>
+              <td class="px-3 py-2 text-right text-xs">
+                <button @click="editVatCls(c)" :disabled="c.supplier_id === null"
+                  :title="c.supplier_id === null ? t('vat_classifications.global_readonly') : t('common.edit')"
+                  class="cursor-pointer text-primary-600 hover:text-primary-700 disabled:opacity-30 disabled:cursor-not-allowed mr-3">
+                  {{ t('common.edit') }}
+                </button>
+                <button @click="removeVatCls(c)" :disabled="c.supplier_id === null"
+                  :title="c.supplier_id === null ? t('vat_classifications.global_readonly') : t('common.delete')"
+                  class="cursor-pointer text-danger-500 hover:text-danger-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                  {{ t('common.delete') }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- ====== Modals ====== -->
+
+    <!-- VAT classification modal -->
+    <div v-if="vatClsOpen" class="fixed inset-0 bg-neutral-900/40 z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl shadow-lg max-w-xl w-full p-5">
+        <h3 class="text-lg font-semibold mb-3">
+          {{ vatClsEditMode === 'edit' ? t('vat_classifications.edit_title') : t('vat_classifications.new_title') }}
+        </h3>
+        <div class="space-y-3">
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('vat_classifications.code') }} *</label>
+              <input v-model="vatClsDraft.code" type="text" maxlength="8"
+                :disabled="vatClsEditMode === 'edit'"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono disabled:bg-neutral-100" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('vat_classifications.direction') }}</label>
+              <select v-model="vatClsDraft.direction" class="w-full h-10 px-3 border border-neutral-300 rounded-md bg-white text-sm">
+                <option value="sale">{{ t('vat_classifications.direction_sale') }}</option>
+                <option value="purchase">{{ t('vat_classifications.direction_purchase') }}</option>
+                <option value="both">{{ t('vat_classifications.direction_both') }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('vat_classifications.vat_rate') }}</label>
+              <input v-model.number="vatClsDraft.vat_rate" type="number" step="0.1" placeholder="21"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('vat_classifications.label') }} *</label>
+            <input v-model="vatClsDraft.label" type="text" maxlength="150"
+              class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('vat_classifications.dphdp3_line') }}</label>
+              <input v-model="vatClsDraft.dphdp3_line" type="text" maxlength="10" placeholder="1"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('vat_classifications.kh_section') }}</label>
+              <input v-model="vatClsDraft.kh_section" type="text" maxlength="8" placeholder="A.4"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('vat_classifications.display_order') }}</label>
+              <input v-model.number="vatClsDraft.display_order" type="number" step="1"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="vatClsDraft.is_reverse_charge" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+            {{ t('vat_classifications.is_reverse_charge') }}
+          </label>
+          <label v-if="vatClsEditMode === 'edit'" class="flex items-center gap-2 text-sm">
+            <input v-model="vatClsDraft.archived" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+            {{ t('vat_classifications.archive') }}
+          </label>
+        </div>
+        <div class="flex justify-end gap-2 pt-4 mt-3 border-t border-neutral-200">
+          <button @click="vatClsOpen = false" class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">{{ t('common.cancel') }}</button>
+          <button @click="saveVatCls" class="cursor-pointer px-4 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md">{{ t('common.save') }}</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Expense category modal -->
     <div v-if="expenseOpen" class="fixed inset-0 bg-neutral-900/40 z-50 flex items-center justify-center p-4">
