@@ -145,18 +145,25 @@ final class BulkReissueAction
             $newId = (int) $pdo->lastInsertId();
 
             // Zkopíruj položky s případným inkrementem měsíce
+            // Zachovává vat_classification_code ze source položky pokud existuje,
+            // jinak auto-derive (typicky pro legacy faktury vystavené před fixem).
             $itemStmt = $pdo->prepare(
                 'INSERT INTO invoice_items
                    (invoice_id, description, quantity, unit, unit_price_without_vat,
                     vat_rate_id, vat_rate_snapshot,
-                    total_without_vat, total_vat, total_with_vat, order_index)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)'
+                    total_without_vat, total_vat, total_with_vat, order_index, vat_classification_code)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
             );
             foreach ($source['items'] as $item) {
                 $description = $incrementMonth
                     ? \MyInvoice\Service\Invoice\MonthIncrementer::increment((string) $item['description'])
                     : (string) $item['description'];
 
+                $code = $item['vat_classification_code']
+                    ?? \MyInvoice\Repository\InvoiceRepository::defaultSaleClassificationCode(
+                        (float) $item['vat_rate_snapshot'],
+                        (bool) ($source['reverse_charge'] ?? false),
+                    );
                 $itemStmt->execute([
                     $newId,
                     $description,
@@ -166,6 +173,7 @@ final class BulkReissueAction
                     $item['vat_rate_id'],
                     $item['vat_rate_snapshot'],
                     $item['order_index'],
+                    $code !== null ? (string) $code : null,
                 ]);
             }
 

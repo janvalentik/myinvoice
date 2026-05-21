@@ -452,13 +452,21 @@ final class InvoiceImportService
             'INSERT INTO invoice_items
                 (invoice_id, description, quantity, unit, unit_price_without_vat,
                  vat_rate_id, vat_rate_snapshot,
-                 total_without_vat, total_vat, total_with_vat, order_index)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)'
+                 total_without_vat, total_vat, total_with_vat, order_index, vat_classification_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
         );
+
+        // Reverse charge na parent faktuře pro správný default classification code
+        $rcStmt = $this->db->pdo()->prepare('SELECT reverse_charge FROM invoices WHERE id = ?');
+        $rcStmt->execute([$invoiceId]);
+        $rc = (bool) $rcStmt->fetchColumn();
 
         foreach (array_values($items) as $i => $item) {
             $rate = (float) ($item['vat_rate'] ?? 0);
             $vatRateId = $this->matchVatRateId($vatRates, $rate);
+            // Auto-klasifikace — bez ní by Pohoda import nedorazil do DPH/KH
+            $code = $item['vat_classification_code']
+                ?? \MyInvoice\Repository\InvoiceRepository::defaultSaleClassificationCode($rate, $rc);
             $stmt->execute([
                 $invoiceId,
                 (string) ($item['description'] ?? ''),
@@ -468,6 +476,7 @@ final class InvoiceImportService
                 $vatRateId,
                 $rate,
                 $i,
+                $code !== null ? (string) $code : null,
             ]);
         }
     }

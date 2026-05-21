@@ -444,15 +444,25 @@ final class InvoiceRepository
             'INSERT INTO invoice_items
                 (invoice_id, description, quantity, unit, unit_price_without_vat,
                  vat_rate_id, vat_rate_snapshot,
-                 total_without_vat, total_vat, total_with_vat, order_index)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)'
+                 total_without_vat, total_vat, total_with_vat, order_index, vat_classification_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
         );
 
         $vatRates = $this->loadVatRates();
 
+        // Reverse charge na parent faktuře — relevantní pro správný classification code
+        // (sale s RC je vzácné, ale lze; pro EU dodávky je RC=0 ale klasifikace jiná —
+        // tu si user nastaví ručně, default je tuzemsko).
+        $rcStmt = $pdo->prepare('SELECT reverse_charge FROM invoices WHERE id = ?');
+        $rcStmt->execute([$invoiceId]);
+        $reverseCharge = (bool) $rcStmt->fetchColumn();
+
         foreach (array_values($items) as $i => $item) {
             $vatRateId = (int) ($item['vat_rate_id'] ?? 0);
             $rate = $vatRates[$vatRateId] ?? 0.0;
+            // Auto-klasifikace pro DPH přiznání / KH — bez ní by faktura nedorazila
+            // do výkazů (VatClassificationMapper SKIPNE řádky s code=NULL).
+            $code = $item['vat_classification_code'] ?? self::defaultSaleClassificationCode($rate, $reverseCharge);
             $stmt->execute([
                 $invoiceId,
                 (string) ($item['description'] ?? ''),
@@ -462,8 +472,28 @@ final class InvoiceRepository
                 $vatRateId,
                 $rate,
                 (int) ($item['order_index'] ?? $i),
+                $code !== null ? (string) $code : null,
             ]);
         }
+    }
+
+    /**
+     * Default vat_classification_code podle sazby + RC pro VYSTAVENÉ faktury.
+     *
+     * Mapování (sale direction, tuzemsko — nejčastější CZ scénář):
+     *   21% → '1' (Dodání zboží/služby tuzemsko — základní)
+     *   12% → '2' (Dodání zboží/služby tuzemsko — snížená)
+     *   0%  → '3' (Dodání tuzemsko osvobozeno)
+     *
+     * Pro dodávky do EU (kódy 20, 22) / vývoz (26) si user musí kód změnit
+     * ručně v UI — default je tuzemsko (nejčastější případ).
+     */
+    public static function defaultSaleClassificationCode(float $rate, bool $reverseCharge): ?string
+    {
+        $r = (int) round($rate);
+        if ($r >= 21) return '1';
+        if ($r >= 5 && $r <= 15) return '2';
+        return '3';
     }
 
     private function loadVatRates(): array

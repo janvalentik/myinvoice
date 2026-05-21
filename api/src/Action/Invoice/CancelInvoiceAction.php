@@ -153,15 +153,21 @@ final class CancelInvoiceAction
             ]);
             $creditNoteId = (int) $pdo->lastInsertId();
 
-            // Zkopíruj položky se zápornými quantities
+            // Zkopíruj položky se zápornými quantities — zachovává vat_classification_code
+            // (dobropis má jít na stejné DPH řádky jako originální faktura, ale se zápornými hodnotami)
             $itemStmt = $pdo->prepare(
                 'INSERT INTO invoice_items
                    (invoice_id, description, quantity, unit, unit_price_without_vat,
                     vat_rate_id, vat_rate_snapshot,
-                    total_without_vat, total_vat, total_with_vat, order_index)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)'
+                    total_without_vat, total_vat, total_with_vat, order_index, vat_classification_code)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
             );
             foreach ($invoice['items'] as $item) {
+                $code = $item['vat_classification_code']
+                    ?? \MyInvoice\Repository\InvoiceRepository::defaultSaleClassificationCode(
+                        (float) $item['vat_rate_snapshot'],
+                        (bool) ($invoice['reverse_charge'] ?? false),
+                    );
                 $itemStmt->execute([
                     $creditNoteId,
                     $item['description'],
@@ -171,6 +177,7 @@ final class CancelInvoiceAction
                     $item['vat_rate_id'],
                     $item['vat_rate_snapshot'],
                     $item['order_index'],
+                    $code !== null ? (string) $code : null,
                 ]);
             }
 
