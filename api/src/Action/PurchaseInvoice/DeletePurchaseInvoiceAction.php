@@ -6,6 +6,7 @@ namespace MyInvoice\Action\PurchaseInvoice;
 
 use MyInvoice\Http\Json;
 use MyInvoice\Http\SupplierGuard;
+use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Middleware\AuthMiddleware;
 use MyInvoice\Repository\PurchaseInvoiceRepository;
 use MyInvoice\Service\ActivityLogger;
@@ -25,6 +26,7 @@ final class DeletePurchaseInvoiceAction
         private readonly PurchaseInvoiceRepository $repo,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly Config $config,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -49,13 +51,61 @@ final class DeletePurchaseInvoiceAction
             );
         }
 
+        // Před DB delete uchovat info o PDF (k orphan cleanup)
+        $pdfPath = (string) ($existing['pdf_path'] ?? '');
+        $pdfHash = (string) ($existing['pdf_hash'] ?? '');
+
         $this->repo->delete($id, $supplierId);
+
+        // Orphan PDF cleanup — pokud žádná jiná faktura tenanta nemá stejný hash,
+        // smaž soubor (s realpath check pro path traversal).
+        $pdfDeleted = false;
+        if ($pdfPath !== '' && $pdfHash !== '') {
+            $stillUsed = $this->repo->findIdByPdfHash($supplierId, $pdfHash);
+            if ($stillUsed === null) {
+                $pdfDeleted = $this->safeUnlinkPdf($supplierId, $pdfPath);
+            }
+        }
 
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('purchase_invoice.deleted', $user['id'] ?? null, 'purchase_invoice', $id,
-            ['varsymbol' => $existing['varsymbol'] ?? null], $ip, $request->getHeaderLine('User-Agent'));
+            [
+                'varsymbol'   => $existing['varsymbol'] ?? null,
+                'pdf_deleted' => $pdfDeleted,
+                'pdf_hash'    => $pdfHash !== '' ? substr($pdfHash, 0, 12) . '…' : null,
+            ],
+            $ip, $request->getHeaderLine('User-Agent'),
+        );
 
-        return Json::ok($response, ['ok' => true]);
+        return Json::ok($response, ['ok' => true, 'pdf_deleted' => $pdfDeleted]);
+    }
+
+    /**
+     * Smaže PDF soubor s realpath check vůči archive root (path traversal guard).
+     */
+    private function safeUnlinkPdf(int $supplierId, string $relativePath): bool
+    {
+        $archiveRoot = (string) $this->config->get('purchase_invoice.archive_storage', '');
+        if ($archiveRoot === '') {
+            $storageBase = (string) $this->config->get('storage.uploads_dir', '');
+            $archiveRoot = $storageBase !== ''
+                ? dirname($storageBase) . '/purchase-invoices'
+                : __DIR__ . '/../../../../storage/purchase-invoices';
+        }
+        $fullPath = $archiveRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativePath);
+        $archiveRootReal = realpath($archiveRoot);
+        $fullPathReal = realpath($fullPath);
+        if ($archiveRootReal === false || $fullPathReal === false || !is_file($fullPathReal)) {
+            return false;
+        }
+        // Windows is case-insensitive, normalize obě strany na lowercase
+        $isWindows = DIRECTORY_SEPARATOR === '\\';
+        $haystack = ($isWindows ? strtolower($fullPathReal) : $fullPathReal);
+        $needle   = ($isWindows ? strtolower($archiveRootReal) : $archiveRootReal) . DIRECTORY_SEPARATOR;
+        if (!str_starts_with($haystack, $needle)) {
+            return false; // mimo archive root — path traversal attempt, refuse
+        }
+        return @unlink($fullPathReal);
     }
 }

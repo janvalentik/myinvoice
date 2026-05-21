@@ -204,6 +204,11 @@ onMounted(async () => {
       const czk = currencies.value.find(c => c.code === 'CZK')
       if (czk) form.value.currency_id = czk.id
     }
+    // Pre-fill vendor_id z ?vendor_id= (např. klik 'Nová přijatá faktura' v clientDetail)
+    const qVendor = Number(route.query.vendor_id)
+    if (!isNaN(qVendor) && qVendor > 0) {
+      form.value.vendor_id = qVendor
+    }
     // Default první prázdná položka pro nový draft (user feedback: UX, méně klikání)
     if (form.value.items.length === 0) {
       addItem()
