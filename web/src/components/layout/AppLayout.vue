@@ -29,6 +29,8 @@ interface NavItem {
   to: string
   label: string
   icon: string
+  /** True = externí odkaz (otevře se v novém tabu, ne RouterLink). Např. /manual. */
+  external?: boolean
 }
 interface NavSection {
   /** Hlavička sekce; pokud chybí, položky jsou bez visual grouping */
@@ -112,6 +114,14 @@ const navSections = computed<NavSection[]>(() => {
       ],
     })
   }
+
+  // Nápověda jako poslední (po Systému) — externí link na manuál v novém tabu.
+  sections.push({
+    items: [
+      { to: '/manual', label: t('nav.help'), icon: ICONS.help, external: true },
+    ],
+  })
+
   return sections
 })
 
@@ -271,21 +281,37 @@ onMounted(async () => {
               :class="si === 0 ? 'pt-2' : 'pt-5'"
             >{{ section.title }}</div>
 
-            <!-- Items -->
-            <RouterLink
-              v-for="item in section.items"
-              :key="item.to"
-              :to="item.to"
-              class="flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm transition-colors leading-tight"
-              :class="isActive(item.to)
-                ? 'bg-primary-50 text-primary-700 font-medium'
-                : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
-            >
-              <svg class="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
-              </svg>
-              {{ item.label }}
-            </RouterLink>
+            <!-- Items: external (např. Nápověda → /manual v novém tabu) vs internal route -->
+            <template v-for="item in section.items" :key="item.to">
+              <a
+                v-if="item.external"
+                :href="item.to"
+                target="_blank"
+                rel="noopener"
+                class="flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm transition-colors leading-tight text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100"
+              >
+                <svg class="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
+                </svg>
+                {{ item.label }}
+                <svg class="w-3 h-3 ml-auto text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+              </a>
+              <RouterLink
+                v-else
+                :to="item.to"
+                class="flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm transition-colors leading-tight"
+                :class="isActive(item.to)
+                  ? 'bg-primary-50 text-primary-700 font-medium'
+                  : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
+              >
+                <svg class="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
+                </svg>
+                {{ item.label }}
+              </RouterLink>
+            </template>
           </template>
         </nav>
 

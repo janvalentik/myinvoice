@@ -106,6 +106,8 @@
       "mark_booked": "Označit jako zaúčtované",
       "mark_paid": "Označit jako uhrazené",
       "mark_cancelled": "Stornovat",
+      "unmark_paid": "Odznačit zaplaceno",
+      "uncancel": "Vrátit ze storna",
       "cancel": "Stornovat",
       "delete": "Smazat",
       "edit": "Upravit",
@@ -194,6 +196,17 @@
       "date_invalid": "Neplatné datum.",
       "currency_required": "Vyber měnu faktury.",
       "items_required": "Přidej alespoň jednu položku."
+    },
+    "bulk": {
+      "mark_booked": "Označit zaúčtováno ({n})",
+      "mark_paid": "Označit zaplaceno ({n})",
+      "cancel": "Stornovat ({n})",
+      "delete": "Smazat koncepty ({n})",
+      "confirm_cancel": "Stornovat {n} faktur? Tuto akci nelze vrátit.",
+      "confirm_delete": "Smazat {n} konceptů? Akce je nevratná.",
+      "success": "Provedeno {n} faktur.",
+      "delete_success": "Smazáno {n} konceptů.",
+      "partial": "Provedeno {ok}, chyby: {fail}"
     }
   },
   "vendor": {
@@ -418,7 +431,7 @@
     "actions": "Akce", "detail": "Detail", "archive": "Archivovat", "restore": "Obnovit",
     "all": "Všechny", "filter": "Filtrovat", "export": "Export", "preview": "Náhled", "view": "Zobrazit",
     "send": "Odeslat", "download": "Stáhnout", "confirm": "Potvrdit", "close": "Zavřít",
-    "of": "z", "from": "Od", "to": "Do", "ok": "OK", "saving": "Ukládám…",
+    "of": "z", "from": "Od", "to": "Do", "ok": "OK", "saving": "Ukládám…", "select_all": "Vybrat vše",
     "deleting": "Mažu…", "saved": "Uloženo.", "deleted": "Smazáno.",
     "remove": "Odebrat", "refresh": "Obnovit",
     "warning": "Pozor", "error": "Chyba", "success": "Hotovo",

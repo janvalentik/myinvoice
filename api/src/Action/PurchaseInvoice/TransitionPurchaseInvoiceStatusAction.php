@@ -30,11 +30,16 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 final class TransitionPurchaseInvoiceStatusAction
 {
     private const TRANSITIONS = [
+        // Forward flow (typical lifecycle): draft → received → booked → paid
         'draft'    => ['received', 'cancelled'],
         'received' => ['booked', 'paid', 'cancelled'],
         'booked'   => ['paid', 'cancelled'],
-        'paid'     => [],
-        'cancelled' => [],
+        // Reverse / corrective flows — user občas potřebuje opravit:
+        //   paid → received   = unmark paid (omylem označeno)
+        //   paid → cancelled  = storno už uhrazené faktury
+        //   cancelled → received = un-cancel (vrátit do hry)
+        'paid'      => ['received', 'cancelled'],
+        'cancelled' => ['received'],
     ];
 
     public function __construct(

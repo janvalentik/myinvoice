@@ -501,6 +501,11 @@ final class PurchaseInvoiceRepository
             $params[] = $paidDate ?? date('Y-m-d');
         } elseif ($newStatus === 'cancelled') {
             $sets[] = 'cancelled_at = NOW()';
+        } elseif ($newStatus === 'received') {
+            // Reverse transition (paid→received / cancelled→received) — vyčisti timestamp
+            // odpovídajícího "exit" stavu, aby data byla konzistentní.
+            $sets[] = 'paid_at = NULL';
+            $sets[] = 'cancelled_at = NULL';
         }
 
         $params[] = $id;

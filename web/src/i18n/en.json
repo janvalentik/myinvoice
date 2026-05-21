@@ -106,6 +106,8 @@
       "mark_booked": "Mark as booked",
       "mark_paid": "Mark as paid",
       "mark_cancelled": "Cancel",
+      "unmark_paid": "Unmark paid",
+      "uncancel": "Restore from cancelled",
       "cancel": "Cancel",
       "delete": "Delete",
       "edit": "Edit",
@@ -194,6 +196,17 @@
       "date_invalid": "Invalid date.",
       "currency_required": "Select invoice currency.",
       "items_required": "Add at least one item."
+    },
+    "bulk": {
+      "mark_booked": "Mark booked ({n})",
+      "mark_paid": "Mark paid ({n})",
+      "cancel": "Cancel ({n})",
+      "delete": "Delete drafts ({n})",
+      "confirm_cancel": "Cancel {n} invoices? This cannot be undone.",
+      "confirm_delete": "Delete {n} drafts? Action is irreversible.",
+      "success": "{n} invoices processed.",
+      "delete_success": "{n} drafts deleted.",
+      "partial": "Done {ok}, errors: {fail}"
     }
   },
   "vendor": {
@@ -418,7 +431,7 @@
     "actions": "Actions", "detail": "Detail", "archive": "Archive", "restore": "Restore",
     "all": "All", "filter": "Filter", "export": "Export", "preview": "Preview", "view": "View",
     "send": "Send", "download": "Download", "confirm": "Confirm", "close": "Close",
-    "of": "of", "from": "From", "to": "To", "ok": "OK", "saving": "Saving…",
+    "of": "of", "from": "From", "to": "To", "ok": "OK", "saving": "Saving…", "select_all": "Select all",
     "deleting": "Deleting…", "saved": "Saved.", "deleted": "Deleted.",
     "remove": "Remove", "refresh": "Refresh",
     "warning": "Warning", "error": "Error", "success": "Done",

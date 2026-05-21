@@ -68,19 +68,33 @@ const statusBadgeClass = (s: PurchaseInvoiceStatus): string => ({
   cancelled: 'bg-danger-50 text-danger-500 border border-danger-500/40',
 }[s])
 
-// Allowed transitions per status (sync s backend state machine)
+// Allowed transitions per status — sync s backend (TransitionPurchaseInvoiceStatusAction)
 const allowedTransitions = computed<PurchaseInvoiceStatus[]>(() => {
   if (!invoice.value) return []
   switch (invoice.value.status) {
-    case 'draft':    return ['received', 'cancelled']
-    case 'received': return ['booked', 'paid', 'cancelled']
-    case 'booked':   return ['paid', 'cancelled']
-    default:         return []
+    case 'draft':     return ['received', 'cancelled']
+    case 'received':  return ['booked', 'paid', 'cancelled']
+    case 'booked':    return ['paid', 'cancelled']
+    case 'paid':      return ['received', 'cancelled']   // unmark paid / storno už uhrazené
+    case 'cancelled': return ['received']                  // un-cancel
+    default:          return []
   }
 })
 
 const canEdit = computed(() => invoice.value?.status === 'draft')
 const canDelete = computed(() => invoice.value?.status === 'draft')
+
+/**
+ * Context-aware label pro transition tlačítko.
+ * Pro reverse transitions (paid→received, cancelled→received) labelovat výmluvněji
+ * než generic "Označit jako přijaté".
+ */
+function transitionLabel(target: PurchaseInvoiceStatus): string {
+  const from = invoice.value?.status
+  if (target === 'received' && from === 'paid')      return t('purchase_invoice.actions.unmark_paid')
+  if (target === 'received' && from === 'cancelled') return t('purchase_invoice.actions.uncancel')
+  return t(`purchase_invoice.actions.mark_${target}`)
+}
 </script>
 
 <template>
@@ -118,17 +132,26 @@ const canDelete = computed(() => invoice.value?.status === 'draft')
           {{ t('purchase_invoice.pdf.download') }}
         </a>
         <template v-for="target in allowedTransitions" :key="target">
-          <button v-if="target !== 'cancelled'" type="button" @click="transition(target)" :disabled="acting"
+          <!-- Reverse: paid→received (unmark paid) NEBO cancelled→received (un-cancel) — neutral styl -->
+          <button v-if="target === 'received' && (invoice.status === 'paid' || invoice.status === 'cancelled')"
+            type="button" @click="transition('received')" :disabled="acting"
+            class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-md inline-flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 0 1 8 8v2M3 10l6 6m-6-6l6-6"/></svg>
+            {{ transitionLabel('received') }}
+          </button>
+          <!-- Cancel: danger styl -->
+          <button v-else-if="target === 'cancelled'" type="button" @click="transition('cancelled')" :disabled="acting"
+            class="cursor-pointer px-3 h-9 text-sm border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md inline-flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            {{ t('purchase_invoice.actions.mark_cancelled') }}
+          </button>
+          <!-- Forward transitions — primary -->
+          <button v-else type="button" @click="transition(target)" :disabled="acting"
             class="cursor-pointer px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md inline-flex items-center gap-1.5">
             <svg v-if="target === 'paid'" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
             <svg v-else-if="target === 'received'" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
             <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2"/></svg>
-            {{ t(`purchase_invoice.actions.mark_${target}`) }}
-          </button>
-          <button v-else type="button" @click="transition('cancelled')" :disabled="acting"
-            class="cursor-pointer px-3 h-9 text-sm border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md inline-flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            {{ t('purchase_invoice.actions.mark_cancelled') }}
+            {{ transitionLabel(target) }}
           </button>
         </template>
         <button v-if="canDelete" type="button" @click="remove"
