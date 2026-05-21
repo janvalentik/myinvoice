@@ -32,6 +32,7 @@ final class DphPriznaniAction
         private readonly Connection $db,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly \MyInvoice\Service\Report\TaxSubmissionArchiver $archiver,
     ) {}
 
     /**
@@ -125,11 +126,21 @@ final class DphPriznaniAction
 
         $userId = (int) ($user['id'] ?? 0);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+
+        // Archivovat + XSD validation
+        $isQuarterly = ($result['summary']['period_type'] ?? 'monthly') === 'quarterly';
+        $archived = $this->archiver->archive(
+            $supplierId, 'dphdp3', $year,
+            $isQuarterly ? null : $month,
+            $isQuarterly ? (int) ceil($month / 3) : null,
+            $result['xml'], $result['summary'], $userId ?: null,
+        );
+
         $this->logger->log('report.dphdp3_downloaded', $userId, null, null, [
             'period'            => sprintf('%04d-%02d', $year, $month),
             'period_type'       => $result['summary']['period_type'] ?? 'monthly',
-            'total_vat_output'  => $result['summary']['total_vat_output'] ?? 0,
-            'total_vat_input'   => $result['summary']['total_vat_input']  ?? 0,
+            'submission_id'     => $archived['submission_id'],
+            'validation_status' => $archived['validation_status'],
         ], $ip, $request->getHeaderLine('User-Agent'));
 
         $filename = sprintf('dphdp3-%04d-%02d.xml', $year, $month);

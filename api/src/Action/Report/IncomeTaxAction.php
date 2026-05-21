@@ -24,6 +24,7 @@ final class IncomeTaxAction
         private readonly IncomeTaxBuilder $builder,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly \MyInvoice\Service\Report\TaxSubmissionArchiver $archiver,
     ) {}
 
     public function preview(Request $request, Response $response): Response
@@ -63,11 +64,17 @@ final class IncomeTaxAction
         }
         $userId = (int) ($user['id'] ?? 0);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+        $code = $type === 'fo' ? 'dpfdp5' : 'dppdp9';
+        $archived = $this->archiver->archive(
+            $supplierId, $code, $year, null, null,
+            $result['xml'], $result['summary'], $userId ?: null,
+        );
         $this->logger->log('report.income_tax_downloaded', $userId, null, null, [
             'year' => $year, 'type' => $type,
+            'submission_id' => $archived['submission_id'],
+            'validation_status' => $archived['validation_status'],
         ], $ip, $request->getHeaderLine('User-Agent'));
 
-        $code = $type === 'fo' ? 'dpfdp5' : 'dppdp9';
         $filename = sprintf('%s-%04d.xml', $code, $year);
         $response->getBody()->write($result['xml']);
         return $response

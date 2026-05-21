@@ -333,6 +333,11 @@ final class Routes
         // Daň z příjmů FO/PO (MVP foundation — kostra XML s warning)
         $app->get    ('/api/reports/income-tax/preview', [IncomeTaxAction::class, 'preview']);
         $app->get    ('/api/reports/income-tax',         [IncomeTaxAction::class, 'download']);
+        // Tax submission archive (historie všech generovaných EPO XML)
+        $app->get    ('/api/reports/submissions',                 [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'list']);
+        $app->get    ('/api/reports/submissions/{id:[0-9]+}',     [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'detail']);
+        $app->get    ('/api/reports/submissions/{id:[0-9]+}/xml', [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'downloadXml']);
+        $app->delete ('/api/reports/submissions/{id:[0-9]+}',     [\MyInvoice\Action\Report\TaxSubmissionAction::class, 'delete']);
 
         $app->get    ('/api/admin/imports/{id:[0-9]+}',         ImportJobStatusAction::class);
         $app->post   ('/api/admin/imports/{id:[0-9]+}/cancel',  CancelImportJobAction::class);

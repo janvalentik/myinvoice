@@ -24,6 +24,7 @@ final class SouhrnneHlaseniAction
         private readonly SouhrnneHlaseniBuilder $builder,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly \MyInvoice\Service\Report\TaxSubmissionArchiver $archiver,
     ) {}
 
     public function preview(Request $request, Response $response): Response
@@ -63,9 +64,15 @@ final class SouhrnneHlaseniAction
         }
         $userId = (int) ($user['id'] ?? 0);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+        $archived = $this->archiver->archive(
+            $supplierId, 'dphshv', $year, $month, null,
+            $result['xml'], $result['summary'], $userId ?: null,
+        );
         $this->logger->log('report.dphshv_downloaded', $userId, null, null, [
             'period' => sprintf('%04d-%02d', $year, $month),
             'rows'   => $result['summary']['rows_count'] ?? 0,
+            'submission_id' => $archived['submission_id'],
+            'validation_status' => $archived['validation_status'],
         ], $ip, $request->getHeaderLine('User-Agent'));
 
         $filename = sprintf('dphshv-%04d-%02d.xml', $year, $month);

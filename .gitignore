@@ -32,3 +32,8 @@ desktop.ini
 # IDE
 .idea/
 
+
+# XSD schémata MFČR (volitelné — viz storage/xsd/README.md)
+storage/xsd/*.xsd
+storage/mpdf-temp/*
+!storage/mpdf-temp/.gitkeep
