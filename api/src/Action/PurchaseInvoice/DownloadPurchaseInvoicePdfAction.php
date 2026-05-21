@@ -102,12 +102,25 @@ final class DownloadPurchaseInvoicePdfAction
         $inline = !empty($request->getQueryParams()['inline']);
         $disposition = ($inline ? 'inline' : 'attachment') . '; filename="' . $downloadName . '"';
 
-        return $response
+        $resp = $response
             ->withHeader('Content-Type', 'application/pdf')
             ->withHeader('Content-Length', (string) $size)
             ->withHeader('Content-Disposition', $disposition)
             ->withHeader('Cache-Control', 'private, no-store')
             ->withHeader('X-Content-Type-Options', 'nosniff');
+
+        // CSP override pro inline mode — globální .htaccess/web.config nastavuje
+        // `frame-ancestors 'none'` (anti-clickjacking). To by zakázalo embed PDF do
+        // iframe v naší vlastní SPA. Override per-response na `'self'` umožňuje
+        // embed jen z naší origin. X-Frame-Options jako fallback pro starší
+        // browsery (před CSP3).
+        if ($inline) {
+            $resp = $resp
+                ->withHeader('Content-Security-Policy', "frame-ancestors 'self'")
+                ->withHeader('X-Frame-Options', 'SAMEORIGIN');
+        }
+
+        return $resp;
     }
 
     private function resolveArchiveRoot(): string
