@@ -161,7 +161,7 @@ function openClient(c: Client) {
             <th class="text-left px-4 py-2.5 font-medium">{{ t('common.ic') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('client.email') }}</th>
             <th class="text-center px-4 py-2.5 font-medium">{{ t('nav.projects') }}</th>
-            <th class="text-right px-4 py-2.5 font-medium">{{ t('common.revenue') }}</th>
+            <th class="text-right px-4 py-2.5 font-medium">{{ roleFilter === 'vendors' ? t('common.costs') : t('common.revenue') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('common.last_activity') }}</th>
             <th class="text-center px-4 py-2.5 font-medium">{{ t('common.currency') }}</th>
           </tr>
@@ -193,12 +193,24 @@ function openClient(c: Client) {
               <span v-else class="text-neutral-300">—</span>
             </td>
             <td class="px-4 py-3 text-right font-mono">
-              <span v-if="c.revenue && c.revenue > 0">{{ formatMoney(c.revenue, c.currency_default) }}</span>
-              <span v-else class="text-neutral-300">—</span>
+              <template v-if="roleFilter === 'vendors'">
+                <span v-if="c.costs && c.costs > 0">{{ formatMoney(c.costs, c.currency_default) }}</span>
+                <span v-else class="text-neutral-300">—</span>
+              </template>
+              <template v-else>
+                <span v-if="c.revenue && c.revenue > 0">{{ formatMoney(c.revenue, c.currency_default) }}</span>
+                <span v-else class="text-neutral-300">—</span>
+              </template>
             </td>
             <td class="px-4 py-3 text-neutral-600 text-xs">
-              <span v-if="c.last_invoice_date">{{ formatDate(c.last_invoice_date) }}</span>
-              <span v-else class="text-neutral-300">—</span>
+              <template v-if="roleFilter === 'vendors'">
+                <span v-if="c.last_purchase_date">{{ formatDate(c.last_purchase_date) }}</span>
+                <span v-else class="text-neutral-300">—</span>
+              </template>
+              <template v-else>
+                <span v-if="c.last_invoice_date">{{ formatDate(c.last_invoice_date) }}</span>
+                <span v-else class="text-neutral-300">—</span>
+              </template>
             </td>
             <td class="px-4 py-3 text-center text-neutral-600 font-mono text-xs">{{ c.currency_default }}</td>
           </tr>
@@ -216,8 +228,14 @@ function openClient(c: Client) {
           <div class="flex items-baseline justify-between gap-2">
             <div class="font-medium text-neutral-900 truncate">{{ c.company_name }}</div>
             <div class="font-mono text-sm whitespace-nowrap">
-              <span v-if="c.revenue && c.revenue > 0">{{ formatMoney(c.revenue, c.currency_default) }}</span>
-              <span v-else class="text-neutral-300">—</span>
+              <template v-if="roleFilter === 'vendors'">
+                <span v-if="c.costs && c.costs > 0">{{ formatMoney(c.costs, c.currency_default) }}</span>
+                <span v-else class="text-neutral-300">—</span>
+              </template>
+              <template v-else>
+                <span v-if="c.revenue && c.revenue > 0">{{ formatMoney(c.revenue, c.currency_default) }}</span>
+                <span v-else class="text-neutral-300">—</span>
+              </template>
             </div>
           </div>
           <div v-if="c.archived_at" class="text-xs text-neutral-400 mt-0.5">{{ t('common.archived') }}</div>

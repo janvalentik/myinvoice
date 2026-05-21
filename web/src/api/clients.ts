@@ -32,8 +32,11 @@ export interface Client {
   revenue_by_year?:  Array<{ year: number; currency: string; total: number; count: number }>
   revenue_by_project?: Array<{ project_id: number | null; project_name: string | null; currency: string; total: number; count: number }>
   unpaid_summary?:   Array<{ currency: string; unpaid_total: number; unpaid_count: number; overdue_total: number; overdue_count: number }>
-  // Cache stats z client_revenue_cache (per c.currency_default)
+  // Cache stats z client_revenue_cache (per c.currency_default) + live computed costs
   revenue?: number
+  costs?: number
+  purchase_count?: number
+  last_purchase_date?: string | null
   last_invoice_date?: string | null
   invoice_count?: number
   created_at?: string

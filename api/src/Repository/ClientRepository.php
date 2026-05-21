@@ -74,16 +74,32 @@ final class ClientRepository
                        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status = 'active' AND p.archived_at IS NULL) AS active_projects_count,
                        COALESCE(crc.revenue, 0) AS revenue,
                        crc.last_invoice_date,
-                       COALESCE(crc.invoice_count, 0) AS invoice_count
+                       COALESCE(crc.invoice_count, 0) AS invoice_count,
+                       COALESCE(pi_agg.costs, 0) AS costs,
+                       COALESCE(pi_agg.purchase_count, 0) AS purchase_count,
+                       pi_agg.last_purchase_date
                   FROM clients c
                   JOIN countries  co  ON co.id  = c.country_id
                   JOIN currencies cur ON cur.id = c.currency_default_id
              LEFT JOIN client_revenue_cache crc ON crc.client_id = c.id AND crc.currency_id = c.currency_default_id
+             LEFT JOIN (
+                       SELECT pi.vendor_id,
+                              SUM(pi.total_with_vat) AS costs,
+                              COUNT(*) AS purchase_count,
+                              MAX(pi.issue_date) AS last_purchase_date
+                         FROM purchase_invoices pi
+                        WHERE pi.supplier_id = ?
+                          AND pi.status NOT IN ('draft', 'cancelled')
+                     GROUP BY pi.vendor_id
+                   ) pi_agg ON pi_agg.vendor_id = c.id
                  WHERE $whereSql
                  ORDER BY $orderBy
                  LIMIT ? OFFSET ?";
         $stmt = $this->db->pdo()->prepare($sql);
         $idx = 1;
+        // supplier_id pro pi_agg subquery (purchase costs) — bind PŘED whereSql params,
+        // protože subquery v FROM clauseu je evaluated jako první v SQL parser order.
+        $stmt->bindValue($idx++, (int) ($filters['supplier_id'] ?? 0), PDO::PARAM_INT);
         foreach ($params as $v) {
             $stmt->bindValue($idx++, $v);
         }
@@ -342,6 +358,9 @@ final class ClientRepository
             $row['hourly_rate'] = (float) $row['hourly_rate'];
         }
         if (array_key_exists('revenue', $row))           $row['revenue'] = (float) $row['revenue'];
+        if (array_key_exists('costs', $row))             $row['costs'] = (float) $row['costs'];
+        if (array_key_exists('purchase_count', $row))    $row['purchase_count'] = (int) $row['purchase_count'];
+        if (array_key_exists('last_purchase_date', $row)) $row['last_purchase_date'] = $row['last_purchase_date'] ?: null;
         if (array_key_exists('last_invoice_date', $row)) $row['last_invoice_date'] = $row['last_invoice_date'] ?: null;
         if (array_key_exists('invoice_count', $row))     $row['invoice_count'] = (int) $row['invoice_count'];
         return $row;
