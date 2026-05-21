@@ -7,6 +7,204 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] — 2026-05-22
+
+Major release. Z fakturačního systému se MyInvoice stává plnohodnotnou
+**fakturační + účetní platformou**: vystavené i přijaté faktury, AI extrakce
+PDF, CRM dashboard, výkazy DPH a daň z příjmů, public REST API v1.
+
+### Added
+
+#### Přijaté faktury (nákupy)
+- **Kompletní lifecycle přijatých faktur** — status `draft → received → booked
+  → paid` (+ cancelled), barevné badges, hromadné akce (*Označit jako přijaté*,
+  *Zaúčtovat*, *Označit zaplacené*, *Stornovat*, *Smazat*).
+- **Dodavatelé** jako role v `clients` (`is_vendor=1`) — jeden řádek může být
+  zároveň klient (K) i dodavatel (D). Filtr `/clients?role=vendors` se
+  sloupcem *Počet faktur*, badge K+D pro dual-role firmy.
+- **Multi-currency** — faktura v USD, platba v CZK, kurz ČNB k DUZP +
+  tracking `exchange_diff_base` (kurzový zisk/ztráta). Vendor costs sumace
+  přepočítává EUR/USD/... na CZK přes `pi.exchange_rate`.
+- **PDF archiv** se SHA-256 dedupe, force-delete pro admina s orphan PDF
+  cleanup, Windows case-insensitive path-traversal guard.
+- **Export Pohoda XML / ISDOC ZIP / PDF ZIP** analogicky vystaveným fakturám
+  (s XML attribute sanitization + ZIP streaming pro DoS mitigation).
+- **Editovatelné rounding** v editoru, snapshot dodavatele do `vendor_snapshot`
+  JSON, pagination (load-more pattern) v seznamu.
+- **Auto-klasifikace** `vat_classification_code` per item podle sazby + RC
+  v `PurchaseInvoiceRepository::replaceItems()` — bez ní by faktury nedorazily
+  do DPH přiznání ani KH (mapper SKIPNE řádky s code=NULL).
+- **Dedup guard** — `findIdByVendorInvoice()` ve všech importerech proti
+  `UNIQUE KEY uq_pi_vendor_invoice` violation při re-importu.
+
+#### AI extrakce + inteligentní import
+- **AI extrakce PDF** přes Anthropic Claude (BYOK, AES-256-GCM šifrovaný
+  API key per dodavatel). Strukturovaný JSON: dodavatel + IČ/DIČ, číslo
+  dokladu, datumy, položky se sazbami DPH, sumy, IBAN, e-mail/telefon/web,
+  detekce *„NEPLAŤTE, JIŽ UHRAZENO"* (auto-paid s generací varsymbolu),
+  rounding handling.
+- **ISDOC priorita** — extractor PdfIsdocExtractor + parser ukládá ISDOC XML
+  jako primární zdroj dat, AI se volá jen pro PDF bez ISDOC.
+- **Pohoda XML import** vystavených i přijatých faktur.
+- **iDoklad + Fakturoid synchronizace** — OAuth pull klientů + faktur + PDF
+  příloh, dedup guard proti re-importu.
+- **Inbox scan cron** (`cron-scan-purchase-inbox`) — sleduje konfigurovaný
+  adresář, ISDOC priorita, AI fallback, rate limit 30 calls / 5 min / user,
+  fallback na admin user pro `created_by` FK.
+- **ClientResolver** — 3-úrovňový lookup (IČO → DIČ → exact company_name)
+  brání duplikování dodavatelů, VIES fallback pro EU bez IČO.
+- **PurchaseInvoiceCnbApplier** — centrální služba sdílená všemi importery
+  pro auto-ČNB kurz na non-CZK fakturách. AI / ISDOC / iDoklad / Fakturoid.
+- **Backfill skripty**: `backfill-vat-classification.php`,
+  `backfill-exchange-rates.php`, `backfill-purchase-varsymbols.php` pro
+  existující legacy data (dry-run default, `--apply` zapíše).
+
+#### CRM dashboard
+- **KPI** — tržby / náklady / zisk per měsíc + YTD + trend % vs minulý měsíc.
+- **Akce pro tebe** — daily TODO list (overdue faktury, recurring k vystavení,
+  DPH deadline, neaktivní klienti) s dismiss per den / týden / navždy / *pro
+  historická data* (snapshotuje aktuální ID, zobrazí jen NOVÉ výskyty —
+  užitečné při migraci 2 roky zpět) + Restore UI.
+- **Aging buckets** pohledávek i závazků (V termínu / 1-30 / 31-60 / 61-90 /
+  90+ dní), per currency.
+- **DSO** (Days Sales Outstanding), platební morálka %, riziko koncentrace
+  (Pareto + Top 1 client %), Top klienti / dodavatelé.
+- **Cash flow forecast** 4 týdny dopředu (predicted in/out per week).
+- **Late-risk score** per klient (predikce pravděpodobnosti pozdní platby).
+- **Churn risk** — neaktivní klienti 60+ dní bez objednávky.
+- **Náklady po rocích / měsících**, expense breakdown podle kategorií,
+  reminder effectiveness funnel, payment time histogram.
+- **Auto-recompute** `crm_monthly_summary` při stale > 5 min — odpadá ruční
+  klik *Přepočítat* po importu.
+
+#### EPO výkazy (DPH a daň z příjmů)
+- **DPHDP3** — přiznání k DPH (měsíční / kvartální, respektuje
+  `is_vat_payer` + `financial_office_code`).
+- **DPHKH1** — Kontrolní hlášení (A.1-A.5, B.1-B.3, ř. 40-43, reverse charge,
+  dovoz).
+- **DPHSHV** — Souhrnné hlášení (EU intracom dodávky).
+- **DPFDP5** (OSVČ) + **DPPDP9** (právnické osoby) — daň z příjmů MVP
+  foundation.
+- **XML pro EPO portál MFČR** + XSD validace přes `DOMDocument::schemaValidate`
+  s libxml error collector.
+- **Archiv podání** (`tax_submissions`) — každé generování XML s timestamp +
+  summary + status + SHA-256 hash.
+- **VAT klasifikace** per řádek položky (`vat_classifications` per-tenant
+  + globální seed).
+
+#### Public REST API v1
+- **Personal Access Tokens** (PAT) přes Bearer `Authorization`.
+- **101 endpointů** v `/api/v1/*` (vystavené + přijaté faktury, klienti,
+  zakázky, CRM, výkazy, codebooks, activity).
+- **OpenAPI 3.1** spec v `api/openapi.yaml` (50+ paths, 41+ schemas).
+- **Swagger UI** `/api/docs` + **Redoc** `/api/reference`.
+- Rate limit 600 req/min/token, `X-RateLimit-*` hlavičky.
+- Per-token scope (read-only / write), audit log.
+
+#### Admin: Cron jobs monitoring
+- **`/admin/cron-jobs`** přehled všech cron skriptů s health badge
+  (ok / overdue / failing / never_ran).
+- Last run / last OK / duration / status / report JSON.
+- **Failed items expandable list** — pro `cron-scan-purchase-inbox` rozbalitelný
+  seznam neimportovaných souborů s důvodem (path traversal, AI nedostupné,
+  prázdný PDF, …).
+- **Manuální *Spustit nyní*** tlačítko, hash katalog s `every_*` + `max_age_hours`.
+
+#### Sample data
+- `php api/bin/sample.php` přidává **4 dodavatele** (Anthropic, Microsoft
+  Czech, GitHub, Office Pro) + **12 přijatých faktur** rozprostřených přes
+  6 měsíců s mixem statusů received/booked/paid + 1-3 položek každá.
+
+### Changed
+
+- **Sidebar** — section headers (PRODEJ / NÁKUP / FINANCE / DANĚ / SYSTÉM)
+  jako soft pill badge s barvou sekce (primary / warning / success /
+  danger / neutral). Sjednoceno s dashboard section headers (bez tečky,
+  jen barevný pill).
+- **Dashboard** — KPI rozděleny do 3 sekcí: Vystavené (primary pill),
+  Přijaté (warning), Pohledávky podle splatnosti (success).
+- **Manual** — renumber `09a → 10` + shift `10-24 → 11-25`, **25 kapitol**
+  celkem (z 17). Nové: 10 Přijaté faktury, 23 CRM, 24 Výkazy DPH, 25 Daň
+  z příjmů. Hamburger menu pattern pod 1024px (transform translateX).
+- **Rate limits** bumped (`cfg.sample.php`): `read_per_min_per_user`
+  300 → 1200, `mutation_per_min_per_user` 60 → 120 (CRM dashboard volá
+  ~16 GETů paralelně).
+- **Manual `index.php`** — `overflow-x: auto` na `.code-block` (dlouhé curl
+  ukázky scrollují v rámci své šířky), hamburger menu s `transform:
+  translateX(-100%)` pod 1024px.
+- **Vendor list** — sloupec *Zakázky* nahrazen *Počet faktur* pro
+  `?role=vendors`, multi-currency costs sumace přepočtena na CZK.
+- **scrollBehavior** v routeru — `top:0` při navigaci sidebar linky
+  (respektuje `savedPosition` pro back/forward + `#hash` anchors).
+
+### Fixed
+
+- **Path-traversal guard** v `DownloadPurchaseInvoicePdfAction` — Windows
+  case-insensitive `strtolower()` obou stran (`realpath()` vrací inkonzistentní
+  casing).
+- **`$imported` undefined variable** v `PurchaseInvoiceInboxScanner` →
+  `$created++`.
+- **Cron `cron-scan-purchase-inbox` FK constraint** — validace `app.cron_user_id`
+  + fallback na nejnižší aktivní admin (FK `purchase_invoices.created_by →
+  users.id`).
+- **Purchase invoices `?overdue=1`** filter z homepage — `InvoiceList`
+  nečetl `route.query` při mountu, fix přes `useRoute()` + auto-clear
+  `year` filteru (overdue je cross-year).
+- **`isAiConfigured()`** dotazoval neexistující tabulku `anthropic_credentials`
+  → fix na `SELECT 1 FROM supplier WHERE id = ? AND anthropic_api_key_enc
+  IS NOT NULL`.
+- **CRM dropdown width** — `min-w-[200px]` → `w-[280px]` (absolutně pozicovaný
+  div bez explicitní šířky se v některých prohlížečích roztahoval na 687px).
+- **Cash flow tabulka** na mobilu — wrapper `overflow-x-auto` +
+  `min-w-[560px]` na `<table>`.
+- **Tailwind warning-700 / success-700** neexistují → změna na `-600`
+  (sidebar pill text byl černý).
+- **YAML parse error** v `api/openapi.yaml` — `summary: %` → `summary: "%"`
+  (% je YAML directive token).
+- **AI auto-paid varsymbol** — `markAlreadyPaid()` přímý SQL UPDATE
+  obcházel `TransitionPurchaseInvoiceStatusAction` (která generuje varsymbol
+  při draft→received). Fix: volá `ensureVarsymbol()` před UPDATE.
+
+### Security
+
+- **AI rate limit** middleware — 30 calls / 5 min / user pro endpointy
+  `/api/admin/imports/ai-extract-pdf` a `/api/purchase-invoices/scan-inbox`,
+  bucket `rl:ai:user:{id}`. Ochrana před BYOK billing rizikem při
+  kompromitované admin session.
+- **AES-256-GCM** šifrování citlivých polí v DB (TOTP secret, AI API keys).
+- **XML attribute sanitization** v Pohoda export pro XSD compliance.
+- **ZIP export streaming** — `Slim\Psr7\Stream` místo `file_get_contents`
+  (DoS mitigation pro ~500 × 20 MiB PDF batch).
+
+### Migrations
+
+- `0026_purchase_invoices.sql` — purchase_invoices + purchase_invoice_items +
+  purchase_invoice_counters
+- `0027_expense_categories.sql`
+- `0028_ai_extractions.sql`
+- `0029_import_jobs.sql` + `0030_idoklad_attachments.sql` +
+  `0031_fakturoid_credentials.sql` + `0032_fakturoid_ids.sql`
+- `0033_anthropic_credentials.sql` (per-supplier AI key)
+- `0035_crm_support.sql` + `0036_crm_recompute_proc.sql`
+- `0037_vat_classifications.sql` + `0038_supplier_tax_settings.sql`
+- `0039_tax_submissions.sql`
+- `0040_crm_action_item_dismissals.sql`
+
+Všechny migrace jsou idempotentní (MariaDB native `IF NOT EXISTS`).
+
+### Upgrade poznámky
+
+Po deploy spusť:
+
+```bash
+php api/bin/migrate.php
+php api/bin/backfill-vat-classification.php --apply    # legacy faktury → DPH přiznání
+php api/bin/backfill-exchange-rates.php --apply        # non-CZK faktury bez kurzu
+php api/bin/backfill-purchase-varsymbols.php --apply   # varsymboly chybí
+```
+
+Pak v `/crm` klikni *Přepočítat* aby se aktualizovala `crm_monthly_summary`.
+
 ## [3.6.9] — 2026-05-20
 
 ### Added
