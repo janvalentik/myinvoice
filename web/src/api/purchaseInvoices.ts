@@ -275,8 +275,10 @@ export const purchaseInvoicesApi = {
       `/purchase-invoices/${id}${force ? '?force=1' : ''}`,
       payload,
     ).then(r => r.data),
-  delete: (id: number) =>
-    api.delete<{ ok: boolean }>(`/purchase-invoices/${id}`).then(r => r.data),
+  delete: (id: number, force = false) =>
+    api.delete<{ ok: boolean; pdf_deleted?: boolean }>(
+      `/purchase-invoices/${id}${force ? '?force=1' : ''}`,
+    ).then(r => r.data),
 
   setItems: (id: number, items: PurchaseInvoicePayload['items']) =>
     api.put<PurchaseInvoice>(`/purchase-invoices/${id}/items`, { items }).then(r => r.data),

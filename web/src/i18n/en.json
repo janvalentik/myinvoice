@@ -121,6 +121,8 @@
     },
     "confirm": {
       "delete_draft": "Really delete this draft?",
+      "force_delete_warning": "⚠️ Warning! Really delete a NON-DRAFT invoice? This invoice is no longer a draft — it has 'received' or 'booked' status. Deletion is irreversible and may affect VAT reports.",
+      "force_delete_confirm": "Second confirmation: delete invoice with archived PDF? Action is permanent.",
       "delete_blocked": "Only drafts can be deleted. For already received use Cancel.",
       "cancel": "Really cancel this invoice? This cannot be undone."
     },
@@ -227,6 +229,7 @@
       "vat_classification_hint": "If unset, system auto-assigns code by VAT rate (21%→40, 12%→41, 0%→42, reverse→5)."
     },
     "force_edit": "Edit (force)",
+    "force_delete": "Delete (force)",
     "force_edit_hint": "Admin only — edit received/booked invoice. Totals will be recomputed.",
     "bulk": {
       "mark_booked": "Mark booked ({n})",
@@ -946,6 +949,7 @@
     "revenue_by_project_table": "Revenue by project (numbers)",
     "no_project": "(no project)",
     "invoices_short": "Invoices",
+    "title_vendors": "Vendors",
     "issued_invoices": "Issued invoices",
     "received_invoices": "Received invoices",
     "costs_by_month": "Costs by month",

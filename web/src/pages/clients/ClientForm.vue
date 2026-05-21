@@ -41,8 +41,9 @@ const form = ref<ClientPayload>({
   language: 'cs',
   currency_default_id: 0,
   reverse_charge: false,
-  is_customer: true,
-  is_vendor: false,
+  // Default: customer. Override z ?role=vendor query (klik 'Nový dodavatel' v list).
+  is_customer: route.query.role !== 'vendor',
+  is_vendor: route.query.role === 'vendor',
   auto_send_reminders: true,
   payment_due_default: 7,
   hourly_rate: 0,
@@ -211,7 +212,8 @@ async function submit() {
   <div :class="embedded ? '' : 'max-w-3xl'">
     <div v-if="!embedded" class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-semibold">
-        {{ isEdit ? t('client.edit_title') : t('client.new_title') }}
+        {{ isEdit ? t('client.edit_title')
+          : (route.query.role === 'vendor' ? t('purchase_invoice.new_vendor') : t('client.new_title')) }}
       </h1>
       <RouterLink to="/clients" class="text-sm text-neutral-600 hover:text-neutral-900">{{ t('client.back_to_list') }}</RouterLink>
     </div>

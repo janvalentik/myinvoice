@@ -96,12 +96,12 @@ function openClient(c: Client) {
 <template>
   <div>
     <div class="flex items-center justify-between mb-4">
-      <h1 class="text-2xl font-semibold">{{ t('client.title') }}</h1>
+      <h1 class="text-2xl font-semibold">{{ roleFilter === 'vendors' ? t('client.title_vendors') : t('client.title') }}</h1>
       <RouterLink
-        to="/clients/new"
+        :to="roleFilter === 'vendors' ? '/clients/new?role=vendor' : '/clients/new'"
         class="inline-flex items-center gap-1.5 h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md"
       >
-        {{ t('client.new') }}
+        {{ roleFilter === 'vendors' ? t('purchase_invoice.new_vendor') : t('client.new') }}
       </RouterLink>
     </div>
 
@@ -151,7 +151,7 @@ function openClient(c: Client) {
       <EmptyState v-else-if="!items.length"
         :title="t('client.no_data')"
         :cta="t('client.create_first')"
-        to="/clients/new" />
+        :to="roleFilter === 'vendors' ? '/clients/new?role=vendor' : '/clients/new'" />
 
       <!-- Desktop: tabulka -->
       <div v-else class="hidden md:block overflow-x-auto"><table class="w-full text-sm table-sticky-first">

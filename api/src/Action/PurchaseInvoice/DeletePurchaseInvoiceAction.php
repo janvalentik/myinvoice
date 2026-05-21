@@ -42,13 +42,21 @@ final class DeletePurchaseInvoiceAction
             return Json::error($response, 'not_found', 'Přijatá faktura nenalezena.', 404);
         }
 
+        // Default: jen draft lze smazat. Force=1 (admin) povolí smazat received/booked
+        // (paid/cancelled stále chráněné — auditní stopa).
+        $force = (string) ($request->getQueryParams()['force'] ?? '') === '1';
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        $isAdmin = ($user['role'] ?? '') === 'admin';
+        $allowedForce = ['received', 'booked'];
         if ($existing['status'] !== 'draft') {
-            return Json::error(
-                $response,
-                'not_deletable',
-                'Lze smazat pouze koncepty. Pro storno použijte přechod do stavu „zrušeno".',
-                409,
-            );
+            if (!($force && $isAdmin && in_array($existing['status'], $allowedForce, true))) {
+                return Json::error(
+                    $response,
+                    'not_deletable',
+                    'Lze smazat pouze koncepty (nebo received/booked s force=1 jako admin). Pro paid/cancelled použijte storno.',
+                    409,
+                );
+            }
         }
 
         // Před DB delete uchovat info o PDF (k orphan cleanup)
@@ -67,7 +75,6 @@ final class DeletePurchaseInvoiceAction
             }
         }
 
-        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log('purchase_invoice.deleted', $user['id'] ?? null, 'purchase_invoice', $id,
             [

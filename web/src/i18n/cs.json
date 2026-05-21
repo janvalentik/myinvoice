@@ -121,6 +121,8 @@
     },
     "confirm": {
       "delete_draft": "Opravdu chceš smazat tento koncept?",
+      "force_delete_warning": "⚠️ Pozor! Chceš opravdu smazat NEDRAFT fakturu? Tato faktura už není koncept — má status 'přijatá' nebo 'zaúčtovaná'. Smazání nelze vrátit a může ovlivnit DPH výkazy.",
+      "force_delete_confirm": "Druhé potvrzení: smazat fakturu i s archivovaným PDF? Akce je trvalá.",
       "delete_blocked": "Smazat lze pouze koncept. Pro již přijaté použij Stornovat.",
       "cancel": "Opravdu chceš stornovat tuto fakturu? Tuto akci nelze vrátit."
     },
@@ -227,6 +229,7 @@
       "vat_classification_hint": "Pokud nevyberete, systém auto-přiřadí kód podle sazby DPH (21%→40, 12%→41, 0%→42, reverse→5)."
     },
     "force_edit": "Upravit (force)",
+    "force_delete": "Smazat (force)",
     "force_edit_hint": "Admin only — úprava received/booked faktury. Po uložení se přepočítají sumy.",
     "bulk": {
       "mark_booked": "Označit zaúčtováno ({n})",
@@ -946,6 +949,7 @@
     "revenue_by_project_table": "Obrat podle zakázek (čísla)",
     "no_project": "(bez zakázky)",
     "invoices_short": "Faktur",
+    "title_vendors": "Dodavatelé",
     "issued_invoices": "Vystavené faktury",
     "received_invoices": "Přijaté faktury",
     "costs_by_month": "Náklady po měsících",
