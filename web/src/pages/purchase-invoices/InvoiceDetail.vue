@@ -379,6 +379,22 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
           </template>
           <div v-if="invoice.advance_paid_amount > 0" class="flex justify-between text-neutral-500"><dt>{{ t('purchase_invoice.totals.advance_paid') }}</dt><dd class="font-mono">−{{ formatMoney(invoice.advance_paid_amount, invoice.currency) }}</dd></div>
           <div class="flex justify-between font-semibold text-lg border-t border-neutral-200 pt-2"><dt>{{ t('purchase_invoice.totals.to_pay') }}</dt><dd class="font-mono">{{ formatMoney((invoice.amount_to_pay || invoice.total_with_vat) + (invoice.rounding || 0), invoice.currency) }}</dd></div>
+          <!-- CZK přepočet (jen pokud faktura není CZK + má exchange_rate) -->
+          <template v-if="invoice.currency !== 'CZK' && invoice.exchange_rate">
+            <div class="border-t border-neutral-200 pt-3 mt-3">
+              <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-2">{{ t('invoice.czk_recap.title') }}</h4>
+              <p class="text-xs text-neutral-500 mb-2">
+                {{ t('invoice.czk_recap.rate_info', {
+                  rate: Number(invoice.exchange_rate).toFixed(3),
+                  currency: invoice.currency,
+                  date: invoice.exchange_rate_date ? formatDate(invoice.exchange_rate_date) : formatDate(invoice.tax_date || invoice.issue_date),
+                }) }}
+              </p>
+              <div class="flex justify-between text-sm"><dt class="text-neutral-600">{{ t('purchase_invoice.totals.without_vat') }}</dt><dd class="font-mono">{{ formatMoney(invoice.total_without_vat * Number(invoice.exchange_rate), 'CZK') }}</dd></div>
+              <div class="flex justify-between text-sm"><dt class="text-neutral-600">{{ t('purchase_invoice.totals.vat') }}</dt><dd class="font-mono">{{ formatMoney(invoice.total_vat * Number(invoice.exchange_rate), 'CZK') }}</dd></div>
+              <div class="flex justify-between text-sm font-semibold border-t border-neutral-100 pt-1.5"><dt>{{ t('purchase_invoice.totals.with_vat') }}</dt><dd class="font-mono">{{ formatMoney((invoice.total_with_vat + (invoice.rounding || 0)) * Number(invoice.exchange_rate), 'CZK') }}</dd></div>
+            </div>
+          </template>
         </dl>
       </div>
     </div>

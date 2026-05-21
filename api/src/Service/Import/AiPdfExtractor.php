@@ -38,6 +38,7 @@ final class AiPdfExtractor
         private readonly IsdocParser $isdoc,
         private readonly IsdocToPurchaseInvoiceMapper $isdocMapper,
         private readonly Config $config,
+        private readonly \MyInvoice\Service\Currency\CnbExchangeRateClient $cnb,
     ) {}
 
     /**
@@ -221,7 +222,46 @@ final class AiPdfExtractor
         if (abs($rounding) > 0.001) {
             $this->repo->setRounding($id, $supplierId, $rounding);
         }
+        // Pro non-CZK currency: auto-apply ČNB kurz k tax_date (nebo issue_date).
+        $this->applyCnbRate($id, $supplierId, $data);
         return $id;
+    }
+
+    /**
+     * Auto-apply ČNB kurz pro non-CZK přijatou fakturu.
+     *
+     * Použije tax_date (DUZP) jako primary; fallback issue_date. CnbExchangeRateClient
+     * má built-in fallback na předchozí pracovní den (víkend/svátek), takže vždy
+     * najde platný kurz.
+     */
+    private function applyCnbRate(int $id, int $supplierId, array $data): void
+    {
+        $currency = strtoupper((string) ($data['currency'] ?? 'CZK'));
+        if ($currency === 'CZK' || $currency === '') return;
+        $dateStr = (string) ($data['tax_date'] ?? $data['issue_date'] ?? '');
+        if ($dateStr === '') return;
+        try {
+            $issueDate = new \DateTimeImmutable($dateStr);
+        } catch (\Throwable) {
+            return;
+        }
+        try {
+            $result = $this->cnb->getRate($currency, $issueDate);
+        } catch (\Throwable) {
+            return; // ČNB timeout / network — silent
+        }
+        if ($result === null || !isset($result['rate'])) return;
+        try {
+            $this->repo->setExchangeRate(
+                $id,
+                (float) $result['rate'],
+                (string) ($result['rate_date'] ?? $dateStr),
+                'cnb',
+                $supplierId,
+            );
+        } catch (\Throwable) {
+            // Pokud setExchangeRate selže (race condition / schema mismatch), silent.
+        }
     }
 
     private function fetchTenantIc(int $supplierId): ?string

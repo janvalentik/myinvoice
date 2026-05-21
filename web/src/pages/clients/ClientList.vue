@@ -101,7 +101,7 @@ function openClient(c: Client) {
         :to="roleFilter === 'vendors' ? '/clients/new?role=vendor' : '/clients/new'"
         class="inline-flex items-center gap-1.5 h-9 px-3 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md"
       >
-        {{ roleFilter === 'vendors' ? t('purchase_invoice.new_vendor') : t('client.new') }}
+        {{ roleFilter === 'vendors' ? '+ ' + t('purchase_invoice.new_vendor') : t('client.new') }}
       </RouterLink>
     </div>
 

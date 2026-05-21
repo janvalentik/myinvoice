@@ -210,9 +210,11 @@ final class KontrolniHlaseniBuilder
         $stmt = $this->db->pdo()->prepare("
             SELECT i.id, i.varsymbol, COALESCE(i.tax_date, i.issue_date) AS tax_date,
                    i.total_without_vat, i.total_vat, i.total_with_vat,
+                   i.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
                    c.dic AS counterparty_dic, c.company_name AS counterparty_name
               FROM invoices i
               JOIN clients c ON c.id = i.client_id
+         LEFT JOIN currencies cur ON cur.id = i.currency_id
              WHERE i.supplier_id = ?
                AND i.status NOT IN ('draft', 'cancelled')
                AND i.invoice_type != 'proforma'
@@ -224,8 +226,10 @@ final class KontrolniHlaseniBuilder
         $a4 = [];
         $a5 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
         foreach ($rows as $r) {
-            // Per-invoice VAT breakdown — load items aggregated by rate
-            $breakdown = $this->loadInvoiceVatBreakdown((int) $r['id'], 'invoice');
+            // Per-invoice VAT breakdown — load items aggregated by rate (přepočet na CZK)
+            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
+            $breakdown = $this->loadInvoiceVatBreakdown((int) $r['id'], 'invoice', $rate);
+            $totalCzk = (float) $r['total_with_vat'] * $rate;
             $row = [
                 'varsymbol'         => $r['varsymbol'],
                 'tax_date'          => $r['tax_date'],
@@ -235,7 +239,7 @@ final class KontrolniHlaseniBuilder
                 'base12'            => $breakdown['base12'],
                 'vat12'             => $breakdown['vat12'],
             ];
-            if ((float) $r['total_with_vat'] >= self::ITEM_VS_BULK_THRESHOLD) {
+            if ($totalCzk >= self::ITEM_VS_BULK_THRESHOLD) {
                 $a4[] = $row;
             } else {
                 $a5['count']++;
@@ -255,10 +259,11 @@ final class KontrolniHlaseniBuilder
     {
         $stmt = $this->db->pdo()->prepare("
             SELECT pi.id, pi.vendor_invoice_number, GREATEST(pi.tax_date, pi.issue_date) AS tax_date,
-                   pi.total_with_vat,
+                   pi.total_with_vat, pi.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
                    c.dic AS counterparty_dic, c.company_name AS counterparty_name
               FROM purchase_invoices pi
               JOIN clients c ON c.id = pi.vendor_id
+         LEFT JOIN currencies cur ON cur.id = pi.currency_id
              WHERE pi.supplier_id = ?
                AND pi.status NOT IN ('draft', 'cancelled')
                AND GREATEST(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
@@ -269,7 +274,9 @@ final class KontrolniHlaseniBuilder
         $b2 = [];
         $b3 = ['count' => 0, 'base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
         foreach ($rows as $r) {
-            $breakdown = $this->loadInvoiceVatBreakdown((int) $r['id'], 'purchase_invoice');
+            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
+            $breakdown = $this->loadInvoiceVatBreakdown((int) $r['id'], 'purchase_invoice', $rate);
+            $totalCzk = (float) $r['total_with_vat'] * $rate;
             $row = [
                 'vendor_invoice_number' => $r['vendor_invoice_number'],
                 'tax_date'              => $r['tax_date'],
@@ -279,7 +286,7 @@ final class KontrolniHlaseniBuilder
                 'base12'                => $breakdown['base12'],
                 'vat12'                 => $breakdown['vat12'],
             ];
-            if ((float) $r['total_with_vat'] >= self::ITEM_VS_BULK_THRESHOLD) {
+            if ($totalCzk >= self::ITEM_VS_BULK_THRESHOLD) {
                 $b2[] = $row;
             } else {
                 $b3['count']++;
@@ -301,10 +308,12 @@ final class KontrolniHlaseniBuilder
     {
         $stmt = $this->db->pdo()->prepare("
             SELECT i.id, i.varsymbol, COALESCE(i.tax_date, i.issue_date) AS tax_date,
-                   i.total_without_vat AS base, c.dic AS counterparty_dic
+                   i.total_without_vat AS base, i.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
+                   c.dic AS counterparty_dic
               FROM invoices i
               JOIN clients c ON c.id = i.client_id
               JOIN vat_classifications vc ON vc.code = i.vat_classification_code
+         LEFT JOIN currencies cur ON cur.id = i.currency_id
              WHERE i.supplier_id = ?
                AND i.status NOT IN ('draft', 'cancelled')
                AND i.invoice_type != 'proforma'
@@ -313,12 +322,14 @@ final class KontrolniHlaseniBuilder
         ");
         $stmt->execute([$supplierId, $start, $end]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        // Pojďme cleanDic
-        return array_map(fn ($r) => array_merge($r, [
-            'counterparty_dic' => $this->cleanDic($r['counterparty_dic']),
-            'base'             => (float) $r['base'],
-            'vendor_invoice_number' => $r['varsymbol'],  // KH XML používá c_evid_dd
-        ]), $rows);
+        return array_map(function ($r) {
+            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
+            return array_merge($r, [
+                'counterparty_dic' => $this->cleanDic($r['counterparty_dic']),
+                'base'             => (float) $r['base'] * $rate, // přepočet na CZK
+                'vendor_invoice_number' => $r['varsymbol'],
+            ]);
+        }, $rows);
     }
 
     /**
@@ -328,10 +339,12 @@ final class KontrolniHlaseniBuilder
     {
         $stmt = $this->db->pdo()->prepare("
             SELECT pi.id, pi.vendor_invoice_number, GREATEST(pi.tax_date, pi.issue_date) AS tax_date,
-                   pi.total_without_vat AS base, c.dic AS counterparty_dic
+                   pi.total_without_vat AS base, pi.exchange_rate, COALESCE(cur.code, 'CZK') AS currency,
+                   c.dic AS counterparty_dic
               FROM purchase_invoices pi
               JOIN clients c ON c.id = pi.vendor_id
               JOIN vat_classifications vc ON vc.code = pi.vat_classification_code
+         LEFT JOIN currencies cur ON cur.id = pi.currency_id
              WHERE pi.supplier_id = ?
                AND pi.status NOT IN ('draft', 'cancelled')
                AND vc.is_reverse_charge = 1
@@ -339,10 +352,13 @@ final class KontrolniHlaseniBuilder
         ");
         $stmt->execute([$supplierId, $start, $end]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        return array_map(fn ($r) => array_merge($r, [
-            'counterparty_dic' => $this->cleanDic($r['counterparty_dic']),
-            'base'             => (float) $r['base'],
-        ]), $rows);
+        return array_map(function ($r) {
+            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
+            return array_merge($r, [
+                'counterparty_dic' => $this->cleanDic($r['counterparty_dic']),
+                'base'             => (float) $r['base'] * $rate,
+            ]);
+        }, $rows);
     }
 
     /**
@@ -350,7 +366,12 @@ final class KontrolniHlaseniBuilder
      *
      * @return array{base21:float, vat21:float, base12:float, vat12:float}
      */
-    private function loadInvoiceVatBreakdown(int $id, string $type): array
+    /**
+     * VAT breakdown per VAT rate, vždy převedené na CZK (DPH přiznání je v CZK).
+     *
+     * @param float $exchangeRate kurz CZK / 1 invoice currency (default 1 = CZK)
+     */
+    private function loadInvoiceVatBreakdown(int $id, string $type, float $exchangeRate = 1.0): array
     {
         $table = $type === 'invoice' ? 'invoice_items' : 'purchase_invoice_items';
         $fk = $type === 'invoice' ? 'invoice_id' : 'purchase_invoice_id';
@@ -362,12 +383,14 @@ final class KontrolniHlaseniBuilder
         $result = ['base21' => 0.0, 'vat21' => 0.0, 'base12' => 0.0, 'vat12' => 0.0];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $rate = (float) $r['vat_rate_snapshot'];
+            $baseCzk = (float) $r['base'] * $exchangeRate;
+            $vatCzk  = (float) $r['vat']  * $exchangeRate;
             if (abs($rate - 21.0) < 0.5) {
-                $result['base21'] = (float) $r['base'];
-                $result['vat21']  = (float) $r['vat'];
+                $result['base21'] = $baseCzk;
+                $result['vat21']  = $vatCzk;
             } elseif (abs($rate - 12.0) < 0.5) {
-                $result['base12'] = (float) $r['base'];
-                $result['vat12']  = (float) $r['vat'];
+                $result['base12'] = $baseCzk;
+                $result['vat12']  = $vatCzk;
             }
         }
         return $result;
