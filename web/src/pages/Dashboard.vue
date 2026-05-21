@@ -275,8 +275,14 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
         </RouterLink>
       </div>
 
-      <!-- Splatnost: dnes / tento týden / tento měsíc — kumulativní karty -->
-      <div v-if="summary.due_buckets.length" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- ═══ Sekce 3: SPLATNOST POHLEDÁVEK (vystavené, příchozí platby) ═══ -->
+      <section v-if="summary.due_buckets.length" class="space-y-3">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 flex items-center gap-2">
+          <span class="inline-block w-2 h-2 rounded-full bg-primary-500"></span>
+          {{ t('dashboard.section_receivables_due') }}
+          <span class="text-xs font-normal text-neutral-400 normal-case tracking-normal">{{ t('dashboard.receivables_hint') }}</span>
+        </h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div v-for="b in summary.due_buckets" :key="`db-today-${b.currency}`"
           class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm"
           :class="{ 'border-warning-500/40 bg-warning-50/20': b.today_count > 0 }">
@@ -301,6 +307,7 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
           <div class="text-xs mt-1 font-mono text-neutral-500">{{ formatMoney(b.month_total, b.currency) }}</div>
         </div>
       </div>
+      </section>
 
       <!-- Cash-flow forecast 30 / 60 / 90 dní — kolik se očekává inkasovat -->
       <div v-if="summary.cashflow_forecast.length" class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">

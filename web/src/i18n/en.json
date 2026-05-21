@@ -1158,6 +1158,8 @@
     "upcoming_none": "no unpaid",
     "section_issued": "Issued invoices",
     "section_purchase": "Received invoices",
+    "section_receivables_due": "Receivables by due date",
+    "receivables_hint": "(what clients owe us — from issued invoices)",
     "purchase_count_ytd": "Purchase invoices YTD",
     "purchase_costs_ytd": "Costs {year}",
     "purchase_unpaid": "Unpaid",

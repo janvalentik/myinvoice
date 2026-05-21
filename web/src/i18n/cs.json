@@ -1158,6 +1158,8 @@
     "upcoming_none": "žádné neuhrazené",
     "section_issued": "Vystavené faktury",
     "section_purchase": "Přijaté faktury",
+    "section_receivables_due": "Pohledávky podle splatnosti",
+    "receivables_hint": "(co nám klienti dluží — z vystavených faktur)",
     "purchase_count_ytd": "Přijaté faktury YTD",
     "purchase_costs_ytd": "Náklady {year}",
     "purchase_unpaid": "Nezaplacené",
