@@ -72,7 +72,7 @@ final class ClientResolver
     {
         $ic = $this->normalizeIc($parsed['ic'] ?? null);
 
-        // 1. Lookup podle (supplier_id, ic)
+        // 1a. Lookup podle (supplier_id, ic) — primární klíč pro CZ entity
         if ($ic !== null) {
             $stmt = $this->db->pdo()->prepare(
                 'SELECT id FROM clients WHERE supplier_id = ? AND ic = ? LIMIT 1'
@@ -83,6 +83,39 @@ final class ClientResolver
                 return ['id' => (int) $existing, 'created' => false];
             }
         }
+
+        // 1b. Lookup podle DIČ (pro EU dodavatele bez CZ IČO — Anthropic PBC, Stripe, ...)
+        $dic = trim((string) ($parsed['dic'] ?? ''));
+        if ($ic === null && $dic !== '') {
+            $stmt = $this->db->pdo()->prepare(
+                "SELECT id FROM clients WHERE supplier_id = ? AND dic = ? LIMIT 1"
+            );
+            $stmt->execute([$supplierId, $dic]);
+            $existing = $stmt->fetchColumn();
+            if ($existing !== false) {
+                return ['id' => (int) $existing, 'created' => false];
+            }
+        }
+
+        // 1c. Last resort — exact company_name match (pro zahraniční bez IČO i DIČ).
+        // Bez tohoto by AI/inbox scan vytvořila duplikát pro každou fakturu.
+        $companyName = trim((string) ($parsed['company_name'] ?? ''));
+        if ($ic === null && $dic === '' && $companyName !== '') {
+            $stmt = $this->db->pdo()->prepare(
+                "SELECT id FROM clients
+                  WHERE supplier_id = ?
+                    AND (ic IS NULL OR ic = '')
+                    AND (dic IS NULL OR dic = '')
+                    AND company_name = ?
+                  LIMIT 1"
+            );
+            $stmt->execute([$supplierId, $companyName]);
+            $existing = $stmt->fetchColumn();
+            if ($existing !== false) {
+                return ['id' => (int) $existing, 'created' => false];
+            }
+        }
+
         $parsedClient = $parsed;
 
         // 2. ARES merge — pokud IČO je české (8 číslic) a ARES odpoví

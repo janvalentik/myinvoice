@@ -184,6 +184,35 @@ function sparklineFor(currency: string): { labels: string[]; values: number[] } 
           </div>
         </div>
 
+        <!-- Přijaté faktury KPI (visible jen pokud nějaké existují YTD) -->
+        <template v-if="(summary.kpi.purchase_count_ytd ?? 0) > 0">
+          <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_count_ytd') }}</div>
+            <div class="text-2xl font-semibold text-neutral-900">{{ summary.kpi.purchase_count_ytd }}</div>
+            <div class="text-xs mt-1 text-neutral-400">{{ formatMoney(summary.kpi.purchase_costs_ytd, 'CZK') }}</div>
+          </div>
+          <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm"
+            :class="{'border-warning-500/40': (summary.kpi.purchase_unpaid_count ?? 0) > 0}">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_unpaid') }}</div>
+            <div class="text-2xl font-semibold"
+              :class="(summary.kpi.purchase_unpaid_count ?? 0) > 0 ? 'text-warning-600' : 'text-neutral-900'">
+              {{ summary.kpi.purchase_unpaid_count }}
+            </div>
+            <div class="text-xs mt-1"
+              :class="(summary.kpi.purchase_unpaid_count ?? 0) > 0 ? 'text-warning-600' : 'text-neutral-400'">
+              {{ formatMoney(summary.kpi.purchase_unpaid_total, 'CZK') }}
+            </div>
+          </div>
+          <div v-if="(summary.kpi.purchase_overdue_count ?? 0) > 0"
+            class="bg-white border border-danger-500/40 rounded-lg p-5 shadow-sm">
+            <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.purchase_overdue') }}</div>
+            <div class="text-2xl font-semibold text-danger-500">{{ summary.kpi.purchase_overdue_count }}</div>
+            <div class="text-xs mt-1 text-danger-500">
+              <RouterLink to="/purchase-invoices?overdue=1" class="hover:underline">{{ t('dashboard.purchase_overdue_link') }}</RouterLink>
+            </div>
+          </div>
+        </template>
+
         <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
           <div class="text-xs uppercase tracking-wide text-neutral-500 mb-1">{{ t('dashboard.avg_payment') }}</div>
           <div class="text-2xl font-semibold text-neutral-900">

@@ -371,14 +371,14 @@ final class PurchaseInvoiceInboxScanner
     /**
      * Zda má tenant nakonfigurovanou Anthropic API key pro AI extract.
      *
-     * Quick check — table anthropic_credentials per supplier_id. Pokud chybí
-     * tabulka (legacy install), vrátí false (no AI).
+     * Credentials uloženy v supplier.anthropic_api_key_enc (varbinary, encrypted).
+     * Pokud sloupec neexistuje (legacy install před fází 2c), vrátí false.
      */
     private function isAiConfigured(int $supplierId): bool
     {
         try {
             $stmt = $this->db->pdo()->prepare(
-                'SELECT 1 FROM anthropic_credentials WHERE supplier_id = ? LIMIT 1'
+                'SELECT 1 FROM supplier WHERE id = ? AND anthropic_api_key_enc IS NOT NULL LIMIT 1'
             );
             $stmt->execute([$supplierId]);
             return $stmt->fetchColumn() !== false;

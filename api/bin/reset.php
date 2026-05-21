@@ -90,8 +90,10 @@ if (!$autoYes) {
 
 // Tabulky ke smazání (v pořadí kvůli FK; FOREIGN_KEY_CHECKS=0 je dole, ale držíme topologii)
 $wipe = [
+    // Bank
     'bank_transactions',
     'bank_statements',
+    // Vystavené faktury + work reports
     'work_report_items',
     'work_reports',
     'invoice_items',
@@ -101,13 +103,30 @@ $wipe = [
     'recurring_invoice_templates',   // šablony pravidelných faktur (FK → invoices nullified, viz fk_inv_recurring)
     'invoices',
     'invoice_counters',
+    // Přijaté faktury (fáze 1+ integrace forku)
+    'purchase_invoice_items',
+    'purchase_invoices',
+    'expense_categories',            // per-tenant kategorie nákladů (migrace 0035)
+    // Import jobs + AI extractions (fáze 2a/2b/2c)
+    'import_jobs',                   // iDoklad/Fakturoid background jobs
+    'import_job_logs',               // (pokud existuje — log za jobs)
+    'ai_extractions',                // AI extract history (jen pokud table existuje)
+    // CRM aggregate cache
+    'crm_monthly_summary',           // pre-aggregated stats (fáze 5)
     'project_revenue_cache',
     'client_revenue_cache',
+    // Tax submission archive (fáze 6 — archivované EPO XML)
+    'tax_submissions',
+    // VAT klasifikace per-tenant (globální seed s supplier_id NULL zůstává)
+    // POZOR: jen tenant rows, nikoli globální seed (supplier_id IS NULL)
+    // proto NEpoužíváme TRUNCATE, ale DELETE WHERE — viz speciální handling níže
+    // Clients + projects
     'project_billing_emails',
     'projects',
     'clients',
     'currencies',                    // per-supplier (multi-tenant) — setup.php založí znovu
     'supplier',
+    // Auth + sessions
     'sessions',
     'password_resets',
     'login_attempts',
@@ -116,6 +135,12 @@ $wipe = [
     'email_templates',
     'app_meta',                      // version-check cache + jiné globální K/V; reset = fresh fetch
     'users',
+];
+
+// VAT klasifikace — speciální handling: zachovat globální seed (supplier_id IS NULL),
+// smazat jen per-tenant overrides
+$wipeWithGlobalSeed = [
+    'vat_classifications' => 'supplier_id IS NOT NULL',
 ];
 if (!$keepCache) {
     $wipe[] = 'ares_cache';
@@ -135,11 +160,24 @@ foreach ($wipe as $t) {
         echo "  - $t (skipped: " . $e->getMessage() . ")\n";
     }
 }
+
+// Partial wipes — zachovat globální seed rows (vat_classifications kde supplier_id IS NULL)
+foreach ($wipeWithGlobalSeed as $t => $whereClause) {
+    try {
+        $deleted = $pdo->exec("DELETE FROM `$t` WHERE $whereClause");
+        echo "  ✓ $t (kept global seed, deleted {$deleted} tenant rows)\n";
+        $total++;
+    } catch (\PDOException $e) {
+        echo "  - $t (skipped: " . $e->getMessage() . ")\n";
+    }
+}
+
 $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
 
-// PDF cache + storage cleanup
+// PDF cache + storage cleanup — vč. přijaté faktury archive + XSD (necháváme)
 $dirs = [
     $rootDir . '/storage/invoices',
+    $rootDir . '/storage/purchase-invoices',  // archive PDF dodavatelů (fáze 1)
     $rootDir . '/storage/cache/mpdf',
     $rootDir . '/storage/cache/twig',
 ];

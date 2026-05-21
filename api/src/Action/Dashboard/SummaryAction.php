@@ -302,6 +302,41 @@ final class SummaryAction
             $statusCounts[$r['status']] = (int) $r['cnt'];
         }
 
+        // Přijaté faktury YTD — náklady, počet, nezaplacené, po splatnosti
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) AS cnt,
+                    COALESCE(SUM(pi.total_with_vat * IF(cur.code = 'CZK' OR pi.exchange_rate IS NULL, 1, pi.exchange_rate)), 0) AS costs_czk
+               FROM purchase_invoices pi
+          LEFT JOIN currencies cur ON cur.id = pi.currency_id
+              WHERE pi.supplier_id = ?
+                AND pi.status NOT IN ('draft', 'cancelled')
+                AND YEAR(pi.issue_date) = ?"
+        );
+        $stmt->execute([$sid, $year]);
+        $piRow = $stmt->fetch(\PDO::FETCH_ASSOC) ?: ['cnt' => 0, 'costs_czk' => 0];
+
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) AS cnt,
+                    COALESCE(SUM(pi.total_with_vat * IF(cur.code = 'CZK' OR pi.exchange_rate IS NULL, 1, pi.exchange_rate)), 0) AS unpaid_czk
+               FROM purchase_invoices pi
+          LEFT JOIN currencies cur ON cur.id = pi.currency_id
+              WHERE pi.supplier_id = ?
+                AND pi.status IN ('received', 'booked')"
+        );
+        $stmt->execute([$sid]);
+        $piUnpaid = $stmt->fetch(\PDO::FETCH_ASSOC) ?: ['cnt' => 0, 'unpaid_czk' => 0];
+
+        $today = date('Y-m-d');
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) AS cnt
+               FROM purchase_invoices pi
+              WHERE pi.supplier_id = ?
+                AND pi.status IN ('received', 'booked')
+                AND pi.due_date < ?"
+        );
+        $stmt->execute([$sid, $today]);
+        $piOverdueCount = (int) $stmt->fetchColumn();
+
         return [
             'per_currency'        => array_values($perCurrency),
             'issued_count_ytd'    => $issuedCount,
@@ -309,6 +344,12 @@ final class SummaryAction
             'overdue_per_currency'=> $overduePerCurrency,
             'avg_payment_days'    => $avgPaymentDays,
             'status_counts_ytd'   => $statusCounts,
+            // Přijaté faktury YTD
+            'purchase_count_ytd'  => (int) $piRow['cnt'],
+            'purchase_costs_ytd'  => round((float) $piRow['costs_czk'], 2),
+            'purchase_unpaid_count' => (int) $piUnpaid['cnt'],
+            'purchase_unpaid_total' => round((float) $piUnpaid['unpaid_czk'], 2),
+            'purchase_overdue_count' => $piOverdueCount,
         ];
     }
 

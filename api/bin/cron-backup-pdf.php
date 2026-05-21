@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Denní záloha PDF souborů — storage/invoices/ a storage/work-reports/
+ * Denní záloha PDF souborů — storage/invoices/, storage/work-reports/, storage/purchase-invoices/
  * → ZIP do storage/backup/{dbname}-pdf-YYYY-MM-DD.zip.
  * Retention: 30 denních + 12 měsíčních (1. v měsíci se zachová déle).
  *
@@ -40,6 +40,10 @@ $file = "$backupDir/$dbName-pdf-$date.zip";
 $sources = [
     $rootDir . '/storage/invoices',
     $rootDir . '/storage/work-reports',
+    // Přijaté faktury — archive PDF od dodavatelů (fáze 1 integrace forku).
+    // Default storage/purchase-invoices; pokud user nastaví custom archive_storage
+    // v cfg.php, použijeme tu cestu.
+    (string) ($config->get('purchase_invoice.archive_storage', '') ?: $rootDir . '/storage/purchase-invoices'),
 ];
 
 // Sesbírej všechny .pdf rekurzivně

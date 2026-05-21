@@ -19,6 +19,12 @@ export interface DashboardKpi {
   overdue_per_currency: Array<{ currency: string; count: number; total: number }>
   avg_payment_days: number | null
   status_counts_ytd?: Record<string, number>
+  // Přijaté faktury (purchase) — YTD stats
+  purchase_count_ytd?: number
+  purchase_costs_ytd?: number
+  purchase_unpaid_count?: number
+  purchase_unpaid_total?: number
+  purchase_overdue_count?: number
 }
 
 export interface DashboardInvoiceItem {
