@@ -34,6 +34,7 @@ use MyInvoice\Action\Admin\Import\AiExtractPdfAction;
 use MyInvoice\Action\Crm\CrmDashboardAction;
 use MyInvoice\Action\Report\DphPriznaniAction;
 use MyInvoice\Action\Report\KontrolniHlaseniAction;
+use MyInvoice\Action\Report\SouhrnneHlaseniAction;
 use MyInvoice\Action\Report\IncomeTaxAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
 use MyInvoice\Action\Admin\CronJobsAction;
@@ -320,6 +321,9 @@ final class Routes
         // Kontrolní hlášení DPHKH1 (vždy měsíční)
         $app->get    ('/api/reports/dphkh1/preview',  [KontrolniHlaseniAction::class, 'preview']);
         $app->get    ('/api/reports/dphkh1',          [KontrolniHlaseniAction::class, 'download']);
+        // Souhrnné hlášení DPHSHV (EU dodání, měsíční — podávají i identifikované osoby)
+        $app->get    ('/api/reports/dphshv/preview',  [SouhrnneHlaseniAction::class, 'preview']);
+        $app->get    ('/api/reports/dphshv',          [SouhrnneHlaseniAction::class, 'download']);
         // Daň z příjmů FO/PO (MVP foundation — kostra XML s warning)
         $app->get    ('/api/reports/income-tax/preview', [IncomeTaxAction::class, 'preview']);
         $app->get    ('/api/reports/income-tax',         [IncomeTaxAction::class, 'download']);

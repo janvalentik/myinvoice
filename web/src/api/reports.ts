@@ -64,6 +64,33 @@ export const reportsApi = {
       warnings: string[]
     }>('/reports/dphkh1/preview', { params: { year, month } }).then(r => r.data),
 
+  // Souhrnné hlášení (EU dodání) — měsíční, plátci i identifikované osoby
+  shvPreview: (year: number, month: number) =>
+    api.get<{
+      summary: {
+        period: string
+        rows_count: number
+        total_amount: number
+        rows: Array<{
+          country_iso2: string
+          vat_id: string
+          sh_type: '0' | '1' | '2' | '3'
+          amount: number
+          count: number
+          counterparty_name: string
+        }>
+        submission_deadline: string
+      }
+      warnings: string[]
+    }>('/reports/dphshv/preview', { params: { year, month } }).then(r => r.data),
+
+  shvDownloadUrl: (year: number, month: number) => {
+    const sid = localStorage.getItem('myinvoice.current_supplier_id')
+    const params = new URLSearchParams({ year: String(year), month: String(month) })
+    if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
+    return `/api/reports/dphshv?${params.toString()}`
+  },
+
   incomeTaxPreview: (year: number, type: 'fo' | 'po') =>
     api.get<{
       summary: {

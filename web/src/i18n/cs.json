@@ -4,7 +4,7 @@
     "dashboard": "Přehled", "invoices": "Faktury", "clients": "Klienti",
     "projects": "Zakázky", "stats": "Tržby", "bank": "Banka", "system": "Systém", "section_taxes": "Daně",
     "settings": "Nastavení", "supplier_current": "Dodavatel", "suppliers": "Dodavatelé", "codebooks": "Číselníky", "users": "Uživatelé",
-    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Exporty", "imports": "Importy", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "reports_kh": "Kontrolní hlášení", "reports_income_tax": "Daň z příjmů", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
+    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Exporty", "imports": "Importy", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "reports_kh": "Kontrolní hlášení", "reports_shv": "Souhrnné hlášení", "reports_income_tax": "Daň z příjmů", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
     "section_sales": "Prodej", "section_purchase": "Nákup", "section_finance": "Finance", "section_clients": "Klienti",
     "purchase_invoices": "Přijaté faktury", "purchase_export": "Export", "vendors": "Dodavatelé"
   },
@@ -1484,6 +1484,25 @@
   "reports": {
     "disclaimer_title": "Vygenerovaný XML je pouze pomůcka",
     "disclaimer_body": "Před odesláním na EPO portál MF ČR vždy ověřte správnost s vaší účetní nebo daňovým poradcem. Testováno na omezené sadě dat — aplikace nezaručuje regulatorní správnost.",
+    "shv": {
+      "title": "Souhrnné hlášení (DPHSHV)",
+      "subtitle": "Měsíční výkaz EU dodání zboží/služeb plátcům v jiném členském státu. Verze 06.01. Podávají plátci DPH i identifikované osoby.",
+      "download_xml": "Stáhnout XML",
+      "rows_count": "Počet řádků",
+      "rows_hint": "Agregováno per VAT_ID + typ plnění",
+      "total_amount": "Celkem v EU",
+      "total_hint": "Suma základů v CZK (bez DPH)",
+      "rows_title": "Řádky výkazu",
+      "country": "Stát",
+      "vat_id": "DIČ kupujícího",
+      "counterparty": "Protistrana",
+      "code": "Kód",
+      "type": "Typ plnění",
+      "count": "Počet",
+      "amount": "Hodnota",
+      "no_data": "V tomto měsíci nejsou žádné EU dodávky (žádné vystavené faktury s VAT klasifikací 20/22 pro EU klienty s DIČ).",
+      "note": "Souhrnné hlášení podávají plátci DPH s alespoň 1 EU dodávkou v měsíci. Identifikované osoby (neplátci) podávají při B2B EU službách nebo nákupech zboží z EU nad limit."
+    },
     "income_tax": {
       "title": "Daň z příjmů (DPFO / DPPO)",
       "subtitle": "Roční přiznání k dani z příjmů. **MVP foundation** — výkaz není kompletní.",

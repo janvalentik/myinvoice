@@ -102,6 +102,7 @@ const navSections = computed<NavSection[]>(() => {
       items: [
         { to: '/reports/dph',        label: t('nav.reports_dph'),        icon: ICONS.reports },
         { to: '/reports/kh',         label: t('nav.reports_kh'),         icon: ICONS.reports },
+        { to: '/reports/shv',        label: t('nav.reports_shv'),        icon: ICONS.reports },
         { to: '/reports/income-tax', label: t('nav.reports_income_tax'), icon: ICONS.reports },
       ],
     },

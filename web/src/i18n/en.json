@@ -4,7 +4,7 @@
     "dashboard": "Dashboard", "invoices": "Invoices", "clients": "Clients",
     "projects": "Projects", "stats": "Sales", "bank": "Bank", "system": "System", "section_taxes": "Taxes",
     "settings": "Settings", "supplier_current": "Supplier", "suppliers": "Suppliers", "codebooks": "Codebooks", "users": "Users",
-    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "reports_kh": "Control statement", "reports_income_tax": "Income tax", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
+    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Exports", "imports": "Imports", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "reports_kh": "Control statement", "reports_shv": "Recapitulative statement", "reports_income_tax": "Income tax", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
     "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
     "purchase_invoices": "Received invoices", "purchase_export": "Export", "vendors": "Vendors"
   },
@@ -1484,6 +1484,25 @@
   "reports": {
     "disclaimer_title": "Generated XML is only a helper",
     "disclaimer_body": "Before submitting to the MF ČR EPO portal, always verify with your accountant or tax advisor. Tested on limited dataset — the app does not guarantee regulatory correctness.",
+    "shv": {
+      "title": "Recapitulative statement (DPHSHV)",
+      "subtitle": "Monthly report of EU supplies of goods/services to VAT payers in other member states. Version 06.01. Submitted by VAT payers and identified persons.",
+      "download_xml": "Download XML",
+      "rows_count": "Row count",
+      "rows_hint": "Aggregated per VAT_ID + supply type",
+      "total_amount": "EU total",
+      "total_hint": "Sum of bases in CZK (no VAT)",
+      "rows_title": "Report rows",
+      "country": "Country",
+      "vat_id": "Buyer VAT ID",
+      "counterparty": "Counterparty",
+      "code": "Code",
+      "type": "Supply type",
+      "count": "Count",
+      "amount": "Amount",
+      "no_data": "No EU supplies in this month (no issued invoices with VAT classification 20/22 for EU clients with VAT ID).",
+      "note": "Recapitulative statement is submitted by VAT payers with at least 1 EU supply in the month. Identified persons (non-payers) submit when B2B EU services or goods purchases over the limit."
+    },
     "income_tax": {
       "title": "Income tax (DPFO / DPPO)",
       "subtitle": "Annual income tax return. **MVP foundation** — return is NOT complete.",
