@@ -128,14 +128,15 @@ final class SampleDataGenerator
             // Exchange rate pro non-CZK faktury — hardcoded ~25 CZK/EUR (rough CNB average).
             // Bez něj by ranking v Top klientech počítal EUR jako 1:1 CZK (1000 EUR ranked
             // jako 1000 Kč) — viz commit db85305 a issue ohledně NorthLight GmbH.
+            // Pozn.: invoices tabulka NEMÁ exchange_rate_source (jen purchase_invoices má).
             $exchangeRate = $clientCurrency === 'CZK' ? null : 25.0;
             $stmt = $pdo->prepare(
                 'INSERT INTO invoices
                     (supplier_id, varsymbol, invoice_type, client_id, project_id, issue_date, tax_date, due_date,
-                     currency_id, exchange_rate, exchange_rate_date, exchange_rate_source,
+                     currency_id, exchange_rate, exchange_rate_date,
                      reverse_charge, language, total_without_vat, total_vat, total_with_vat,
                      status, sent_at, paid_at, created_by)
-                 VALUES (?, ?, "invoice", ?, ?, ?, ?, ?, ?, ?, ?, "cnb", ?, ?, 0, 0, 0, ?, ?, ?, ?)'
+                 VALUES (?, ?, "invoice", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?)'
             );
             $sentAt = in_array($status, ['sent', 'paid'], true) ? $issueDate . ' 14:00:00' : null;
             $paidAt = $status === 'paid'
@@ -199,13 +200,14 @@ final class SampleDataGenerator
             $p = $parentInv->fetch(PDO::FETCH_ASSOC);
 
             // Exchange rate kopírujeme z parent invoice (dobropis je její opak).
+            // invoices tabulka NEMÁ exchange_rate_source.
             $stmt = $pdo->prepare(
                 'INSERT INTO invoices
                     (supplier_id, varsymbol, invoice_type, parent_invoice_id, client_id, project_id,
-                     issue_date, tax_date, due_date, currency_id, exchange_rate, exchange_rate_date, exchange_rate_source,
+                     issue_date, tax_date, due_date, currency_id, exchange_rate, exchange_rate_date,
                      reverse_charge, language,
                      total_without_vat, total_vat, total_with_vat, status, sent_at, created_by)
-                 VALUES (?, ?, "credit_note", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "sent", ?, ?)'
+                 VALUES (?, ?, "credit_note", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "sent", ?, ?)'
             );
             $stmt->execute([
                 $supplierId, $vs, $p['id'], $p['client_id'], $p['project_id'],
@@ -213,7 +215,6 @@ final class SampleDataGenerator
                 (int) $p['currency_id'],
                 $p['exchange_rate'] ?? null,
                 $p['exchange_rate'] !== null ? $issueDate : null,
-                $p['exchange_rate'] !== null ? 'cnb' : null,
                 $p['reverse_charge'], $p['language'],
                 -$p['total_without_vat'], -$p['total_vat'], -$p['total_with_vat'],
                 $issueDate . ' 12:00:00', $adminUserId,
