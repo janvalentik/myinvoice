@@ -273,19 +273,19 @@ onMounted(() => {
             </tbody>
             <tfoot class="bg-neutral-50">
               <tr>
-                <td colspan="2" class="px-3 py-2">
-                  <button @click="addItem"
-                          class="cursor-pointer text-sm text-primary-700 hover:underline">
-                    + {{ t('invoice.wr_add_item') }}
+                <td colspan="6" class="p-2">
+                  <button type="button" @click="addItem"
+                          class="cursor-pointer px-3 h-8 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 font-medium rounded-md inline-flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                    {{ t('invoice.wr_add_item') }}
                   </button>
                 </td>
-                <td class="px-3 py-2 text-right font-mono font-semibold">
-                  {{ totalHours.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} h
-                </td>
+              </tr>
+              <tr v-if="wrItems.length > 0" class="bg-neutral-50 font-semibold">
+                <td class="px-3 py-2 text-right" colspan="2">Σ</td>
+                <td class="px-3 py-2 text-right font-mono">{{ totalHours.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} h</td>
                 <td></td>
-                <td class="px-3 py-2 text-right font-mono font-semibold">
-                  {{ totalAmount.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} {{ currency }}
-                </td>
+                <td class="px-3 py-2 text-right font-mono">{{ totalAmount.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }} {{ currency }}</td>
                 <td></td>
               </tr>
             </tfoot>
