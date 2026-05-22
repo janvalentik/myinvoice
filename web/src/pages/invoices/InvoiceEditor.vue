@@ -1223,16 +1223,25 @@ async function deleteDraft() {
           <table class="w-full text-sm table-sticky-first">
             <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
               <tr>
+                <th class="px-2 py-2 w-12"></th>
                 <th class="px-3 py-2 text-left font-medium">{{ t('invoice.wr_description') }}</th>
                 <th class="px-3 py-2 text-left font-medium w-36">{{ t('invoice.wr_date') }}</th>
                 <th class="px-3 py-2 text-right font-medium w-24">{{ t('invoice.wr_hours') }}</th>
                 <th class="px-3 py-2 text-right font-medium w-28">{{ t('invoice.wr_rate') }}</th>
                 <th class="px-3 py-2 text-right font-medium w-32">{{ t('invoice.wr_total') }}</th>
-                <th class="px-2 py-2 w-8"></th>
+                <th class="px-2 py-2 w-10"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-for="(it, i) in wrItems" :key="i">
+                <td class="px-2 py-2 text-center text-xs text-neutral-400">
+                  <button type="button" @click="moveWrItem(i, -1)" :disabled="i === 0"
+                          :title="t('invoice.wr_move_up')"
+                          class="block w-5 h-4 hover:text-neutral-700 disabled:opacity-30">▲</button>
+                  <button type="button" @click="moveWrItem(i, 1)" :disabled="i === wrItems.length - 1"
+                          :title="t('invoice.wr_move_down')"
+                          class="block w-5 h-4 hover:text-neutral-700 disabled:opacity-30">▼</button>
+                </td>
                 <td class="px-2 py-1.5">
                   <input v-model="it.description" type="text" class="w-full h-9 px-2 border border-neutral-200 rounded text-sm" />
                 </td>
@@ -1248,42 +1257,32 @@ async function deleteDraft() {
                 <td class="px-3 py-1.5 text-right font-mono text-neutral-700">
                   {{ formatMoney((Number(it.hours) || 0) * (Number(it.rate) || 0), form.currency) }}
                 </td>
-                <td class="px-2 py-1.5">
-                  <div class="flex items-center justify-center gap-0.5">
-                    <button type="button" @click="moveWrItem(i, -1)" :disabled="i === 0"
-                            :title="t('invoice.wr_move_up')"
-                            class="cursor-pointer w-6 h-6 inline-flex items-center justify-center text-neutral-500 hover:text-primary-700 disabled:opacity-30 disabled:cursor-not-allowed">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
-                    </button>
-                    <button type="button" @click="moveWrItem(i, 1)" :disabled="i === wrItems.length - 1"
-                            :title="t('invoice.wr_move_down')"
-                            class="cursor-pointer w-6 h-6 inline-flex items-center justify-center text-neutral-500 hover:text-primary-700 disabled:opacity-30 disabled:cursor-not-allowed">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                    </button>
-                    <button type="button" @click="removeWrItem(i)"
-                            :title="t('common.delete')"
-                            class="cursor-pointer w-6 h-6 inline-flex items-center justify-center text-danger-500 hover:text-danger-600 text-xl leading-none">×</button>
-                  </div>
+                <td class="px-2 py-1.5 text-center">
+                  <button type="button" @click="removeWrItem(i)" :title="t('common.delete')"
+                          class="cursor-pointer text-danger-500 hover:text-danger-600 text-lg leading-none">×</button>
                 </td>
               </tr>
+            </tbody>
+            <tfoot class="bg-neutral-50 font-semibold">
               <tr>
-                <td colspan="6" class="p-2">
+                <td colspan="3" class="p-2">
                   <button type="button" @click="addWrItem"
                     class="cursor-pointer px-3 h-8 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 font-medium rounded-md inline-flex items-center gap-1">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
                     {{ t('invoice.wr_add_row') }}
                   </button>
                 </td>
+                <td v-if="wrItems.length > 0" class="px-3 py-2 text-right font-mono">
+                  <span class="text-neutral-400 font-normal mr-2">Σ</span>{{ wrTotalHours.toFixed(2) }} h
+                </td>
+                <td v-else></td>
+                <td></td>
+                <td v-if="wrItems.length > 0" class="px-3 py-2 text-right font-mono whitespace-nowrap" colspan="2">
+                  {{ formatMoney(wrTotalAmount, form.currency) }}
+                </td>
+                <td v-else colspan="2"></td>
               </tr>
-              <tr v-if="wrItems.length > 0" class="bg-neutral-50 font-semibold">
-                <td class="px-3 py-2 text-right">Σ</td>
-                <td></td>
-                <td class="px-3 py-2 text-right font-mono">{{ wrTotalHours.toFixed(2) }} h</td>
-                <td></td>
-                <td class="px-3 py-2 text-right font-mono">{{ formatMoney(wrTotalAmount, form.currency) }}</td>
-                <td></td>
-              </tr>
-            </tbody>
+            </tfoot>
           </table>
           </div>
 
