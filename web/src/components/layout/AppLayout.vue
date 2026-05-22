@@ -85,6 +85,8 @@ const ICONS = {
 
 const navSections = computed<NavSection[]>(() => {
   const isAdmin = auth.user?.role === 'admin'
+  // Účetní vidí exporty pro klientské doklady (pro účetní externí firmu) + daňové výkazy.
+  const isAccountantOrAdmin = isAdmin || auth.user?.role === 'accountant'
   const sections: NavSection[] = [
     { items: [{ to: '/', label: t('nav.dashboard'), icon: ICONS.dashboard }] },
     {
@@ -98,7 +100,7 @@ const navSections = computed<NavSection[]>(() => {
         { to: '/clients',          label: t('nav.clients'),    icon: ICONS.clients },
         { to: '/projects',         label: t('nav.projects'),   icon: ICONS.projects },
         ...(isAdmin ? [{ to: '/admin/approvals',          label: t('nav.approvals'),         icon: ICONS.approvals }] : []),
-        ...(isAdmin ? [{ to: '/admin/export',             label: t('nav.exports'),           icon: ICONS.exports   }] : []),
+        ...(isAccountantOrAdmin ? [{ to: '/admin/export',  label: t('nav.exports'),           icon: ICONS.exports   }] : []),
         ...(isAdmin ? [{ to: '/admin/import?tab=issued',  label: t('nav.imports_issued'),    icon: ICONS.imports   }] : []),
       ],
     },

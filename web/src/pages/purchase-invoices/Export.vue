@@ -9,7 +9,10 @@ type Format = 'pdf-zip' | 'pohoda' | 'isdoc'
 type DateBy = 'tax' | 'issue' | 'received'
 
 const format = ref<Format>('pdf-zip')
-const dateBy = ref<DateBy>('tax')
+// Default "issue" (datum vystavení) — odpovídá tomu, co je na fakturách napsané a co
+// uživatel typicky používá k organizaci archivu. tax (DUZP) má smysl pro DPH výkazy
+// a received (přijetí) jen pro audit kdy faktura přišla.
+const dateBy = ref<DateBy>('issue')
 const month = ref<string>((() => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`

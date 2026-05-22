@@ -38,7 +38,7 @@ const routes: RouteRecordRaw[] = [
       // Redirect zachovává bookmarks / staré odkazy.
       { path: 'admin/suppliers',        name: 'admin-suppliers', redirect: '/admin/codebooks' },
       { path: 'admin/codebooks',        name: 'admin-codebooks', component: () => import('@/pages/admin/Codebooks.vue'),  meta: { adminOnly: true } },
-      { path: 'admin/export',           name: 'admin-export',    component: () => import('@/pages/admin/Export.vue'),     meta: { adminOnly: true } },
+      { path: 'admin/export',           name: 'admin-export',    component: () => import('@/pages/admin/Export.vue'),     meta: { accountantOrAdmin: true } },
       { path: 'admin/import',           name: 'admin-import',    component: () => import('@/pages/admin/Imports.vue'),    meta: { adminOnly: true } },
       { path: 'admin/integrations',     name: 'admin-integrations', component: () => import('@/pages/admin/Integrations.vue'), meta: { adminOnly: true } },
       { path: 'crm',                    name: 'crm-dashboard',      component: () => import('@/pages/crm/CrmDashboard.vue') },
@@ -120,6 +120,12 @@ router.beforeEach(async (to) => {
   // Admin-only stránky
   const adminOnly = to.matched.some((r) => r.meta.adminOnly)
   if (adminOnly && auth.user?.role !== 'admin') {
+    return { name: 'home' }
+  }
+
+  // Accountant-or-admin stránky (DPH/KH/SHV/income-tax/submissions/exports)
+  const accountantOrAdmin = to.matched.some((r) => r.meta.accountantOrAdmin)
+  if (accountantOrAdmin && !['admin', 'accountant'].includes(auth.user?.role ?? '')) {
     return { name: 'home' }
   }
 
