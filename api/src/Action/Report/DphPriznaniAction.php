@@ -114,8 +114,22 @@ final class DphPriznaniAction
             $end = (new \DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
         }
 
+        // Multi-currency fix: drafty často nemají exchange_rate (applier ho aplikuje až
+        // při issue), tak EUR draft byl počítán 1:1 jako CZK. Pro non-CZK řádky bez rate
+        // dohledat nejbližší CNB kurz z `exchange_rates` cache k DUZP (fallback 1
+        // pokud cache prázdná — old behavior, nevadí).
+        $rateCzk =
+            "CASE WHEN cur.code = 'CZK' THEN 1
+                  WHEN i.exchange_rate IS NOT NULL THEN i.exchange_rate
+                  ELSE COALESCE((
+                        SELECT er.rate FROM exchange_rates er
+                         WHERE er.currency_code = cur.code
+                           AND er.rate_date <= COALESCE(i.tax_date, i.issue_date)
+                      ORDER BY er.rate_date DESC LIMIT 1
+                  ), 1)
+             END";
         $saleStmt = $pdo->prepare(
-            "SELECT COALESCE(SUM(i.total_vat * COALESCE(IF(cur.code='CZK', 1, i.exchange_rate), 1)), 0) AS vat,
+            "SELECT COALESCE(SUM(i.total_vat * $rateCzk), 0) AS vat,
                     COUNT(*) AS cnt,
                     SUM(CASE WHEN i.status = 'draft' THEN 1 ELSE 0 END) AS draft_cnt
                FROM invoices i
@@ -128,8 +142,18 @@ final class DphPriznaniAction
         $saleStmt->execute([$supplierId, $start, $end]);
         $sale = $saleStmt->fetch(\PDO::FETCH_ASSOC) ?: ['vat' => 0, 'cnt' => 0, 'draft_cnt' => 0];
 
+        $rateCzkPi =
+            "CASE WHEN cur.code = 'CZK' THEN 1
+                  WHEN pi.exchange_rate IS NOT NULL THEN pi.exchange_rate
+                  ELSE COALESCE((
+                        SELECT er.rate FROM exchange_rates er
+                         WHERE er.currency_code = cur.code
+                           AND er.rate_date <= COALESCE(pi.tax_date, pi.issue_date)
+                      ORDER BY er.rate_date DESC LIMIT 1
+                  ), 1)
+             END";
         $purchaseStmt = $pdo->prepare(
-            "SELECT COALESCE(SUM(pi.total_vat * COALESCE(IF(cur.code='CZK', 1, pi.exchange_rate), 1)), 0) AS vat,
+            "SELECT COALESCE(SUM(pi.total_vat * $rateCzkPi), 0) AS vat,
                     COUNT(*) AS cnt,
                     SUM(CASE WHEN pi.status = 'draft' THEN 1 ELSE 0 END) AS draft_cnt
                FROM purchase_invoices pi

@@ -241,12 +241,17 @@ onMounted(async () => {
 
         <!-- Pravá strana topbaru -->
         <div class="flex items-center gap-2 text-sm">
-          <!-- Jméno uživatele (desktop) -->
+          <!-- Jméno uživatele (desktop) — link na změnu hesla (self-service). -->
+          <RouterLink
+            to="/profile/password"
+            class="hidden lg:inline text-sm text-neutral-600 hover:text-primary-700 hover:underline"
+            :title="t('auth.change_password_title')"
+          >{{ auth.user?.name }}</RouterLink>
           <RouterLink
             to="/profile/totp"
-            class="hidden lg:inline text-sm text-neutral-600 hover:text-primary-700 hover:underline"
+            class="hidden lg:inline text-xs text-neutral-400 hover:text-primary-700 hover:underline"
             :title="t('auth.totp_2fa')"
-          >{{ auth.user?.name }}</RouterLink>
+          >2FA</RouterLink>
 
           <!-- Locale switcher (CZ / EN s SVG vlajkami) -->
           <div class="hidden sm:inline-flex items-center border border-neutral-200 rounded-md overflow-hidden">

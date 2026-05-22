@@ -396,6 +396,10 @@ final class IdokladImportService
             ];
         }
 
+        // Auto-detect reverse charge: vendor non-CZ + všechny items vat_rate=0
+        // (typicky přijatá faktura z EU s reverse charge). Stejná heuristika jako AI extractor.
+        $reverseCharge = $this->inferReverseChargeFromItems($vendorId, $items);
+
         $payload = [
             'vendor_id'             => $vendorId,
             'vendor_invoice_number' => $this->sanitizeVendorNumber((string) ($i['DocumentNumber'] ?? '')),
@@ -407,7 +411,7 @@ final class IdokladImportService
             'currency_id'           => $this->resolveCurrencyId((string) ($i['CurrencyCode'] ?? 'CZK'), $supplierId, isActive: false),
             'exchange_rate'         => isset($i['ExchangeRate']) ? (float) $i['ExchangeRate'] : null,
             'exchange_rate_source'  => 'manual',
-            'reverse_charge'        => false,
+            'reverse_charge'        => $reverseCharge,
             'language'              => 'cs',
             'items'                 => $items,
         ];
@@ -492,6 +496,35 @@ final class IdokladImportService
             if (abs($r - $rate) < 0.01) return $id;
         }
         return null;
+    }
+
+    /**
+     * Heuristika reverse charge (přenesená daňová povinnost):
+     *   - vendor je v non-CZ zemi (EU/třetí země)
+     *   - všechny items mají vat_rate = 0
+     *
+     * Stejná logika jako AiPdfExtractor::inferReverseCharge — duplikováno bez společného
+     * helperu (kvůli rozdílným tvarům items + vat_rate_id mapy).
+     */
+    private function inferReverseChargeFromItems(int $vendorId, array $items): bool
+    {
+        if (empty($items)) return false;
+        $vatRates = $this->loadVatRateMap();
+        foreach ($items as $it) {
+            $rateId = (int) ($it['vat_rate_id'] ?? 0);
+            $ratePercent = $vatRates[$rateId] ?? null;
+            if ($ratePercent !== null && (float) $ratePercent > 0.0) return false;
+        }
+        try {
+            $stmt = $this->db->pdo()->prepare(
+                'SELECT co.iso2 FROM clients c JOIN countries co ON co.id = c.country_id WHERE c.id = ?'
+            );
+            $stmt->execute([$vendorId]);
+            $iso2 = (string) $stmt->fetchColumn();
+            return $iso2 !== '' && $iso2 !== 'CZ';
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
