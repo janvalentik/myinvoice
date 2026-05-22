@@ -41,6 +41,7 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const overdueOnly = ref(false)
 const unpaidOnly = ref(false)
+const needsReviewOnly = ref(false)
 const currencyFilter = ref('')
 
 // Hromadné akce
@@ -63,6 +64,7 @@ onMounted(() => {
 function loadFiltersFromQuery(q: typeof route.query) {
   overdueOnly.value = q.overdue === '1' || q.overdue === 'true'
   unpaidOnly.value  = q.unpaid === '1' || q.unpaid === 'true'
+  needsReviewOnly.value = q.needs_review === '1' || q.needs_review === 'true'
   statusFilter.value = typeof q.status === 'string' ? (q.status as PurchaseInvoiceStatus) : ''
   kindFilter.value   = typeof q.kind === 'string' ? (q.kind as PurchaseDocumentKind) : ''
   yearFilter.value   = typeof q.year === 'string' && q.year !== ''
@@ -90,12 +92,13 @@ function syncFiltersToUrl() {
   if (currencyFilter.value) q.currency = currencyFilter.value
   if (overdueOnly.value) q.overdue = '1'
   if (unpaidOnly.value) q.unpaid = '1'
+  if (needsReviewOnly.value) q.needs_review = '1'
   if (search.value) q.q = search.value
   router.replace({ query: q })
 }
 
 watch([statusFilter, kindFilter, yearFilter, monthFilter, dateFrom, dateTo,
-       overdueOnly, unpaidOnly, currencyFilter], () => {
+       overdueOnly, unpaidOnly, needsReviewOnly, currencyFilter], () => {
   syncFiltersToUrl()
   load()
 })
@@ -118,6 +121,7 @@ watch(() => route.query, (newQ) => {
     dateTo.value = ''
     overdueOnly.value = false
     unpaidOnly.value = false
+    needsReviewOnly.value = false
     currencyFilter.value = ''
     search.value = ''
     // Uvolnit po flush (watch effects)
@@ -172,6 +176,7 @@ async function load(reset = true) {
       currency:      currencyFilter.value || undefined,
       unpaid_only:   unpaidOnly.value   || undefined,
       overdue:       overdueOnly.value  || undefined,
+      needs_review:  needsReviewOnly.value || undefined,
       q:             search.value       || undefined,
       page: page.value,
     })
@@ -224,10 +229,12 @@ const statusBadgeClass = (s: PurchaseInvoiceStatus): string => ({
   cancelled: 'bg-danger-50 text-danger-500 border border-danger-500/40',
 }[s])
 
-// Row class — soft red background pro overdue, soft gray pro cancelled
+// Row class — soft red background pro overdue, soft gray pro cancelled,
+// soft yellow pro faktury s AI extraction_warning (vyžadují kontrolu)
 const rowClass = (inv: PurchaseInvoiceListItem): string => {
   if (inv.status === 'cancelled') return 'opacity-60'
   if (isOverdue(inv.due_date, inv.status)) return 'bg-danger-50/30'
+  if (inv.extraction_warning) return 'bg-warning-50/50'
   return ''
 }
 
@@ -408,6 +415,10 @@ async function bulkDelete() {
           <input v-model="unpaidOnly" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
           {{ t('purchase_invoice.filters.unpaid_only') }}
         </label>
+        <label class="flex items-center gap-1.5 text-sm text-warning-700 px-2">
+          <input v-model="needsReviewOnly" type="checkbox" class="rounded border-neutral-300 text-warning-600" />
+          {{ t('purchase_invoice.filters.needs_review') }}
+        </label>
       </div>
     </div>
 
@@ -497,7 +508,20 @@ async function bulkDelete() {
                     <div class="font-medium text-neutral-900">{{ inv.vendor_company_name }}</div>
                     <div v-if="inv.vendor_ic" class="text-xs text-neutral-500 font-mono">{{ t('common.ic') }} {{ inv.vendor_ic }}</div>
                   </td>
-                  <td class="px-4 py-2.5 font-mono text-xs text-neutral-600">{{ inv.vendor_invoice_number }}</td>
+                  <td class="px-4 py-2.5 font-mono text-xs text-neutral-600">
+                    <div class="flex items-center gap-1.5">
+                      <span
+                        v-if="inv.extraction_warning"
+                        :title="t('purchase_invoice.extraction.needs_review_tooltip')"
+                        class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-warning-500/20 text-warning-600 flex-shrink-0"
+                      >
+                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                        </svg>
+                      </span>
+                      <span>{{ inv.vendor_invoice_number }}</span>
+                    </div>
+                  </td>
                   <td class="px-4 py-2.5 text-center text-xs text-neutral-600">{{ t(`purchase_invoice.document_kind.${inv.document_kind}`) }}</td>
                   <td class="px-4 py-2.5 text-center text-xs text-neutral-600">
                     {{ formatDate(inv.tax_date || inv.issue_date) }}
@@ -540,7 +564,18 @@ async function bulkDelete() {
               />
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline justify-between gap-2">
-                  <div class="font-medium text-neutral-900 truncate">{{ inv.vendor_company_name }}</div>
+                  <div class="font-medium text-neutral-900 truncate flex items-center gap-1.5">
+                    <span
+                      v-if="inv.extraction_warning"
+                      :title="t('purchase_invoice.extraction.needs_review_tooltip')"
+                      class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-warning-500/20 text-warning-600 flex-shrink-0"
+                    >
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                      </svg>
+                    </span>
+                    <span class="truncate">{{ inv.vendor_company_name }}</span>
+                  </div>
                   <div class="font-mono text-sm whitespace-nowrap">
                     {{ formatMoney(inv.amount_to_pay ?? inv.total_with_vat, inv.currency) }}
                   </div>

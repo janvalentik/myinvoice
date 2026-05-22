@@ -44,6 +44,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'crm',                    name: 'crm-dashboard',      component: () => import('@/pages/crm/CrmDashboard.vue') },
       { path: 'reports/dph',            name: 'reports-dph',        component: () => import('@/pages/reports/DphPriznaniReport.vue'), meta: { accountantOrAdmin: true } },
       { path: 'reports/kh',             name: 'reports-kh',         component: () => import('@/pages/reports/KontrolniHlaseniReport.vue'), meta: { accountantOrAdmin: true } },
+      { path: 'reports/dph-book',       name: 'reports-dph-book',   component: () => import('@/pages/reports/DphBookReport.vue'), meta: { accountantOrAdmin: true } },
       { path: 'reports/shv',            name: 'reports-shv',        component: () => import('@/pages/reports/SouhrnneHlaseniReport.vue'), meta: { accountantOrAdmin: true } },
       { path: 'reports/income-tax',     name: 'reports-income-tax', component: () => import('@/pages/reports/IncomeTaxReport.vue'), meta: { accountantOrAdmin: true } },
       { path: 'reports/submissions',    name: 'reports-submissions', component: () => import('@/pages/reports/TaxSubmissions.vue'), meta: { accountantOrAdmin: true } },

@@ -105,6 +105,12 @@ export interface PurchaseInvoice {
   pdf_uploaded_at: string | null
   vat_classification_code: string | null
   expense_category_id: number | null
+  /**
+   * Diagnostický popis problému z AI extrakce (např. AI sečetla mezisoučty
+   * jako další položky → suma řádků se výrazně liší od AI-vráceného totalu).
+   * NULL = vše OK / faktura nebyla AI-importována.
+   */
+  extraction_warning: string | null
   created_by: number
   created_at: string
   updated_at: string
@@ -149,6 +155,7 @@ export interface PurchaseInvoiceListItem {
   vendor_company_name: string
   vendor_ic: string | null
   month_bucket: string
+  extraction_warning: string | null
 }
 
 export interface PurchaseMonthGroup {
@@ -211,6 +218,7 @@ export interface PurchaseListFilters {
   currency?: string
   unpaid_only?: boolean
   overdue?: boolean
+  needs_review?: boolean
   q?: string
   page?: number
   per_page?: number
@@ -259,8 +267,9 @@ export const purchaseInvoicesApi = {
     if (filters.date_from)   params['filter[date_from]']   = filters.date_from
     if (filters.date_to)     params['filter[date_to]']     = filters.date_to
     if (filters.currency)    params['filter[currency]']    = filters.currency
-    if (filters.unpaid_only) params['filter[unpaid_only]'] = 1
-    if (filters.overdue)     params['filter[overdue]']     = 1
+    if (filters.unpaid_only)  params['filter[unpaid_only]']  = 1
+    if (filters.overdue)      params['filter[overdue]']      = 1
+    if (filters.needs_review) params['filter[needs_review]'] = 1
     if (filters.page)        params.page                   = filters.page
     if (filters.per_page)    params.per_page               = filters.per_page
     return api.get<{ data: PurchaseMonthGroup[]; meta: PurchaseListMeta }>(
@@ -295,6 +304,9 @@ export const purchaseInvoicesApi = {
       target,
       ...(target === 'paid' ? { paid_date: paidDate || new Date().toISOString().slice(0, 10) } : {}),
     }).then(r => r.data),
+
+  dismissExtractionWarning: (id: number) =>
+    api.post<PurchaseInvoice>(`/purchase-invoices/${id}/dismiss-extraction-warning`).then(r => r.data),
 
   uploadPdf: (id: number, file: File) => {
     const fd = new FormData()

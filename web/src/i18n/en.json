@@ -4,7 +4,7 @@
     "dashboard": "Dashboard", "invoices": "Invoices", "clients": "Clients",
     "projects": "Projects", "stats": "Sales", "bank": "Bank", "system": "System", "section_taxes": "Taxes",
     "settings": "Settings", "supplier_current": "Supplier", "suppliers": "Suppliers", "codebooks": "Codebooks", "users": "Users",
-    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Issued exports", "imports": "Imports", "imports_issued": "Imports (issued)", "imports_purchase": "Imports (purchase)", "ai_import": "AI import", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "reports_kh": "Control statement", "reports_shv": "Recapitulative statement", "reports_income_tax": "Income tax", "reports_submissions": "Submission archive", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
+    "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Issued exports", "imports": "Imports", "imports_issued": "Imports (issued)", "imports_purchase": "Imports (purchase)", "ai_import": "AI import", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "reports_kh": "Control statement", "reports_dph_book": "VAT ledger", "reports_shv": "Recapitulative statement", "reports_income_tax": "Income tax", "reports_submissions": "Submission archive", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
     "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
     "purchase_invoices": "Received invoices", "purchase_export": "Received exports", "vendors": "Vendors"
   },
@@ -160,7 +160,10 @@
     "extraction": {
       "isdoc_found": "ISDOC detected in PDF. Fields prefilled from attachment.",
       "ai_pending": "This PDF has no ISDOC. Fill manually, or use AI extraction in External integrations → AI.",
-      "manual_fallback": "Fill manually"
+      "manual_fallback": "Fill manually",
+      "warning_title": "AI extraction needs review",
+      "needs_review_tooltip": "This invoice needs review after AI extraction",
+      "dismiss": "Acknowledge"
     },
     "scan_inbox": {
       "title": "Scan received invoices inbox",
@@ -209,6 +212,7 @@
       "all_kinds": "All types",
       "unpaid_only": "Unpaid only",
       "overdue": "Overdue",
+      "needs_review": "Needs review",
       "vendor_placeholder": "Select vendor",
       "search_placeholder": "Search number / vendor…"
     },
@@ -1628,6 +1632,35 @@
       "b2_label": "Received domestic supplies over 10 000 CZK",
       "b3_label": "Received domestic supplies up to 10 000 CZK (aggregated)",
       "note_monthly": "Control statement is submitted ALWAYS monthly, even for quarterly VAT payers (only VAT return can be quarterly)."
+    },
+    "dph_book": {
+      "title": "VAT ledger",
+      "subtitle": "Internal VAT journal grouped by VAT return rows. Not an official tax submission.",
+      "disclaimer_title": "Internal tool",
+      "disclaimer_body": "The VAT ledger is an internal accounting journal grouping issued and received documents by VAT return rows. It includes drafts — visually distinguished in the table. It is NOT an official tax submission.",
+      "download_pdf": "Download PDF",
+      "period_label": "Period",
+      "nav_label": "VAT ledger",
+      "section_received": "RECEIVED",
+      "section_issued": "SUPPLIED",
+      "col": {
+        "tax_date": "Tax date",
+        "accounting_date": "Booking",
+        "doc_number": "Document",
+        "description": "Description",
+        "base_czk": "Base CZK",
+        "vat_czk": "VAT CZK",
+        "total_czk": "Total CZK",
+        "partner": "Partner",
+        "partner_dic": "VAT ID",
+        "original_doc_number": "Orig. doc number",
+        "original_tax_date": "Orig. tax date",
+        "kh_code": "KH"
+      },
+      "subtotal": "TOTAL",
+      "note_d_marker": "(If the VAT amount is marked with code D, VAT is valued at a different exchange rate than the base accounting rate.)",
+      "no_data": "No entries in the VAT ledger for the selected period.",
+      "draft_badge": "Draft"
     },
     "dph": {
       "title": "VAT return (DPHDP3)",

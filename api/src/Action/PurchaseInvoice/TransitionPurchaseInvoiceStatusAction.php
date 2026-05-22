@@ -97,6 +97,17 @@ final class TransitionPurchaseInvoiceStatusAction
 
         $this->repo->setStatus($id, $target, $supplierId, $paidDate);
 
+        // Při přechodu z draftu (typicky po manuální kontrole AI-importované faktury)
+        // automaticky vyčistit extraction_warning — uživatel data ověřil tím, že
+        // posunul stav z konceptu dál. Pokud warning není set, je to no-op.
+        if ($currentStatus === 'draft' && $target !== 'cancelled' && !empty($existing['extraction_warning'])) {
+            try {
+                $this->repo->setExtractionWarning($id, $supplierId, null);
+            } catch (\Throwable) {
+                // Silent — transition už proběhl, warning clear je jen nice-to-have.
+            }
+        }
+
         $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $this->logger->log("purchase_invoice.transitioned", $user['id'] ?? null, 'purchase_invoice', $id, [

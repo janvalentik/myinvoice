@@ -41,6 +41,7 @@ final class ListPurchaseInvoicesAction
             'currency'      => $filter['currency']      ?? null,
             'unpaid_only'   => !empty($filter['unpaid_only']),
             'overdue'       => !empty($filter['overdue']),
+            'needs_review'  => !empty($filter['needs_review']),
             'supplier_id'   => (int) $request->getAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0),
         ];
 

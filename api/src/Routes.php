@@ -34,6 +34,7 @@ use MyInvoice\Action\Admin\Import\AiExtractPdfAction;
 use MyInvoice\Action\Crm\CrmDashboardAction;
 use MyInvoice\Action\Report\DphPriznaniAction;
 use MyInvoice\Action\Report\KontrolniHlaseniAction;
+use MyInvoice\Action\Report\DphBookAction;
 use MyInvoice\Action\Report\SouhrnneHlaseniAction;
 use MyInvoice\Action\Report\IncomeTaxAction;
 use MyInvoice\Action\Admin\InvoicesZipAction;
@@ -61,6 +62,7 @@ use MyInvoice\Action\Invoice\CloneInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\CreatePurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\DeletePurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\DeletePurchaseInvoicePdfAction;
+use MyInvoice\Action\PurchaseInvoice\DismissExtractionWarningAction;
 use MyInvoice\Action\PurchaseInvoice\DownloadPurchaseInvoicePdfAction;
 use MyInvoice\Action\PurchaseInvoice\OurPdfPurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\ExportPurchaseInvoiceAction;
@@ -242,6 +244,7 @@ final class Routes
         $app->put    ('/api/purchase-invoices/{id:[0-9]+}/items',          SetPurchaseInvoiceItemsAction::class);
         $app->post   ('/api/purchase-invoices/{id:[0-9]+}/exchange-rate', SetPurchaseInvoiceExchangeRateAction::class);
         $app->post   ('/api/purchase-invoices/{id:[0-9]+}/transition',     TransitionPurchaseInvoiceStatusAction::class);
+        $app->post   ('/api/purchase-invoices/{id:[0-9]+}/dismiss-extraction-warning', DismissExtractionWarningAction::class);
         $app->post   ('/api/purchase-invoices/{id:[0-9]+}/pdf',            UploadPurchaseInvoicePdfAction::class);
         $app->get    ('/api/purchase-invoices/{id:[0-9]+}/pdf',            DownloadPurchaseInvoicePdfAction::class);
         $app->delete ('/api/purchase-invoices/{id:[0-9]+}/pdf',            DeletePurchaseInvoicePdfAction::class);
@@ -337,6 +340,9 @@ final class Routes
         // Kontrolní hlášení DPHKH1 (vždy měsíční)
         $app->get    ('/api/reports/dphkh1/preview',  [KontrolniHlaseniAction::class, 'preview']);
         $app->get    ('/api/reports/dphkh1',          [KontrolniHlaseniAction::class, 'download']);
+        // Kniha DPH (interní VAT žurnál — NE EPO podání, vždy měsíční)
+        $app->get    ('/api/reports/dph-book/preview', [DphBookAction::class, 'preview']);
+        $app->get    ('/api/reports/dph-book',         [DphBookAction::class, 'download']);
         // Souhrnné hlášení DPHSHV (EU dodání, měsíční — podávají i identifikované osoby)
         $app->get    ('/api/reports/dphshv/preview',  [SouhrnneHlaseniAction::class, 'preview']);
         $app->get    ('/api/reports/dphshv',          [SouhrnneHlaseniAction::class, 'download']);

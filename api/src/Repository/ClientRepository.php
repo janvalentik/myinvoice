@@ -126,14 +126,19 @@ final class ClientRepository
                        -- Bez exchange_rate (CZK řádky) je multiplier 1.
                        -- Výsledek `costs` je tedy v CZK (tenant base ccy), nezávisle na
                        -- vendor.currency_default. UI zobrazí jako Kč.
+                       --
+                       -- purchase_count zahrnuje i drafty (koncepty z AI importu) — uživatel
+                       -- chce vidět celkový počet faktur od vendora včetně rozpracovaných.
+                       -- Costs ale jen z non-draft non-cancelled (draft není ekonomicky reálný).
                        SELECT pi.vendor_id,
-                              SUM(pi.total_with_vat * COALESCE(IF(cur.code = 'CZK', 1, pi.exchange_rate), 1)) AS costs,
-                              COUNT(*) AS purchase_count,
-                              MAX(pi.issue_date) AS last_purchase_date
+                              SUM(IF(pi.status NOT IN ('draft', 'cancelled'),
+                                     pi.total_with_vat * COALESCE(IF(cur.code = 'CZK', 1, pi.exchange_rate), 1),
+                                     0)) AS costs,
+                              SUM(IF(pi.status != 'cancelled', 1, 0)) AS purchase_count,
+                              MAX(IF(pi.status != 'cancelled', pi.issue_date, NULL)) AS last_purchase_date
                          FROM purchase_invoices pi
                     LEFT JOIN currencies cur ON cur.id = pi.currency_id
                         WHERE pi.supplier_id = ?
-                          AND pi.status NOT IN ('draft', 'cancelled')
                      GROUP BY pi.vendor_id
                    ) pi_agg ON pi_agg.vendor_id = c.id
                  WHERE $whereSql

@@ -130,6 +130,7 @@ const navSections = computed<NavSection[]>(() => {
       items: [
         { to: '/reports/dph',         label: t('nav.reports_dph'),         icon: ICONS.tax_dph },
         { to: '/reports/kh',          label: t('nav.reports_kh'),          icon: ICONS.tax_kh },
+        { to: '/reports/dph-book',    label: t('nav.reports_dph_book'),    icon: ICONS.tax_dph },
         { to: '/reports/shv',         label: t('nav.reports_shv'),         icon: ICONS.tax_shv },
         { to: '/reports/income-tax',  label: t('nav.reports_income_tax'),  icon: ICONS.tax_income },
         { to: '/reports/submissions', label: t('nav.reports_submissions'), icon: ICONS.tax_archive },
@@ -175,8 +176,11 @@ function isActive(to: string): boolean {
   // Split `to` na path + query (pokud má query — např. /clients?role=vendors)
   const [toPath, toQs] = to.split('?', 2)
 
-  // Pokud současná route NEMÁ stejný path prefix — určitě není aktivní.
-  if (!route.path.startsWith(toPath)) return false
+  // Pokud současná route NEMÁ stejný path nebo child path — určitě není aktivní.
+  // Pozor: prostý startsWith by matchoval i sourozence se stejným prefixem
+  // (např. /reports/dph by matchoval /reports/dph-book), proto vyžadujeme
+  // přesnou shodu NEBO následující `/` (skutečný child segment).
+  if (route.path !== toPath && !route.path.startsWith(toPath + '/')) return false
 
   // Pokud item má query, musí se shodovat key-by-key s current route query.
   if (toQs) {

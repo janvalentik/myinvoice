@@ -153,6 +153,9 @@ final class PurchaseInvoiceRepository
         if (!empty($filters['overdue'])) {
             $where[] = "pi.status IN ('received','booked') AND pi.due_date <= CURDATE()";
         }
+        if (!empty($filters['needs_review'])) {
+            $where[] = "pi.extraction_warning IS NOT NULL";
+        }
         if (!empty($filters['q'])) {
             // Escape % a _ wildcards aby uživatelský input nedělal slow-query / unexpected match
             $q = addcslashes((string) $filters['q'], '%_\\');
@@ -177,6 +180,7 @@ final class PurchaseInvoiceRepository
                        pi.total_without_vat, pi.total_vat, pi.total_with_vat,
                        pi.advance_paid_amount, pi.amount_to_pay,
                        pi.status, pi.booked_at, pi.paid_at, pi.cancelled_at,
+                       pi.extraction_warning,
                        c.company_name AS vendor_company_name, c.ic AS vendor_ic,
                        DATE_FORMAT(pi.issue_date, '%Y-%m') AS month_bucket
                        {$selectTotal}
@@ -649,6 +653,18 @@ final class PurchaseInvoiceRepository
         $this->db->pdo()->prepare(
             'UPDATE purchase_invoices SET rounding = ? WHERE id = ? AND supplier_id = ?'
         )->execute([$rounding, $id, $supplierId]);
+    }
+
+    /**
+     * Zapíše (nebo vyčistí) diagnostický popis problému z AI extrakce.
+     * UI ho zobrazí jako žluté upozornění, aby si uživatel data ověřil
+     * (typicky: AI sečetla subtotaly jako další položky).
+     */
+    public function setExtractionWarning(int $id, int $supplierId, ?string $warning): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE purchase_invoices SET extraction_warning = ? WHERE id = ? AND supplier_id = ?'
+        )->execute([$warning, $id, $supplierId]);
     }
 
     public function updateTotals(int $id, float $withoutVat, float $vat, float $withVat, float $rounding): void

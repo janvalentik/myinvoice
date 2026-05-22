@@ -7,6 +7,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.5] — 2026-05-22
+
+Nová funkce **Kniha DPH** (měsíční VAT žurnál) a zásadní zlepšení AI extrakce
+přijatých faktur — detekce vendor↔customer záměny, auto-upgrade na silnější
+model při slabém výsledku, sanity check sumy řádků, korektní handling slev
+se zápornou hodnotou, ne-destruktivní placeholder při katastrofálním mismatch.
+Plus inline PDF náhled v editoru, filtr „Ke kontrole" v seznamu přijatých
+faktur a 23 nových unit testů.
+
+### Added
+
+#### Kniha DPH (měsíční VAT žurnál)
+- Nová stránka `Daně → Kniha DPH` (pod Kontrolním hlášením). Interní reporting
+  výkaz seskupený podle řádků DPH přiznání (např. `15.040` přijaté tuzemsko 21 %,
+  `36.001` uskutečněná tuzemsko 21 %, `43.012` + `43.043` dovoz služby).
+- Měsíční selektor (rok + měsíc) + tlačítko **Stáhnout PDF** (landscape A4,
+  11 sloupců: datum plnění, zaúčtování, doklad, popis, ZD CZK, DPH CZK, celkem
+  CZK, partner + DIČ, orig. číslo dokladu, orig. datum plnění, KH kód).
+- Zahrnuje i drafty (vizuálně označené) — užitečné pro pracovní přehled před
+  uzavřením období.
+- Není to EPO podání — čistě interní reporting / archiv.
+- Endpointy: `GET /api/reports/dph-book/preview` (JSON) + `GET /api/reports/dph-book`
+  (PDF download). Guard `admin|accountant`.
+- Migrace `0042_vat_classifications_secondary_line.sql` přidává sloupec
+  `dphdp3_line_secondary` — umožňuje, aby jedno přijaté plnění generovalo
+  současně dva řádky (typicky dovoz služby: ř.12 přiznání DPH + ř.43 nárok
+  na odpočet z téhož).
+
+#### AI extrakce přijatých faktur — výrazná vylepšení
+
+**Tenant context block v promptu.** Před extrakcí se do systémového promptu
+vloží explicitní pravidlo: *„Tato firma (s tímto IČ a názvem) je VŽDY odběratel
+— NIKDY ne dodavatel."* Předchází tomu, aby AI u faktur s dominantní hlavičkou
+dodavatele (autoservisy, mobilní operátoři, hostingy) zaměnila vendor↔customer.
+
+**Auto-upgrade na silnější model.** Pokud Haiku 4.5 vrátí slabý výsledek
+(vendor = tenant bez použitelného customer pro swap-back NEBO Σ items vs AI
+total > 50 %), extractor automaticky retry-uje s `claude-sonnet-4-6`. Pokud
+uživatel má Sonnet/Opus jako default, retry se přeskočí.
+
+**Sanity check sumy řádků.** Nový sloupec `purchase_invoices.extraction_warning`
+(migrace `0041_purchase_invoice_extraction_warning.sql`) drží diagnostický
+text. Po extrakci se spočítá `Σ (qty × unit_price_without_vat)` se znaménky
+(slevy s mínusem, dobropisy se zápornou qty) a porovná s AI `total_without_vat`.
+Při rozdílu > 2 % se uloží warning. **Porovnání je vždy bez DPH na obou
+stranách** — žádný `total_with_vat / 1.21` fallback, který by u multi-rate
+faktur (mix 21/12/0 %) generoval false-positive.
+
+**Handling slev a dobropisů.** AI prompt explicitně instruuje, že u řádků se
+slevou/rabatem mají být qty nebo unit_price záporné (pokud jsou na PDF se
+znaménkem mínus). Importér přestal násilně aplikovat `abs()` na běžné faktury
+— znaménko z AI se respektuje. U dobropisů se sign aplikuje dle `document_kind`.
+
+**Placeholder fallback při katastrofálním mismatch (> 50 %).** Pokud AI items
+sečtené dají 5–10× víc než reálný total (typicky komplexní multi-column
+servisní faktury, kde Haiku nezvládá rozparsovat sloupce), extractor zachová
+popisy řádků z AI extraktu (jsou typicky správně) s qty = 0 a price = 0,
+a přidá první řádek **KOREKCE** s AI totalem z „K úhradě". Uživatel pak
+postupně doplňuje qty/ceny k jednotlivým řádkům a nakonec smaže korekční
+řádek. Práh 50 % je úmyslně vysoký — drobné chyby (sleva s opačným znaménkem
+~22 %) zůstávají v rukou uživatele, prompt se neztratí.
+
+**Vendor=tenant fallback.** Když AI vrátí `vendor.ic == tenant.ic` a customer
+chybí, extrakce se odmítne s jasnou hláškou. Auto-upgrade na Sonnet typicky
+tento případ vyřeší.
+
+**Rounding z AI total.** Pokud AI nevrátila `total_with_vat_rounded`, ale
+`total_with_vat` se od přesného součtu z items liší o méně než 1 Kč, rozdíl
+se automaticky uloží jako rounding offset. Zachycuje typické zaokrouhlení
+„K úhradě" na celé Kč.
+
+**markAlreadyPaid s logováním.** Když AI detekuje „JIŽ UHRAZENO" / „PAID" /
+„Hradí se ze zálohy" a faktura skočí draft → paid, případné selhání už není
+silent — logger zaznamená důvod (varsymbol konflikt, race na statusu).
+
+**Backfix CLI** `api/bin/recheck-ai-extracted-invoices.php` — projde existující
+přijaté faktury s PDF přílohou, re-spustí AI extrakci a porovná AI total s
+DB totalem. Při rozdílu > prahu (default 2 %) zapíše `extraction_warning`.
+Default dry-run, `--apply` pro skutečný zápis, `--supplier-id`, `--limit`,
+`--threshold`, `--include-flagged`.
+
+#### UI vylepšení přijatých faktur
+- **Inline PDF náhled v editoru** — tlačítko **Zobrazit PDF** v `InvoiceEditor.vue`
+  (stejný pattern jako v Detail.vue, 80vh iframe, FitH).
+- **Žluté zvýraznění + ikona** v seznamu přijatých faktur u faktur s
+  `extraction_warning != NULL`.
+- **Filtr „Ke kontrole"** v topbaru seznamu — zobrazí jen faktury vyžadující
+  manuální revizi. URL sync (`?needs_review=1`).
+- **Tlačítko „Beru na vědomí"** ve warning banneru (`Detail` i `Editor`) —
+  POST `/api/purchase-invoices/{id}/dismiss-extraction-warning`, smaže warning
+  bez nutnosti posunout stav.
+- **Auto-clear warning při transition draft → received/booked/paid** — uživatel
+  posunul stav = ověřil data, warning už není potřeba.
+
+#### Vendor list — drafty v počtu faktur
+- Sloupec **Počet faktur** v `clients?role=vendors` teď zahrnuje i drafty.
+  `costs` (sumarizace nákladů) zůstává jen z non-draft non-cancelled faktur —
+  draft není ekonomicky reálný.
+
+#### Unit testy
+- Nový test soubor `AiPdfExtractorUnitTest.php` (17 testů) — pokrývá
+  `detectWeakExtraction`, `maybeFlagTotalsMismatch`, `applyRoundingFromAiTotal`
+  proti reálným scénářům: clean extraction, sleva s mínusem, dobropis se zápornou
+  qty, katastrofální mismatch s placeholderem + zachovanými AI popisy, chybějící
+  `total_without_vat` (žádný `/1.21` fallback).
+- Nový test soubor `AnthropicClientUnitTest.php` (5 testů) — pokrývá
+  `buildTenantContextBlock` (plné info, jen name, prázdný supplier, DB error).
+- `composer require --dev dg/bypass-finals` — runtime obejití `final class`
+  pro mocky v unit testech (PurchaseInvoiceRepository, Connection a další).
+- `tests/bootstrap.php` registruje BypassFinals; `phpunit.xml` ho používá.
+
+### Fixed
+
+- **Sidebar highlight kolize** — položka „DPH přiznání" se rozsvěcovala i na
+  podstránce „Kniha DPH", protože `isActive` v `AppLayout.vue` matchovala přes
+  `startsWith(toPath)` (`/reports/dph` je prefix `/reports/dph-book`). Změna
+  na exact match nebo skutečný child segment (`toPath + '/'`).
+- **Sanity check sčítal položky přes `abs()`** — sleva se zápornou cenou se
+  do sumy započítala jako kladná, což generovalo falešné varování (~22 % diff)
+  i u faktur, kde byly items správně. Teď signed sum, abs() až na výsledku
+  pro porovnání s AI totalem.
+- **Recheck CLI měl bug u dobropisů** — `$dbTotal` bez `abs()` ukazoval 100 %
+  diff i u korektně extrahovaných credit notes. Plus stejný `/1.21` fallback
+  jako v hlavním extractoru → multi-rate false positive. Obě místa fixnutá.
+
+### Changed
+
+- AI prompt rozšířen o sekce: pravidla pro slevy (záporné qty/cena), pravidla
+  pro `total_with_vat` (jen „K úhradě", NIKDY ze subtotalu), few-shot příklad
+  servisní faktury, instrukce ignorovat řádky „Celkem/Subtotal/Mezisoučet".
+- Disclaimer banner v Kniha DPH sjednocen s DPH přiznáním (`bg-danger-50
+  border-2 border-danger-500`).
+
 ## [4.0.4] — 2026-05-22
 
 Velký funkční audit napříč projektem — opravy multi-currency rankingu, VAT

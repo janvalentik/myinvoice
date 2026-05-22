@@ -104,8 +104,28 @@ const form = ref<{
 
 // PDF state
 const existingPdf = ref<{ path: string; hash: string; size: number; name: string; uploadedAt: string } | null>(null)
+const pdfPreviewOpen = ref(false) // default collapsed — user explicitně otevře
 const pdfUploading = ref(false)
 const dropzoneVisible = ref(true)
+
+// Diagnostické varování z AI extrakce (např. mezisoučty čteny jako items).
+// Backend sets via PurchaseInvoiceRepository::setExtractionWarning po sanity-check.
+const extractionWarning = ref<string | null>(null)
+const dismissingWarning = ref(false)
+
+async function dismissWarning() {
+  const invId = Number(route.params.id)
+  if (!invId || dismissingWarning.value) return
+  dismissingWarning.value = true
+  try {
+    await purchaseInvoicesApi.dismissExtractionWarning(invId)
+    extractionWarning.value = null
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    dismissingWarning.value = false
+  }
+}
 
 // === Default vendor currency on selection ===
 function onVendorSelected(v: any) {
@@ -278,6 +298,7 @@ function populate(inv: PurchaseInvoice) {
   form.value.expense_category_id = inv.expense_category_id ?? null
   form.value.vat_classification_code = inv.vat_classification_code ?? null
   form.value.items = inv.items.length > 0 ? inv.items : []
+  extractionWarning.value = inv.extraction_warning ?? null
 
   if (inv.pdf_path) {
     existingPdf.value = {
@@ -476,6 +497,27 @@ function fieldErr(key: string): string | null {
     <div v-if="error" class="p-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
       {{ error }}
     </div>
+
+    <!-- AI extraction warning — žluté upozornění, pokud backend zaznamenal podezřelou neshodu
+         mezi sumou řádků a AI-vráceným totalem (typicky: subtotal čten jako item). -->
+    <div v-if="extractionWarning" class="p-3 bg-warning-50 border border-warning-500/40 rounded-md flex gap-3 items-start">
+      <svg class="w-5 h-5 shrink-0 text-warning-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      </svg>
+      <div class="text-sm flex-1 min-w-0">
+        <div class="font-medium text-warning-700">{{ t('purchase_invoice.extraction.warning_title') }}</div>
+        <div class="text-warning-700/90 mt-1">{{ extractionWarning }}</div>
+      </div>
+      <button
+        type="button"
+        @click="dismissWarning"
+        :disabled="dismissingWarning"
+        class="cursor-pointer text-xs px-2 py-1 border border-warning-500/50 rounded text-warning-700 hover:bg-warning-100 disabled:opacity-50 shrink-0"
+      >
+        {{ t('purchase_invoice.extraction.dismiss') }}
+      </button>
+    </div>
+
     <div v-if="!loaded" class="text-center py-12 text-neutral-500">…</div>
 
     <form v-else @submit.prevent="submit" class="space-y-5">
@@ -487,36 +529,61 @@ function fieldErr(key: string): string | null {
         </p>
       </div>
 
-      <!-- Existující PDF na detail/edit -->
-      <div v-if="existingPdf" class="bg-white border border-neutral-200 rounded-lg p-4 shadow-sm flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <svg class="w-7 h-8 shrink-0" viewBox="0 0 32 36" xmlns="http://www.w3.org/2000/svg">
-            <path fill="#dc2626" d="M4 2h16l8 8v22a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
-            <path fill="#ffffff" opacity="0.35" d="M20 2v8h8z"/>
-            <text x="16" y="26" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" text-anchor="middle" letter-spacing="0.3">PDF</text>
-          </svg>
-          <div>
-            <div class="font-medium text-sm">{{ existingPdf.name }}</div>
-            <div v-if="existingPdf.size > 0" class="text-xs text-neutral-500">{{ Math.round(existingPdf.size / 1024) }} KiB</div>
-            <div v-else class="text-xs text-neutral-400 font-mono">{{ existingPdf.hash?.slice(0, 12) }}…</div>
+      <!-- Existující PDF na detail/edit (s inline preview, stejný pattern jako InvoiceDetail.vue) -->
+      <div v-if="existingPdf" class="bg-white border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+          <div class="flex items-center gap-3">
+            <svg class="w-7 h-8 shrink-0" viewBox="0 0 32 36" xmlns="http://www.w3.org/2000/svg">
+              <path fill="#dc2626" d="M4 2h16l8 8v22a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/>
+              <path fill="#ffffff" opacity="0.35" d="M20 2v8h8z"/>
+              <text x="16" y="26" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" text-anchor="middle" letter-spacing="0.3">PDF</text>
+            </svg>
+            <div>
+              <div class="font-medium text-sm">{{ existingPdf.name }}</div>
+              <div v-if="existingPdf.size > 0" class="text-xs text-neutral-500">{{ Math.round(existingPdf.size / 1024) }} KiB</div>
+              <div v-else class="text-xs text-neutral-400 font-mono">{{ existingPdf.hash?.slice(0, 12) }}…</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button
+              v-if="invoiceId"
+              type="button"
+              @click="pdfPreviewOpen = !pdfPreviewOpen"
+              class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-md inline-flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              {{ pdfPreviewOpen ? t('purchase_invoice.pdf.hide') : t('purchase_invoice.pdf.show') }}
+            </button>
+            <a
+              v-if="invoiceId"
+              :href="purchaseInvoicesApi.pdfUrl(invoiceId)"
+              target="_blank"
+              class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md inline-flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              {{ t('purchase_invoice.pdf.open') }}
+            </a>
+            <button
+              type="button"
+              @click="onReplacePdf"
+              class="cursor-pointer px-3 h-9 text-sm border border-danger-500/50 text-danger-500 hover:bg-danger-50 rounded-md inline-flex items-center gap-1.5"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
+              {{ t('common.delete') }}
+            </button>
           </div>
         </div>
-        <div class="flex items-center gap-2">
-          <a
-            v-if="invoiceId"
-            :href="purchaseInvoicesApi.pdfUrl(invoiceId)"
-            target="_blank"
-            class="px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50"
-          >
-            {{ t('purchase_invoice.pdf.open') }}
-          </a>
-          <button
-            type="button"
-            @click="onReplacePdf"
-            class="cursor-pointer px-3 py-1.5 text-xs border border-neutral-300 rounded-md hover:bg-neutral-50"
-          >
-            {{ t('common.delete') }}
-          </button>
+        <!-- Inline PDF preview přes browser PDF viewer. Musí být ?inline=1 (jinak
+             Content-Disposition: attachment a Edge/IE blokují embed). -->
+        <div v-if="pdfPreviewOpen && invoiceId" class="bg-neutral-100">
+          <iframe
+            :src="purchaseInvoicesApi.pdfUrl(invoiceId, true) + '#view=FitH'"
+            class="w-full h-[80vh] border-0"
+            :title="existingPdf.name || 'PDF'"
+          ></iframe>
         </div>
       </div>
 

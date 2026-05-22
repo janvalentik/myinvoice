@@ -96,6 +96,28 @@ final class AiPdfExtractor
         if (!$extracted['ok']) {
             return ['ok' => false, 'error' => $extracted['error'] ?? 'AI extrakce selhala', 'source' => 'ai_failed'];
         }
+
+        // Auto-upgrade na silnější model když Haiku vrátil slabý výsledek (vendor=tenant
+        // nebo katastrofální items mismatch). Sonnet 4.6 čte komplexní PDF (autoservisy,
+        // multi-column layouts) výrazně lépe za cenu ~4× vyšší. Pokud uživatel už má
+        // Sonnet/Opus jako default, retry nemá smysl (už by ho použil).
+        $modelUsed = (string) ($extracted['model'] ?? '');
+        $isHaiku = str_contains($modelUsed, 'haiku');
+        if ($isHaiku) {
+            $tenantIc = $this->fetchTenantIc($supplierId);
+            $weakness = $this->detectWeakExtraction($extracted['data'], $tenantIc);
+            if ($weakness !== null) {
+                $this->logger->info('AI extractor: Haiku vrátil slabý výsledek, retry se Sonnetem 4.6', [
+                    'supplier_id' => $supplierId,
+                    'reason' => $weakness,
+                    'haiku_model' => $modelUsed,
+                ]);
+                $upgrade = $this->anthropic->extractInvoice($supplierId, $pdfBytes, 'claude-sonnet-4-6');
+                if ($upgrade['ok']) {
+                    $extracted = $upgrade;
+                }
+            }
+        }
         $data = $extracted['data'];
 
         $validationError = $this->validateAiData($data);
@@ -118,19 +140,42 @@ final class AiPdfExtractor
         $customerIc = $this->normalizeIc((string) ($data['customer']['ic'] ?? ''));
         $vendorIc   = $this->normalizeIc((string) ($data['vendor']['ic'] ?? ''));
 
-        if ($tenantIc !== null && $vendorIc === $tenantIc && $customerIc !== null && $customerIc !== $tenantIc) {
-            // AI swap detected: tenant je v vendor pozici → prohodit s customer.
-            $this->logger->info('AI extractor: detected vendor↔customer swap (tenant in vendor slot), swapping back', [
-                'vendor_ic'   => $vendorIc,
-                'customer_ic' => $customerIc,
-                'tenant_ic'   => $tenantIc,
-                'vendor_invoice_number' => $data['vendor_invoice_number'] ?? null,
-            ]);
-            $tmp = $data['vendor'] ?? [];
-            $data['vendor']   = $data['customer'] ?? [];
-            $data['customer'] = $tmp;
-            // Re-normalize po prohození pro guard níže
-            $customerIc = $this->normalizeIc((string) ($data['customer']['ic'] ?? ''));
+        if ($tenantIc !== null && $vendorIc === $tenantIc) {
+            if ($customerIc !== null && $customerIc !== $tenantIc) {
+                // AI swap detected: tenant je v vendor pozici, customer má jiné (validní) IČ
+                // → prohodit zpět (původní chování).
+                $this->logger->info('AI extractor: detected vendor↔customer swap (tenant in vendor slot), swapping back', [
+                    'vendor_ic'   => $vendorIc,
+                    'customer_ic' => $customerIc,
+                    'tenant_ic'   => $tenantIc,
+                    'vendor_invoice_number' => $data['vendor_invoice_number'] ?? null,
+                ]);
+                $tmp = $data['vendor'] ?? [];
+                $data['vendor']   = $data['customer'] ?? [];
+                $data['customer'] = $tmp;
+                // Re-normalize po prohození pro guard níže
+                $customerIc = $this->normalizeIc((string) ($data['customer']['ic'] ?? ''));
+            } else {
+                // vendor.ic == tenant.ic A customer chybí (nebo má taky tenant IČ) — AI
+                // očividně mis-přečetla hlavičku PDF (typicky autoservisy / poskytovatelé
+                // s vlastní hlavičkou kde vlastní firma je nahoře a odběratel níže).
+                // Bez customer s jiným IČ nemáme jak swap-back udělat → abortujeme,
+                // aby se faktura nezačala jako "MyWebdesign fakturuje sám sobě".
+                $this->logger->warning('AI extractor: vendor IC matches tenant IC and no usable customer to swap — rejecting', [
+                    'vendor_ic'   => $vendorIc,
+                    'customer_ic' => $customerIc,
+                    'tenant_ic'   => $tenantIc,
+                    'vendor_invoice_number' => $data['vendor_invoice_number'] ?? null,
+                ]);
+                return [
+                    'ok'      => false,
+                    'error'   => 'AI špatně rozpoznala dodavatele — IČO dodavatele se shoduje s IČO vašeho tenanta. '
+                              . 'Pravděpodobně AI zaměnila hlavičku PDF (váš název je na faktuře jako odběratel). '
+                              . 'Zkuste fakturu nahrát znovu, nebo zadejte ručně.',
+                    'ai_data' => $data,
+                    'source'  => 'vendor_is_tenant',
+                ];
+            }
         }
 
         if ($tenantIc !== null && $customerIc !== null && $customerIc !== $tenantIc) {
@@ -236,17 +281,31 @@ final class AiPdfExtractor
         }
 
         // Dobropis: položky musí mít záporné quantity (stejný pattern jako CancelInvoiceAction).
-        // AI vrací kladné absolutní hodnoty; sign aplikujeme tady podle document_kind.
-        $sign = $documentKind === 'credit_note' ? -1.0 : 1.0;
+        // AI vrací kladné absolutní hodnoty (per prompt); sign aplikujeme tady podle document_kind.
+        // Běžná faktura ('invoice'): AI sign respektujeme — slevy/rabaty mají záporné částky
+        // (např. "Roční sleva 10%" s unit_price=-643.50), bez abs() jinak by se sleva
+        // přičetla místo odečetla.
+        $isCredit = $documentKind === 'credit_note';
 
         $items = [];
         foreach ($data['items'] as $idx => $line) {
             $rate = (float) ($line['vat_rate'] ?? 0);
+            $qtyAi = (float) ($line['quantity'] ?? 0);
+            $priceAi = (float) ($line['unit_price_without_vat'] ?? 0);
+            if ($isCredit) {
+                // Dobropis: AI vrací kladné absolutní hodnoty, sign aplikujeme.
+                $qty = -1.0 * abs($qtyAi);
+                $price = abs($priceAi);
+            } else {
+                // Běžná faktura: trust AI sign (slevy mají záporné quantity nebo price).
+                $qty = $qtyAi;
+                $price = $priceAi;
+            }
             $items[] = [
                 'description'            => (string) $line['description'],
-                'quantity'               => $sign * abs((float) $line['quantity']),
+                'quantity'               => $qty,
                 'unit'                   => (string) ($line['unit'] ?? 'ks'),
-                'unit_price_without_vat' => abs((float) $line['unit_price_without_vat']),
+                'unit_price_without_vat' => $price,
                 'vat_rate_id'            => $this->matchVatRateId($vatRates, $rate) ?? $defaultVatRateId,
                 'order_index'            => $idx,
                 // vat_classification_code nesetujeme — PurchaseInvoiceRepository::replaceItems()
@@ -279,7 +338,7 @@ final class AiPdfExtractor
             'reverse_charge'        => $reverseCharge,
             // Rozdíl mezi přesným total a zaokrouhleným total z PDF (např. 229 - 228.69 = 0.31).
             // Calculator pak respektuje uložený total_with_vat = sum(items) + rounding.
-            'rounding'              => $sign * $this->computeRounding($data),
+            'rounding'              => ($isCredit ? -1.0 : 1.0) * $this->computeRounding($data),
             'language'              => 'cs',
             'items'                 => $items,
         ];
@@ -300,6 +359,13 @@ final class AiPdfExtractor
         $rounding = (float) ($payload['rounding'] ?? 0);
         if (abs($rounding) > 0.001) {
             $this->repo->setRounding($id, $supplierId, $rounding);
+        } else {
+            // Fallback: pokud computeRounding vrátil 0 (AI nevrátila total_with_vat_rounded),
+            // ale AI total_with_vat se od přesného součtu z items liší o méně než 1 Kč,
+            // je to typické haléřové zaokrouhlení (např. 84092.58 → "K úhradě 84093,00").
+            // AI tu obvykle čte "K úhradě" celé číslo jako total_with_vat, ale nevyplní
+            // total_with_vat_rounded — proto si rounding dopočítáme tady.
+            $this->applyRoundingFromAiTotal($id, $supplierId, $data, $isCredit);
         }
         // Pro non-CZK currency: auto-apply ČNB kurz k tax_date (nebo issue_date).
         $this->applyCnbRate($id, $supplierId, $data);
@@ -307,12 +373,139 @@ final class AiPdfExtractor
         if (!empty($data['already_paid'])) {
             $this->markAlreadyPaid($id, $supplierId);
         }
+        // Sanity check: rozdíl mezi součtem řádků a AI-vráceným totalem >2 % → varování.
+        // Typicky odhalí faktury kde AI sečetla subtotaly jako další items
+        // (např. NC Auto BMW Service → 4977 reálně vs 22442 jako duplicitní subtotaly).
+        $this->maybeFlagTotalsMismatch($id, $supplierId, $data, $items);
         return $id;
     }
 
     /**
-     * Transition draft → received → paid pokud AI detekovala 'already paid' indikátor v PDF.
-     * Status NULL guard — silently skip pokud DB constraint zabrání.
+     * Spočítá `Σ(qty × unit_price)` z items a porovná s AI `total_without_vat`.
+     * Pokud |rozdíl| / total > 2 %, zapíše textový popis do `extraction_warning`,
+     * aby UI mohlo uživatele upozornit "AI extrakce mohla započítat mezisoučty
+     * jako další položky — zkontroluj data před zaúčtováním."
+     */
+    private function maybeFlagTotalsMismatch(int $invoiceId, int $supplierId, array $data, array $items): void
+    {
+        // AI JSON může pole vynechat / nastavit null. Po `??` máme float|null.
+        // Sanity check porovnává VÝHRADNĚ částky BEZ DPH (items bez DPH × qty vs AI total
+        // bez DPH). Žádný přepočet `total_with_vat / 1.21` ani podobné — u multi-rate
+        // faktur (mix 21/12/0 %) by to dělalo false positive. Pokud AI nevrátí
+        // `total_without_vat`, kontrolu prostě přeskočíme.
+        $rawTotal = $data['total_without_vat'] ?? null;
+        if ($rawTotal === null) return;
+        $aiTotal = abs((float) $rawTotal);
+        // Pro logging/diagnostiku si zapamatujeme i s DPH (pokud existuje), ale do
+        // výpočtu rozdílu vstupuje JEN bez DPH.
+        $aiTotalWithVat = isset($data['total_with_vat']) ? abs((float) $data['total_with_vat']) : null;
+
+        // Signed sum — respektuje znaménka u slev (qty nebo unit_price může být záporný)
+        // i u dobropisů (kde extractor aplikoval `qty *= -1`). Pak abs() pro porovnání
+        // s AI totalem, který je vždy kladný (per prompt).
+        $signedSum = 0.0;
+        foreach ($items as $it) {
+            $signedSum += (float) ($it['quantity'] ?? 0) * (float) ($it['unit_price_without_vat'] ?? 0);
+        }
+        $itemsSum = round(abs($signedSum), 2);
+
+        $reference = $aiTotal;
+        if ($reference <= 0.0) return;
+
+        $diff = abs($itemsSum - $reference);
+        $relativeDiff = $diff / $reference;
+        if ($relativeDiff <= 0.02) return; // pod 2 % = OK (zaokrouhlení, DPH rounding)
+
+        // Heuristika: pokud items_sum > reference, AI nejspíš započítala subtotaly
+        // jako další položky (typický pattern NC Auto), nebo má řádek se slevou
+        // špatné znaménko. Pokud items_sum < reference, AI naopak nějaké položky
+        // vynechala (vzácnější — chybějící strana 2 atd).
+        $direction = $itemsSum > $reference ? 'vyšší než' : 'nižší než';
+
+        $warning = sprintf(
+            'Možná chyba AI extrakce: součet řádků bez DPH (%s) je %s AI-vrácený celkový základ daně bez DPH (%s) — rozdíl %.1f %%. '
+                . 'Typická příčina: AI započítala mezisoučtové řádky ("Celkem", "Subtotal") jako další položky, '
+                . 'nebo některý řádek (např. sleva) má špatné znaménko. '
+                . 'Zkontroluj prosím řádky proti PDF před zaúčtováním.',
+            number_format($itemsSum, 2, ',', ' '),
+            $direction,
+            number_format($reference, 2, ',', ' '),
+            $relativeDiff * 100.0,
+        );
+        try {
+            $this->repo->setExtractionWarning($invoiceId, $supplierId, $warning);
+            $this->logger->warning('AI extractor: totals mismatch flagged', [
+                'invoice_id' => $invoiceId,
+                'items_sum' => $itemsSum,
+                'ai_total_without_vat' => $aiTotal,
+                'ai_total_with_vat' => $aiTotalWithVat,
+                'relative_diff' => $relativeDiff,
+            ]);
+        } catch (\Throwable) {
+            // Silent — extrakce už proběhla úspěšně, varování je jen "nice to have".
+        }
+
+        // Placeholder fallback pouze pro KATASTROFÁLNÍ mismatch (>50 %).
+        // Práh úmyslně vysoký — drobné chyby (sleva se špatným znaménkem ~22 %)
+        // nechceme zaměnit, uživateli stačí otočit znaménko v jednom řádku.
+        //
+        // Strategie: zachováme popisy řádků z AI extraktu (jsou typicky správně,
+        // jen qty/ceny jsou špatně), jen vynulujeme jejich qty a unit_price. Přidáme
+        // jako první řádek "KOREKCE" s AI totalem z "K úhradě" (které AI typicky čte
+        // správně). Uživatel pak vidí seznam položek z PDF jako referenci, doplní
+        // qty/ceny postupně a až součet sedí, smaže korekční řádek.
+        if ($relativeDiff > 0.5 && $reference > 0.0 && !empty($items)) {
+            try {
+                $firstVatRateId = (int) ($items[0]['vat_rate_id'] ?? 0);
+                $defaultVatRateId = $firstVatRateId > 0 ? $firstVatRateId : null;
+
+                $placeholderItems = [];
+                // Korekční řádek na začátku — drží správný total z "K úhradě"
+                $placeholderItems[] = [
+                    'description'            => 'KOREKCE: AI špatně přečetla položky. Doplňte qty/cenu k řádkům níže a tento řádek pak smažte.',
+                    'quantity'               => 1.0,
+                    'unit'                   => 'ks',
+                    'unit_price_without_vat' => $reference,
+                    'vat_rate_id'            => $defaultVatRateId,
+                    'order_index'            => 0,
+                ];
+                // Zachováme AI popisy s vynulovanou qty/cenou — uživatel je vyplní
+                foreach ($items as $idx => $aiItem) {
+                    $desc = trim((string) ($aiItem['description'] ?? ''));
+                    if ($desc === '') continue;
+                    $placeholderItems[] = [
+                        'description'            => $desc,
+                        'quantity'               => 0.0,
+                        'unit'                   => (string) ($aiItem['unit'] ?? 'ks'),
+                        'unit_price_without_vat' => 0.0,
+                        'vat_rate_id'            => (int) ($aiItem['vat_rate_id'] ?? 0) > 0
+                            ? (int) $aiItem['vat_rate_id']
+                            : $defaultVatRateId,
+                        'order_index'            => $idx + 1,
+                    ];
+                }
+                $this->repo->replaceItems($invoiceId, $placeholderItems);
+                $this->calc->recompute($invoiceId);
+                $this->logger->info('AI extractor: items nahrazeny korekcí + vynulovanými AI popisy kvůli katastrofálnímu mismatch', [
+                    'invoice_id' => $invoiceId,
+                    'relative_diff' => $relativeDiff,
+                    'preserved_descriptions' => count($placeholderItems) - 1,
+                ]);
+            } catch (\Throwable $e) {
+                $this->logger->warning('AI extractor: placeholder fallback selhal', [
+                    'invoice_id' => $invoiceId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Transition draft → paid pokud AI detekovala 'already paid' indikátor v PDF.
+     *
+     * Skok rovnou z draftu do `paid` (přeskakuje 'received'/'booked') — faktura už je
+     * historicky uzavřená, intermediate stavy nemají smysl. Selhání logujeme (ne silently),
+     * aby debugování bylo viditelné.
      */
     private function markAlreadyPaid(int $id, int $supplierId): void
     {
@@ -323,12 +516,29 @@ final class AiPdfExtractor
             $this->repo->ensureVarsymbol($id, $supplierId);
             // Draft → paid přímý update (skip 'received' intermediate — faktura už existuje
             // v hotové stavu). UPDATE jen pokud aktuálně draft.
-            $this->db->pdo()->prepare(
+            $stmt = $this->db->pdo()->prepare(
                 "UPDATE purchase_invoices SET status = 'paid', paid_at = COALESCE(paid_at, CURDATE())
                   WHERE id = ? AND supplier_id = ? AND status = 'draft'"
-            )->execute([$id, $supplierId]);
-        } catch (\Throwable) {
-            // Silent — extract success > status transition.
+            );
+            $stmt->execute([$id, $supplierId]);
+            if ($stmt->rowCount() === 0) {
+                $this->logger->warning('AI extractor: already_paid marking — UPDATE neaktualizoval žádný řádek (status už není draft?)', [
+                    'invoice_id' => $id,
+                    'supplier_id' => $supplierId,
+                ]);
+            } else {
+                $this->logger->info('AI extractor: faktura označena jako paid podle PDF indikátoru', [
+                    'invoice_id' => $id,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Logujeme (ne silently) — pokud markAlreadyPaid selže, faktura zůstane jako
+            // draft a uživatel ručně označí jako uhrazenou. To je správné fallback,
+            // ale chceme vědět proč to selhalo (varsymbol konflikt, DB constraint atd).
+            $this->logger->error('AI extractor: markAlreadyPaid selhal — faktura zůstane jako draft', [
+                'invoice_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -367,6 +577,50 @@ final class AiPdfExtractor
         } catch (\Throwable) {
             // Pokud setExchangeRate selže (race condition / schema mismatch), silent.
         }
+    }
+
+    /**
+     * Detekce "slabého" výsledku AI extrakce, který by mohl benefitovat z retry
+     * na silnější model. Vrací důvod (string) pokud je výsledek slabý, jinak null.
+     *
+     * Kritéria:
+     *   1. `vendor.ic == tenant.ic` a `customer` chybí/nepoužitelný → AI zamíchala
+     *      vendor↔customer a nemáme jak udělat swap-back.
+     *   2. Σ items vs AI total_without_vat se liší o >50 % → AI buď halucinovala
+     *      items, započítala subtotaly, nebo nečte sloupce správně. Sonnet
+     *      typicky čte multi-column PDF mnohem přesněji.
+     */
+    private function detectWeakExtraction(array $data, ?string $tenantIc): ?string
+    {
+        // Check 1: vendor=tenant bez použitelného customer
+        $vendorIc = $this->normalizeIc((string) ($data['vendor']['ic'] ?? ''));
+        $customerIc = $this->normalizeIc((string) ($data['customer']['ic'] ?? ''));
+        if ($tenantIc !== null && $vendorIc === $tenantIc) {
+            if ($customerIc === null || $customerIc === $tenantIc) {
+                return 'vendor_is_tenant_no_swap_target';
+            }
+        }
+
+        // Check 2: items sum vs AI total — katastrofální mismatch.
+        // Porovnáváme jen bez DPH proti bez DPH. Pokud AI nevrátila total_without_vat,
+        // weak-detekci přeskočíme (radši falsy negative než false-positive auto-upgrade
+        // u multi-rate faktur, kde by `total_with_vat / 1.21` byla nesmyslná).
+        $aiTotal = isset($data['total_without_vat']) ? abs((float) $data['total_without_vat']) : 0.0;
+        if ($aiTotal > 0.0 && !empty($data['items']) && is_array($data['items'])) {
+            $signedSum = 0.0;
+            foreach ($data['items'] as $it) {
+                $signedSum += (float) ($it['quantity'] ?? 0) * (float) ($it['unit_price_without_vat'] ?? 0);
+            }
+            $itemsSum = abs(round($signedSum, 2));
+            if ($itemsSum > 0.0) {
+                $relativeDiff = abs($itemsSum - $aiTotal) / $aiTotal;
+                if ($relativeDiff > 0.5) {
+                    return 'catastrophic_items_mismatch';
+                }
+            }
+        }
+
+        return null;
     }
 
     private function fetchTenantIc(int $supplierId): ?string
@@ -440,6 +694,40 @@ final class AiPdfExtractor
         $diff = round($rounded - $total, 2);
         // Sanity check — pouze pokud rozdíl je < 1 Kč (typicky zaokrouhlení nahoru/dolů)
         return abs($diff) < 1.0 ? $diff : 0.0;
+    }
+
+    /**
+     * Fallback rounding kalkulace POST recompute: porovná AI's `total_with_vat`
+     * (= co AI přečetla jako "K úhradě" na PDF) s přesným součtem z items.
+     * Pokud se liší o méně než 1 Kč, je to haléřové zaokrouhlení a uloží se
+     * jako rounding offset.
+     *
+     * Volá se jen pokud computeRounding (= AI vyplnila explicitně `total_with_vat_rounded`)
+     * nevrátil výsledek. Mnoho AI extractů totiž `total_with_vat_rounded` nevyplní
+     * a `total_with_vat` je už zaokrouhlené z PDF.
+     */
+    private function applyRoundingFromAiTotal(int $id, int $supplierId, array $data, bool $isCredit): void
+    {
+        $aiTotal = isset($data['total_with_vat']) ? (float) $data['total_with_vat'] : null;
+        if ($aiTotal === null || $aiTotal === 0.0) return;
+        $aiTotal = abs($aiTotal);
+
+        $current = $this->repo->find($id, $supplierId);
+        if ($current === null) return;
+        $exactTotal = (float) abs((float) ($current['total_with_vat'] ?? 0));
+        if ($exactTotal === 0.0) return;
+
+        $diff = round($aiTotal - $exactTotal, 2);
+        if (abs($diff) > 0.0 && abs($diff) < 1.0) {
+            try {
+                $this->repo->setRounding($id, $supplierId, $isCredit ? -1.0 * $diff : $diff);
+            } catch (\Throwable $e) {
+                $this->logger->warning('AI extractor: applyRoundingFromAiTotal — setRounding selhalo', [
+                    'invoice_id' => $id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**

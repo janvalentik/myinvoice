@@ -174,7 +174,65 @@ purchase (`<pur:purchase>` místo `<inv:invoice>`).
 > Aktuálně exportuj jednotlivě v detailu každé faktury. Pro hromadný PDF export
 > originálních dodavatelských PDF použij **Přijaté faktury → Exporty** s formátem ZIP.
 
-## 10.7 Audit log
+## 10.7 AI extrakce — kontrola výsledků
+
+Při AI extrakci z PDF se po importu automaticky spustí **sanity check**: sečtou
+se řádky bez DPH a porovnají s celkovým základem daně, který AI přečetla z PDF
+„K úhradě". Pokud se hodnoty liší o víc než 2 %, faktura získá flag **„Ke
+kontrole"** a uživatel by měl řádky před zaúčtováním ověřit.
+
+### Indikátory v UI
+
+- **Žluté zvýraznění řádku** + ikona ⚠ vedle čísla faktury v seznamu přijatých
+  faktur (`/purchase-invoices`).
+- **Filtr „Ke kontrole"** v topbaru seznamu — zobrazí jen faktury, kde je flag
+  aktivní.
+- **Žlutý warning banner** v detailu i editoru faktury s diagnostickým textem
+  (např. *„součet řádků bez DPH (XX) je vyšší než AI-vrácený základ daně bez
+  DPH (YY) — rozdíl Z %"*).
+
+### Jak zrušit warning
+
+- Tlačítko **Beru na vědomí** v banneru — pošle POST
+  `/api/purchase-invoices/{id}/dismiss-extraction-warning` a flag se smaže.
+- **Automaticky** při přechodu z draftu na další stav (received / booked /
+  paid) — uživatel posunul stav = ověřil data.
+
+### Auto-upgrade modelu
+
+Pokud levnější model (Haiku 4.5) vrátí slabý výsledek (vendor se shoduje s
+tenantem nebo součet řádků se výrazně liší od totalu), extractor automaticky
+zkusí znovu se silnějším modelem (Sonnet 4.6, ~4× dráž za extract). Pokud máš
+Sonnet/Opus jako default, retry se přeskočí.
+
+### Katastrofální mismatch — placeholder
+
+Když ani silnější model nezvládne rozparsovat řádky (typicky komplexní
+multi-column servisní faktury) a součet řádků se liší od totalu o víc než
+50 %, extractor:
+
+1. Zachová **popisy řádků** z AI extraktu (jsou obvykle správně)
+2. Vynuluje jejich **qty a unit_price** (0)
+3. Přidá první řádek **KOREKCE** s AI totalem z „K úhradě", aby seděl celkový
+   součet faktury
+
+Uživatel pak postupně doplní qty/cenu k jednotlivým řádkům a nakonec smaže
+korekční řádek.
+
+### Backfill existujících faktur
+
+CLI skript `php api/bin/recheck-ai-extracted-invoices.php` projde přijaté
+faktury s PDF přílohou, re-spustí AI extrakci a porovná AI total s aktuálním
+DB totalem. Při rozdílu nad práh (default 2 %) zapíše varování:
+
+```
+php api/bin/recheck-ai-extracted-invoices.php                    # dry-run
+php api/bin/recheck-ai-extracted-invoices.php --apply            # zápis
+php api/bin/recheck-ai-extracted-invoices.php --supplier-id=1
+php api/bin/recheck-ai-extracted-invoices.php --threshold=0.05
+```
+
+## 10.8 Audit log
 
 Akce s přijatými fakturami jsou logované v aktivním logu (Systém → Log):
 
@@ -183,19 +241,20 @@ Akce s přijatými fakturami jsou logované v aktivním logu (Systém → Log):
 - `purchase_invoice.items_updated`
 - `purchase_invoice.exchange_rate_set`
 - `purchase_invoice.transitioned` (s payloadem `{from, to}`)
+- `purchase_invoice.extraction_warning_dismissed`
 - `purchase_invoice.deleted`
 - `purchase_invoice.pdf_uploaded` / `pdf_downloaded`
 - `purchase_invoice.our_pdf_downloaded`
 - `purchase_invoice.isdoc_exported` / `pohoda_exported`
 - `purchase_invoice.inbox_scanned`
 
-## 10.8 REST API
+## 10.9 REST API
 
 Všechny operace jsou dostupné i přes REST API (`/api/v1/purchase-invoices/*`) —
 viz [Swagger UI](/api/docs) nebo [Redoc](/api/reference). PAT token musí mít scope
 `read_write` pro mutace.
 
-## 10.9 Status integrace forku
+## 10.10 Status integrace forku
 
 Všechny fáze plánu jsou **dokončeny**:
 

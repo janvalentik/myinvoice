@@ -145,7 +145,13 @@ final class AnthropicClient
         $model = $modelOverride ?: $creds['default_model'];
         $base64Pdf = base64_encode($pdfBytes);
 
-        $systemPrompt = <<<'EOT'
+        // Načti tenant info (název + IČ + DIČ) abychom AI mohli explicitně říct,
+        // že tenant je odběratel (customer), NIKDY dodavatel. Bez tohoto AI občas
+        // zamění vendor↔customer u faktur kde má dodavatel velkou vlastní hlavičku
+        // (NC Auto / BMW Service / mobilní operátoři) a tenanta dá do vendor pozice.
+        $tenantBlock = $this->buildTenantContextBlock($supplierId);
+
+        $systemPrompt = $tenantBlock . <<<'EOT'
 Jsi expert na extrakci dat z českých a slovenských faktur. Z PDF přílohy vytáhneš strukturovaná data ve striktním JSON formátu.
 
 PRAVIDLA:
@@ -214,6 +220,17 @@ DŮLEŽITÉ k položkám u dobropisu (`document_kind = "credit_note"`):
 - Stejně tak `total_without_vat`, `total_with_vat`, `total_with_vat_rounded`
   vrať jako **kladná čísla** (absolutní hodnoty z PDF).
 
+DŮLEŽITÉ k řádkům se slevou / rabatem / discount (jen u `document_kind = "invoice"`):
+- Pokud řádek běžné faktury reprezentuje slevu / rabat / bonus snižující fakturu
+  (popis obsahuje "sleva", "rabat", "discount", "bonus", "%" sleva, "Roční sleva"
+  apod.) A na PDF je jeho jednotková cena nebo celková částka uvedena se
+  znaménkem **MÍNUS** (např. `-643,50`, `-7 722,00`) nebo v závorkách (např.
+  `(643,50)`) → vrať `unit_price_without_vat` jako **ZÁPORNÉ** číslo
+  (např. `-643.50`). Slevy MUSÍ mít záporné znaménko, jinak by se přičetly
+  k faktuře místo aby ji snížily.
+- POZOR: toto NEPLATÍ pro dobropisy (`credit_note`) — u nich vždy kladné absolutní
+  hodnoty, sign aplikuje importér podle `document_kind`.
+
 DŮLEŽITÉ k poli `already_paid`:
 - Pokud PDF obsahuje text typu "NEPLAŤTE, JIŽ UHRAZENO", "ZAPLACENO",
   "UHRAZENO", "PAID", "ALREADY PAID", "PAYMENT RECEIVED", "Hradí se ze zálohy"
@@ -226,6 +243,47 @@ DŮLEŽITÉ k zaokrouhlení:
   zaokrouhlení (např. "229.00 Kč", "K úhradě: 229").
 - Rozdíl (229 - 228.69 = 0.31) půjde do pole `rounding` faktury.
 - Pokud na PDF NENÍ explicitní zaokrouhlení, vrať `total_with_vat_rounded: null`.
+
+DŮLEŽITÉ k řádkům faktury (`items`):
+- Vrať POUZE listové (atomické) položky — konkrétní práce, materiál, zboží.
+  NIKDY agregační / subtotalové / součtové řádky.
+- IGNORUJ jakýkoli řádek, který začíná nebo obsahuje (case-insensitive):
+  "Celkem ", "Mezisoučet", "Subtotal", "Σ ", "Součet ", "Total " (pokud
+  je to subtotal sekce, ne celková K úhradě), "Cena celkem za skupinu",
+  "Cena celkem za sekci".
+- U faktur s vícestupňovou strukturou (typicky autoservis — např. NC Auto
+  s.r.o. / BMW Service: skupina práce → jednotlivé úkony → "Celkem Práce" →
+  "Celkem <název skupiny>") vrať POUZE jednotlivé úkony s reálnými qty
+  a unit_price. NIKDY součtové meziřádky — ty by ti při sečtení nafoukly
+  celkovou částku 2-5× nad reálný total.
+- Pokud na faktuře vidíš stejnou položku "Vyvážení kola" s qty 1 i jako
+  součtový řádek "Celkem Vyvážení" s vypočtenou sumou — vrať POUZE ten s qty 1.
+
+DŮLEŽITÉ k poli `total_with_vat`:
+- Hodnota MUSÍ pocházet výhradně z hlavního finálního "K úhradě" /
+  "Celkem k úhradě" / "CZK k zaplacení" / "Total amount due" / "K platbě"
+  — typicky úplně dole na faktuře, často zvýrazněně (tučně/větším fontem).
+- NIKDY neber `total_with_vat` ze subtotalu jednotlivé sekce/skupiny prací,
+  ani ze součtu mezi-skupin ("Celkem Práce", "Celkem Materiál").
+- Pokud máš pochybnost mezi více čísly, vyber NEJMENŠÍ logické. Subtotaly
+  jsou typicky větší než K úhradě jen kvůli zaokrouhlení; součet sekcí >
+  K úhradě téměř vždy znamená, že čteš špatný řádek.
+- POKUD si nejsi jistý finálním totalem (nevidíš jasné "K úhradě"), vrať
+  NULL místo hádání.
+
+Příklad — faktura NC Auto s.r.o. (BMW Service), struktura:
+  Sekce A: Práce
+    Diagnostika              1 ks  500.00 Kč  →  ITEM
+    Výměna oleje             1 ks  800.00 Kč  →  ITEM
+    Celkem Práce                 1 300.00 Kč  →  IGNORE (subtotal)
+  Sekce B: Materiál
+    Olej 5W30                4 l   180.00 Kč  →  ITEM
+    Filtr olejový            1 ks  280.00 Kč  →  ITEM
+    Celkem Materiál              1 000.00 Kč  →  IGNORE (subtotal)
+  Celkem bez DPH             2 300.00 Kč      →  IGNORE (grand subtotal)
+  DPH 21 %                     483.00 Kč
+  K úhradě                   2 783.00 Kč      →  total_with_vat = 2783.00
+Výsledek: items = 4 řádky (NE 6 a NE 7); total_with_vat = 2783.00.
 EOT;
 
         try {
@@ -283,6 +341,55 @@ EOT;
             $this->logger->error('Anthropic extractInvoice failed', ['supplier_id' => $supplierId, 'error' => $e->getMessage()]);
             return ['ok' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Sestaví prioritní hlavičku promptu s tenant info, aby AI vědělo, že
+     * tato konkrétní firma je VŽDY odběratel (customer) — NIKDY dodavatel.
+     *
+     * Pomáhá u faktur kde dodavatel má dominantní hlavičku (autoservisy s logy,
+     * mobilní operátoři s brandingem) a AI by jinak zaměnila vendor↔customer.
+     *
+     * Pokud tenant info nelze načíst (DB error / chybějící data), vrátí prázdný
+     * string a prompt zůstane v původní podobě — žádný hard fail.
+     */
+    private function buildTenantContextBlock(int $supplierId): string
+    {
+        try {
+            $stmt = $this->db->pdo()->prepare(
+                'SELECT company_name, ic, dic FROM supplier WHERE id = ?'
+            );
+            $stmt->execute([$supplierId]);
+            $t = $stmt->fetch(\PDO::FETCH_ASSOC);
+        } catch (\Throwable) {
+            return '';
+        }
+        if ($t === false || empty($t['company_name']) && empty($t['ic'])) {
+            return '';
+        }
+        $name = (string) ($t['company_name'] ?? '');
+        $ic   = (string) ($t['ic'] ?? '');
+        $dic  = (string) ($t['dic'] ?? '');
+        $hint = [];
+        if ($name !== '') $hint[] = "název \"{$name}\"";
+        if ($ic !== '')   $hint[] = "IČO \"{$ic}\"";
+        if ($dic !== '')  $hint[] = "DIČ \"{$dic}\"";
+        $tenantHint = implode(', ', $hint);
+
+        // Heredoc bez interpolace by tu nešel (potřebuji vložit $tenantHint).
+        // Používám sprintf místo, aby šlo escape jednoduše.
+        return sprintf(
+            "DŮLEŽITÝ KONTEXT (čti jako první, předchází všechna ostatní pravidla):\n"
+            . "- Toto je extrakce PŘIJATÉ faktury pro firmu: %s.\n"
+            . "- Tato firma je VŽDY odběratel (customer) — NIKDY ne dodavatel (vendor).\n"
+            . "- Pokud v PDF vidíš tuto firmu (matchuj IČO nebo název), vrať ji v poli `customer`, NIKDY v poli `vendor`.\n"
+            . "- Dodavatel (vendor) je VŽDY ta druhá strana — ten, kdo fakturu vystavil.\n"
+            . "- POZOR: na fakturách autoservisů, mobilních operátorů, hostingových firem apod. má dodavatel typicky velkou\n"
+            . "  hlavičku s logem nahoře, zatímco odběratel je v adresním bloku níže. NEpodléhej tomu — odběratele\n"
+            . "  pozná podle shody s firmou z tohoto kontextu, dodavatel je vždy ta DRUHÁ strana.\n"
+            . "- Pokud bys vrátil tuto firmu jako vendor, znamená to že jsi špatně přečetl PDF — importér to detekuje a fakturu zamítne.\n\n",
+            $tenantHint,
+        );
     }
 
     private function authHeaders(string $apiKey): array

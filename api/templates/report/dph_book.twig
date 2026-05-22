@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Kniha DPH</title>
+<style>
+    /* mPDF kvirky: single class names, žádné nested selectory, padding v <td> ne v <div> */
+    body { font-family: dejavusans, sans-serif; font-size: 8pt; color: #15131D; }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
+    .header-table td { vertical-align: top; }
+    .header-meta { font-size: 8pt; color: #555; }
+    .header-title { font-size: 13pt; font-weight: bold; text-align: center; padding: 0 6mm; }
+    .header-period { text-align: center; font-size: 10pt; margin-top: 2mm; }
+    .supplier-info { text-align: right; font-size: 9pt; }
+    .section-title {
+        font-size: 9pt;
+        font-weight: bold;
+        margin-top: 4mm;
+        margin-bottom: 0;
+        padding: 1mm 0;
+        border-bottom: 0.5pt solid #999;
+    }
+    table.book { width: 100%; border-collapse: collapse; margin-bottom: 3mm; }
+    table.book thead th {
+        font-size: 7pt;
+        font-weight: normal;
+        color: #555;
+        text-align: left;
+        padding: 1mm 1.5mm;
+        border-bottom: 0.3pt solid #ccc;
+        vertical-align: bottom;
+    }
+    table.book tbody td {
+        padding: 0.8mm 1.5mm;
+        font-size: 8pt;
+        border-bottom: 0.2pt solid #eee;
+        vertical-align: top;
+    }
+    table.book tbody tr.row-draft td {
+        background-color: #f5f5f5;
+        color: #666;
+        font-style: italic;
+    }
+    table.book tfoot td {
+        font-weight: bold;
+        font-size: 8pt;
+        padding: 1.5mm 1.5mm;
+        border-top: 0.5pt solid #333;
+        border-bottom: 0.5pt solid #333;
+    }
+    .num { text-align: right; font-family: dejavusans, sans-serif; }
+    .draft-badge {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        padding: 0 1mm;
+        font-size: 7pt;
+        font-weight: bold;
+        border-radius: 2pt;
+        margin-right: 1mm;
+    }
+    .disclaimer {
+        text-align: center;
+        font-size: 7pt;
+        color: #888;
+        margin-top: 6mm;
+        font-style: italic;
+    }
+    .col-date { width: 17mm; }
+    .col-doc { width: 22mm; }
+    .col-desc { width: 50mm; }
+    .col-num { width: 22mm; }
+    .col-partner { width: 50mm; }
+    .col-dic { width: 18mm; }
+    .col-orig { width: 22mm; }
+    .col-kh { width: 12mm; }
+</style>
+</head>
+<body>
+
+<table class="header-table">
+    <tr>
+        <td style="width:30%;">
+            <div class="header-meta">Ze dne: {{ "now"|date("d.m.Y") }}</div>
+            <div class="header-meta">Strana: 1</div>
+        </td>
+        <td style="width:40%;">
+            <div class="header-title">Kniha DPH</div>
+            <div class="header-period">Za období: {{ period.label }}</div>
+        </td>
+        <td style="width:30%;" class="supplier-info">
+            <strong>{{ supplier.company_name }}</strong><br>
+            {% if supplier.street %}{{ supplier.street }}<br>{% endif %}
+            {% if supplier.zip or supplier.city %}{{ supplier.zip }} {{ supplier.city }}{% endif %}
+        </td>
+    </tr>
+</table>
+
+{% if sections is empty %}
+    <p style="text-align:center; color:#888; padding: 10mm 0;">
+        Pro zvolené období nejsou v knize DPH žádné záznamy.
+    </p>
+{% endif %}
+
+{% for section in sections %}
+    <div class="section-title">{{ section.key }} - {{ section.direction }}: {{ section.label|raw }}</div>
+    <table class="book">
+        <thead>
+            <tr>
+                <th class="col-date">Datum<br>plnění</th>
+                <th class="col-date">Zaúčtování</th>
+                <th class="col-doc">Doklad</th>
+                <th class="col-desc">Popis</th>
+                <th class="col-num">Základ daně<br>CZK</th>
+                <th class="col-num">DPH<br>CZK</th>
+                <th class="col-num">Celkem<br>CZK</th>
+                <th class="col-partner">Partner</th>
+                <th class="col-dic">DIČ</th>
+                <th class="col-orig">Orig.<br>číslo dokladu</th>
+                <th class="col-orig">Orig.<br>datum plnění</th>
+                <th class="col-kh">KH</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in section.rows %}
+                <tr class="{{ row.is_draft ? 'row-draft' : '' }}">
+                    <td>{{ row.tax_date|cz_date }}</td>
+                    <td>{{ row.accounting_date|cz_date }}</td>
+                    <td>
+                        {% if row.is_draft %}<span class="draft-badge">KONCEPT</span>{% endif %}
+                        {{ row.direction == 'issued' ? 'VF' : 'PF' }} {{ row.doc_number }}
+                    </td>
+                    <td>{{ row.description|slice(0, 60) }}</td>
+                    <td class="num">{{ row.base|cz_money }}</td>
+                    <td class="num">{{ row.vat|cz_money }}</td>
+                    <td class="num">{{ row.total|cz_money }}</td>
+                    <td>{{ row.counterparty_name|slice(0, 32) }}</td>
+                    <td>{{ row.counterparty_dic }}</td>
+                    <td>{{ row.original_doc_number ?? '' }}</td>
+                    <td>{{ row.tax_date|cz_date }}</td>
+                    <td>{{ row.kh_section ?? '' }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="4">CELKEM {{ section.key|slice(0,2) }} {{ section.direction }}: {{ section.label|slice(0, 40)|raw }}</td>
+                <td class="num">{{ section.subtotal_base|cz_money }}</td>
+                <td class="num">{{ section.subtotal_vat|cz_money }}</td>
+                <td class="num">{{ section.subtotal_total|cz_money }}</td>
+                <td colspan="5"></td>
+            </tr>
+        </tfoot>
+    </table>
+{% endfor %}
+
+<div class="disclaimer">(Je-li za částkou DPH kód D, je DPH oceněno odlišným kursem, než je základní účetní kurs)</div>
+
+</body>
+</html>

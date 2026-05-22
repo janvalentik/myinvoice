@@ -50,6 +50,54 @@ export interface DphDraftsPrediction {
   purchase_draft_count: number
 }
 
+export interface DphBookRow {
+  invoice_id: number
+  direction: 'issued' | 'received'
+  doc_number: string | null
+  original_doc_number: string | null
+  tax_date: string | null
+  accounting_date: string | null
+  description: string
+  counterparty_name: string
+  counterparty_dic: string
+  vat_classification_code: string | null
+  vat_rate: number
+  currency: string
+  exchange_rate: number
+  base: number
+  vat: number
+  total: number
+  status: string
+  is_draft: boolean
+  kh_section: string | null
+}
+
+export interface DphBookSection {
+  key: string
+  direction: 'USKUTEČNĚNÁ' | 'PŘIJATÁ'
+  label: string
+  dphdp3_line: string
+  vat_rate: number
+  is_secondary: boolean
+  rows: DphBookRow[]
+  subtotal_base: number
+  subtotal_vat: number
+  subtotal_total: number
+}
+
+export interface DphBookPreview {
+  period: {
+    year: number
+    month: number
+    start: string
+    end: string
+    label: string
+  }
+  supplier: Record<string, unknown>
+  sections: DphBookSection[]
+  totals: { base: number; vat: number; total: number }
+}
+
 export const reportsApi = {
   dphSettings: () =>
     api.get<DphSettings>('/reports/dphdp3/settings').then(r => r.data),
@@ -135,6 +183,17 @@ export const reportsApi = {
     const params = new URLSearchParams({ year: String(year), month: String(month) })
     if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
     return `/api/reports/dphkh1?${params.toString()}`
+  },
+
+  // Kniha DPH (interní VAT žurnál — NE EPO podání)
+  dphBookPreview: (year: number, month: number) =>
+    api.get<DphBookPreview>('/reports/dph-book/preview', { params: { year, month } }).then(r => r.data),
+
+  dphBookPdfUrl: (year: number, month: number) => {
+    const sid = localStorage.getItem('myinvoice.current_supplier_id')
+    const params = new URLSearchParams({ year: String(year), month: String(month) })
+    if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
+    return `/api/reports/dph-book?${params.toString()}`
   },
 
   /** URL na download endpoint — frontend ho otevírá v novém okně */

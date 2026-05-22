@@ -4,7 +4,7 @@
     "dashboard": "Přehled", "invoices": "Faktury", "clients": "Klienti",
     "projects": "Zakázky", "stats": "Tržby", "bank": "Banka", "system": "Systém", "section_taxes": "Daně",
     "settings": "Nastavení", "supplier_current": "Dodavatel", "suppliers": "Dodavatelé", "codebooks": "Číselníky", "users": "Uživatelé",
-    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Export vystavených", "imports": "Importy", "imports_issued": "Import vystavených", "imports_purchase": "Import přijatých", "ai_import": "AI import", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "reports_kh": "Kontrolní hlášení", "reports_shv": "Souhrnné hlášení", "reports_income_tax": "Daň z příjmů", "reports_submissions": "Archiv podání", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
+    "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Export vystavených", "imports": "Importy", "imports_issued": "Import vystavených", "imports_purchase": "Import přijatých", "ai_import": "AI import", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "reports_kh": "Kontrolní hlášení", "reports_dph_book": "Kniha DPH", "reports_shv": "Souhrnné hlášení", "reports_income_tax": "Daň z příjmů", "reports_submissions": "Archiv podání", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
     "section_sales": "Prodej", "section_purchase": "Nákup", "section_finance": "Finance", "section_clients": "Klienti",
     "purchase_invoices": "Přijaté faktury", "purchase_export": "Export přijatých", "vendors": "Dodavatelé"
   },
@@ -160,7 +160,10 @@
     "extraction": {
       "isdoc_found": "Z PDF jsem rozpoznal ISDOC. Pole jsou předvyplněna z přílohy.",
       "ai_pending": "Toto PDF neobsahuje ISDOC. Vyplň pole ručně, nebo použij AI extrakci v Externí integrace → AI.",
-      "manual_fallback": "Vyplnit ručně"
+      "manual_fallback": "Vyplnit ručně",
+      "warning_title": "AI extrakce vyžaduje kontrolu",
+      "needs_review_tooltip": "Tato faktura vyžaduje kontrolu po AI extrakci",
+      "dismiss": "Beru na vědomí"
     },
     "scan_inbox": {
       "title": "Scan inbox přijatých faktur",
@@ -209,6 +212,7 @@
       "all_kinds": "Všechny typy",
       "unpaid_only": "Pouze neuhrazené",
       "overdue": "Po splatnosti",
+      "needs_review": "Ke kontrole",
       "vendor_placeholder": "Vyber dodavatele",
       "search_placeholder": "Hledat číslo / dodavatele…"
     },
@@ -1628,6 +1632,35 @@
       "b2_label": "Přijatá tuzemská plnění nad 10 000 Kč",
       "b3_label": "Přijatá tuzemská plnění do 10 000 Kč (sumace)",
       "note_monthly": "Kontrolní hlášení se podává VŽDY měsíčně, i pro kvartální plátce DPH (jen DPH přiznání může být kvartální)."
+    },
+    "dph_book": {
+      "title": "Kniha DPH",
+      "subtitle": "Interní VAT žurnál seskupený podle řádků DPH přiznání. Není to podání FÚ.",
+      "disclaimer_title": "Interní pomůcka",
+      "disclaimer_body": "Kniha DPH je interní účetní žurnál, který seskupuje vystavené i přijaté doklady podle řádků DPH přiznání. Zahrnuje i koncepty (drafty) — ty jsou v tabulce vizuálně odlišené. Není to oficiální podání FÚ.",
+      "download_pdf": "Stáhnout PDF",
+      "period_label": "Za období",
+      "nav_label": "Kniha DPH",
+      "section_received": "PŘIJATÁ",
+      "section_issued": "USKUTEČNĚNÁ",
+      "col": {
+        "tax_date": "Datum plnění",
+        "accounting_date": "Zaúčtování",
+        "doc_number": "Doklad",
+        "description": "Popis",
+        "base_czk": "Základ daně CZK",
+        "vat_czk": "DPH CZK",
+        "total_czk": "Celkem CZK",
+        "partner": "Partner",
+        "partner_dic": "DIČ",
+        "original_doc_number": "Orig. číslo dokladu",
+        "original_tax_date": "Orig. datum plnění",
+        "kh_code": "KH"
+      },
+      "subtotal": "CELKEM",
+      "note_d_marker": "(Je-li za částkou DPH kód D, je DPH oceněno odlišným kursem, než je základní účetní kurs.)",
+      "no_data": "Pro zvolené období nejsou v knize DPH žádné záznamy.",
+      "draft_badge": "Koncept"
     },
     "dph": {
       "title": "DPH přiznání (DPHDP3)",
