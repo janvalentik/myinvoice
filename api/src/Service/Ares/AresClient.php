@@ -43,6 +43,15 @@ final class AresClient
         }
 
         $base = rtrim((string) $this->config->get('ares.api'), '/');
+        // Bez baseline URL bychom poslali Guzzle relativní path → cURL error 3
+        // ("URL rejected: No host part in the URL"), což se historicky logovalo
+        // jako "ARES API nedostupné" — uživatele to vysílá ladit síť místo configu.
+        // Per issue #30: Config::baselineDefaults() už default poskytuje, ale
+        // pokud admin v cfg.local.php / ENV nastaví prázdný string, chytneme to tady.
+        if ($base === '') {
+            $this->logger->warning('ARES URL není nakonfigurovaná (config.ares.api je prázdná) — lookup přeskočen', ['ico' => $ico]);
+            return null;
+        }
         $url  = $base . '/' . $ico;
         $timeout = (int) $this->config->get('ares.timeout', 5);
 

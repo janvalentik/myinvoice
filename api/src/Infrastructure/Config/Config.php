@@ -57,7 +57,14 @@ final class Config
             throw new \RuntimeException('cfg.php (a cfg.local.php) musí vracet pole');
         }
 
-        $merged = array_replace_recursive($base, $local);
+        // Baseline defaults pro non-secret veřejné konstanty (ARES/VIES URLs,
+        // timeouty, cache TTL, ...). Cíl: image-baked stub `<?php return [];`
+        // musí dát funkční ARES/VIES lookup bez nutnosti bind-mountu cfg.docker.php
+        // ani ENV overrides. Reportováno v issue #30 — uživatel nasadil přes
+        // GHCR image bez cfg mountu a ARES vracela cURL error 3 "no host"
+        // protože $config->get('ares.api') byl prázdný string.
+        // Pořadí: defaults → cfg.php → cfg.local.php → DATA_DIR cfg.local → ENV.
+        $merged = array_replace_recursive(self::baselineDefaults(), $base, $local);
 
         // Volitelně merge cfg.local.php z DATA_DIR (pokud je set), aby uživatel
         // mohl držet kompletní per-instance override mimo image.
@@ -169,6 +176,35 @@ final class Config
      *
      * @return array<string,array{0:string,1:string}> ENV name => [cfg path, type]
      */
+    /**
+     * Baseline defaults aplikované **před** cfg.php — jen pro non-secret veřejné
+     * konstanty (URLs třetích stran, timeouty, TTL cache). Vše, co je opravdu
+     * tajné nebo per-instance (DB credentials, pepper, SMTP host, ...), tady
+     * NESMÍ být — to musí přijít z cfg.php / ENV.
+     *
+     * Smysl: image-baked stub `<?php return [];` musí být plně funkční pro
+     * základní use case (ARES/VIES lookup), aby ENV-only deploy fungoval bez
+     * dalšího setupu. Per issue #30 (cURL error 3 "no host part" z prázdné ARES URL).
+     *
+     * @return array<string, mixed>
+     */
+    private static function baselineDefaults(): array
+    {
+        return [
+            'ares' => [
+                'api'       => 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty',
+                'cache_ttl' => 86400,
+                'timeout'   => 5,
+            ],
+            'vies' => [
+                'rest_api'  => 'https://ec.europa.eu/taxation_customs/vies/rest-api/ms',
+                'wsdl'      => 'http://ec.europa.eu/taxation_customs/vies/services/checkVatService.wsdl',
+                'cache_ttl' => 10800,
+                'timeout'   => 8,
+            ],
+        ];
+    }
+
     private static function envOverrideMap(): array
     {
         return [
@@ -228,6 +264,14 @@ final class Config
             // Captcha (Cloudflare Turnstile)
             'MYINVOICE_TURNSTILE_SITE_KEY'   => ['captcha.site_key', 'string'],
             'MYINVOICE_TURNSTILE_SECRET_KEY' => ['captcha.secret_key', 'string'],
+
+            // ARES / VIES (veřejné registry — URLs mají baselineDefaults(),
+            // ENV jen pro override v izolovaných prostředích nebo na staging
+            // mirror endpoint)
+            'MYINVOICE_ARES_API'       => ['ares.api', 'string'],
+            'MYINVOICE_ARES_TIMEOUT'   => ['ares.timeout', 'int'],
+            'MYINVOICE_VIES_REST_API'  => ['vies.rest_api', 'string'],
+            'MYINVOICE_VIES_TIMEOUT'   => ['vies.timeout', 'int'],
 
             // Logging
             'MYINVOICE_LOG_LEVEL' => ['logging.level', 'string'],

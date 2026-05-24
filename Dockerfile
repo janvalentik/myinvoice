@@ -39,12 +39,15 @@ COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensio
 RUN install-php-extensions \
         pdo_mysql gd mbstring intl zip opcache exif bcmath redis \
  && apt-get update \
- && apt-get install -y --no-install-recommends tini librsvg2-bin \
+ && apt-get install -y --no-install-recommends tini librsvg2-bin mariadb-client \
  && a2enmod rewrite headers deflate expires \
  && rm -f /etc/apache2/mods-enabled/mpm_* \
  && a2enmod mpm_prefork \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
+# mariadb-client = mariadb-dump (~20 MB) — vyžaduje ho cron-backup.php pro
+# denní DB dump (kritická úloha). Per issue #34 bez něj fail out-of-the-box
+# na fresh deployi a uživatel nemá jak ho doinstalovat persistentně.
 
 # PHP runtime config
 RUN { \

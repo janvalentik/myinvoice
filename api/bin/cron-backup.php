@@ -28,7 +28,22 @@ $dbUser = (string) $config->get('db.user');
 $dbPass = (string) $config->get('db.pass');
 $dbPort = (int)    $config->get('db.port', 3306);
 
-$backupDir = $rootDir . '/storage/backup';
+// Resolve backup output dir v pořadí:
+//   1) cfg.cron.backup.output_dir (explicitní override)
+//   2) cfg.storage.backup_dir (sdílená dokumentovaná cesta)
+//   3) MYINVOICE_DATA_DIR/storage/backup (PaaS deploy s ephemeral filesystem)
+//   4) rootDir/storage/backup (klasický VPS / dev fallback)
+// Per issue #34: bez tohoto fallbacku skončil ZIP v ephemeral filesystému image
+// (Fly.io / Railway / Render) a zmizel s každým deployem, i když uživatel měl
+// správně nastavený MYINVOICE_DATA_DIR=/data.
+$backupDir = (string) $config->get('cron.backup.output_dir', '');
+if ($backupDir === '') {
+    $backupDir = (string) $config->get('storage.backup_dir', '');
+}
+if ($backupDir === '') {
+    $dataDir = (string) (getenv('MYINVOICE_DATA_DIR') ?: '');
+    $backupDir = $dataDir !== '' ? rtrim($dataDir, '/\\') . '/storage/backup' : $rootDir . '/storage/backup';
+}
 if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
 
 if (!class_exists(ZipArchive::class)) {

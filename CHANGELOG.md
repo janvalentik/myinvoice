@@ -11,7 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Dvě regulační opravy DPH výkazů (issue #29, Pavel Třešňák) — reverse charge
 v cizí měně a pořízení dlouhodobého majetku. Stejné úpravy se promítly do
-DPHDP3, kontrolního hlášení i interní Knihy DPH.
+DPHDP3, kontrolního hlášení i interní Knihy DPH. Plus dvě Docker / deploy
+opravy reportované týmiž uživateli na PaaS prostředích.
+
+### Fixed (Docker / deploy)
+
+- **ARES/VIES lookup na ENV-only deploy** (issue #30): image-baked stub
+  `<?php return [];` neměl `ares.api` ani `vies.rest_api`, takže `Config::get()`
+  vracel prázdný string a Guzzle padal s `cURL error 3: No host part in the URL`,
+  což UI hlásilo zavádějícím „ARES je dočasně nedostupný". Fix: `Config::baselineDefaults()`
+  vrátí veřejné konstanty (ARES + VIES URLs, timeouty, cache TTL) jako baseline
+  před cfg.php override; nové ENV `MYINVOICE_ARES_API`, `MYINVOICE_ARES_TIMEOUT`,
+  `MYINVOICE_VIES_REST_API`, `MYINVOICE_VIES_TIMEOUT` pro override. `AresClient`
+  loguje config error odděleně od network error.
+- **cron-backup zápisem do ephemerálního FS** (issue #34): `cron-backup.php`
+  i `cron-backup-pdf.php` hardcodily `storage/backup`, ignorovaly
+  `cron.backup.output_dir` / `storage.backup_dir` / `MYINVOICE_DATA_DIR`,
+  takže ZIPy zmizely při každém deployi na Fly.io / Railway / Render. Fix:
+  resolve v pořadí cfg → DATA_DIR → rootDir fallback.
+- **Image neměl `mariadb-client`** (issue #34): cron-backup je dokumentován
+  jako „kritická úloha" ale `mariadb-dump` nebyl v image → cron failnul
+  out-of-the-box na čerstvém deploymentu. Fix: přidán `mariadb-client`
+  (~20 MB) do apt install v Dockerfile.
+
+
 
 ### Fixed
 

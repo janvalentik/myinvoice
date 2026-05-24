@@ -24,7 +24,15 @@ $dbName  = (string) $config->get('db.name');
 
 $run = CronRun::start((new Connection($config))->pdo(), 'cron-backup-pdf');
 
-$backupDir = $rootDir . '/storage/backup';
+// Resolve backup output dir — stejné pořadí jako cron-backup.php (issue #34).
+$backupDir = (string) $config->get('cron.backup.output_dir', '');
+if ($backupDir === '') {
+    $backupDir = (string) $config->get('storage.backup_dir', '');
+}
+if ($backupDir === '') {
+    $dataDir = (string) (getenv('MYINVOICE_DATA_DIR') ?: '');
+    $backupDir = $dataDir !== '' ? rtrim($dataDir, '/\\') . '/storage/backup' : $rootDir . '/storage/backup';
+}
 if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
 
 if (!class_exists(ZipArchive::class)) {

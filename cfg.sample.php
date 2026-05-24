@@ -10,11 +10,14 @@
  * Per-environment override můžeš dát do cfg.local.php (taky gitignored).
  *
  * Docker / kontejnerový deploy: stačí prázdný `<?php return [];` a všechny
- * citlivé hodnoty předat přes ENV (viz envOverrideMap v Config.php). Volitelná
- * ENV `MYINVOICE_DATA_DIR=/data` přesune VŠECHNY stateful adresáře (log/,
- * storage/{invoices,uploads,backup,sessions,cache}, private/dkim/) pod jediný
- * volume — zbytek kontejneru pak může běžet read-only a image updaty jsou
- * bezbolestné. `${MYINVOICE_DATA_DIR}/cfg.local.php` se navíc auto-loaduje,
+ * citlivé hodnoty předat přes ENV (viz envOverrideMap v Config.php). Veřejné
+ * URL (ARES, VIES) mají defaultní hodnoty zabudované v `Config::baselineDefaults()`,
+ * takže ENV-only deploy je plně funkční bez bind-mountu cfg.docker.php — vyplň
+ * jen ENV s pověřeními (DB, SMTP, pepper, secret_encryption_key, Turnstile).
+ * Volitelná ENV `MYINVOICE_DATA_DIR=/data` přesune VŠECHNY stateful adresáře
+ * (log/, storage/{invoices,uploads,backup,sessions,cache}, private/dkim/) pod
+ * jediný volume — zbytek kontejneru pak může běžet read-only a image updaty
+ * jsou bezbolestné. `${MYINVOICE_DATA_DIR}/cfg.local.php` se navíc auto-loaduje,
  * takže per-instance konfigurace přežije image update.
  */
 
