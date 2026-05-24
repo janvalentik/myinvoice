@@ -6,6 +6,7 @@ namespace MyInvoice\Tests\Integration\Report;
 
 use MyInvoice\Bootstrap;
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Service\Report\DphBookBuilder;
 use MyInvoice\Service\Report\DphPriznaniBuilder;
 use MyInvoice\Service\Report\KontrolniHlaseniBuilder;
 use PDO;
@@ -36,6 +37,7 @@ final class KhDphTaxScenariosTest extends TestCase
     private Connection $db;
     private KontrolniHlaseniBuilder $kh;
     private DphPriznaniBuilder $dph;
+    private DphBookBuilder $book;
 
     private int $supplierId = 0;
     private int $currencyId = 0;
@@ -60,9 +62,10 @@ final class KhDphTaxScenariosTest extends TestCase
         }
         try {
             $container = Bootstrap::buildApp()->getContainer();
-            $this->db  = $container->get(Connection::class);
-            $this->kh  = $container->get(KontrolniHlaseniBuilder::class);
-            $this->dph = $container->get(DphPriznaniBuilder::class);
+            $this->db   = $container->get(Connection::class);
+            $this->kh   = $container->get(KontrolniHlaseniBuilder::class);
+            $this->dph  = $container->get(DphPriznaniBuilder::class);
+            $this->book = $container->get(DphBookBuilder::class);
         } catch (\Throwable $e) {
             $this->markTestSkipped('DI nedostupné: ' . $e->getMessage());
         }
@@ -212,6 +215,44 @@ final class KhDphTaxScenariosTest extends TestCase
 
         // ř.47 hodnota pořízeného majetku (P8)
         $this->assertSame('40000', (string) $v4['nar_maj'], 'ř.47 = 40000 (P8 majetek)');
+
+        // ══ KNIHA DPH (interní žurnál) ═══════════════════════════════════════
+        // Pin chování PŘED refaktorem na sdílenou VatLedgerService — Kniha DPH
+        // musí nad stejnými daty dávat konzistentní základy/daně s DPHDP3.
+        $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
+        $sec = [];
+        foreach ($book['sections'] as $s) {
+            $sec[$s['key']] = $s;
+        }
+
+        // 36.001 — vystavená tuzemsko 21 % (S1+S2+S3) = ř.1 DPHDP3
+        $this->assertArrayHasKey('36.001', $sec);
+        $this->assertEqualsWithDelta(55000, $sec['36.001']['subtotal_base'], 0.01);
+        $this->assertEqualsWithDelta(11550, $sec['36.001']['subtotal_vat'], 0.01);
+        // 36.022 — vývoz (S4, kód 26 → ř.22)
+        $this->assertArrayHasKey('36.022', $sec, 'Kniha DPH: sekce vývozu ř.22');
+        $this->assertEqualsWithDelta(50000, $sec['36.022']['subtotal_base'], 0.01);
+        // 15.040 — přijatá tuzemsko 21 % (P1+P2+P3+P6+P7−+P8) = ř.40
+        $this->assertArrayHasKey('15.040', $sec);
+        $this->assertEqualsWithDelta(53000, $sec['15.040']['subtotal_base'], 0.01);
+        $this->assertEqualsWithDelta(11130, $sec['15.040']['subtotal_vat'], 0.01);
+        // 15.003 — pořízení z JČS (P4), samovyměřená daň
+        $this->assertArrayHasKey('15.003', $sec);
+        $this->assertEqualsWithDelta(8000, $sec['15.003']['subtotal_base'], 0.01);
+        $this->assertEqualsWithDelta(1680, $sec['15.003']['subtotal_vat'], 0.01);
+        // 15.010 — tuzemský RC (P5) — samovyměření i BEZ per-faktura flagu
+        // (díky is_reverse_charge na kódu 5 / migrace 0048). Toto pinuje fix konzistence.
+        $this->assertArrayHasKey('15.010', $sec, 'P5 RC bez flagu musí mít sekci ř.10');
+        $this->assertEqualsWithDelta(9000, $sec['15.010']['subtotal_base'], 0.01);
+        $this->assertEqualsWithDelta(1890, $sec['15.010']['subtotal_vat'], 0.01,
+            'Kniha DPH musí samovyměřit RC i přes is_reverse_charge, ne jen flag');
+        // 43.043 — mirror odpočet u samovyměřené daně (P4 + P5)
+        $this->assertArrayHasKey('43.043', $sec);
+        $this->assertEqualsWithDelta(17000, $sec['43.043']['subtotal_base'], 0.01);
+        $this->assertEqualsWithDelta(3570, $sec['43.043']['subtotal_vat'], 0.01);
+        // 47.047 — hodnota pořízeného majetku (P8)
+        $this->assertArrayHasKey('47.047', $sec);
+        $this->assertEqualsWithDelta(40000, $sec['47.047']['subtotal_base'], 0.01);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

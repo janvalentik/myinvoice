@@ -223,15 +223,17 @@ final class DphBookBuilder
                    COALESCE(pii.vat_classification_code, pi.vat_classification_code) AS line_class_code,
                    pii.vat_rate_snapshot AS vat_rate,
                    (CASE WHEN pii.is_fixed_asset = 1 OR pi.is_fixed_asset = 1 THEN 1 ELSE 0 END) AS is_fixed_asset,
-                   MAX(vc.is_reverse_charge) AS code_is_rc,
+                   -- is_reverse_charge klasifikace (kódy 5/23) — skalární subquery místo JOIN,
+                   -- aby globální + per-tenant varianta kódu nezdvojily SUM. Scope na tenanta.
+                   (SELECT MAX(vc.is_reverse_charge) FROM vat_classifications vc
+                     WHERE vc.code = COALESCE(pii.vat_classification_code, pi.vat_classification_code)
+                       AND (vc.supplier_id IS NULL OR vc.supplier_id = pi.supplier_id)) AS code_is_rc,
                    SUM(pii.total_without_vat) AS base,
                    SUM(pii.total_vat) AS vat,
                    SUM(pii.total_with_vat) AS total
               FROM purchase_invoices pi
               JOIN clients c ON c.id = pi.vendor_id
               JOIN purchase_invoice_items pii ON pii.purchase_invoice_id = pi.id
-         LEFT JOIN vat_classifications vc
-                ON vc.code = COALESCE(pii.vat_classification_code, pi.vat_classification_code)
          LEFT JOIN (
                 SELECT purchase_invoice_id, MIN(description) AS description
                   FROM purchase_invoice_items
