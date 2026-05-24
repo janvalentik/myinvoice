@@ -182,14 +182,22 @@ final class StatementMatcher
         // 'paid' v setu: dovolíme navázat transakci i na ručně zaplacenou přijatou fakturu
         // (ať ve výpisu nevisí). Status/paid_at v tom případě nepřepisujeme.
         // Currency guard viz match() — bez něj by EUR výdaj napároval CZK přijatou.
-        $sql = "SELECT pi.id, pi.varsymbol, COALESCE(pi.amount_to_pay, pi.total_with_vat, 0) AS amount_to_pay,
+        //
+        // VS lookup: na rozdíl od vystavených faktur (kde klient platí naši `varsymbol`),
+        // u přijatých platíme my dodavateli — do bank převodu typicky vepíšeme
+        // **VS dodavatele** = `vendor_invoice_number`. Náš `purchase_invoices.varsymbol`
+        // je interní PF-YYYYMM-NNNN, jen občas se s `vendor_invoice_number` shodují
+        // (když user nepoužívá auto-counter). Hledáme proto OR na obojí — uživatel může
+        // platit pod naším PF-... i pod původním číslem dodavatele.
+        $sql = "SELECT pi.id, pi.varsymbol, pi.vendor_invoice_number,
+                       COALESCE(pi.amount_to_pay, pi.total_with_vat, 0) AS amount_to_pay,
                        pi.status, cur.code AS currency
                   FROM purchase_invoices pi
              LEFT JOIN currencies cur ON cur.id = pi.currency_id
                  WHERE pi.supplier_id = ?
-                   AND pi.varsymbol = ?
+                   AND (pi.varsymbol = ? OR pi.vendor_invoice_number = ?)
                    AND pi.status IN ('received', 'booked', 'paid')";
-        $params = [$supplierId, $vs];
+        $params = [$supplierId, $vs, $vs];
         if ($txCurrency !== null) {
             $sql .= ' AND cur.code = ?';
             $params[] = $txCurrency;
@@ -241,7 +249,33 @@ final class StatementMatcher
             return $result;
         }
         if ($diff <= 1.0) {
-            return ['status' => 'auto_partial', 'purchase_invoice_id' => (int) $pi['id'], 'diff' => $diff];
+            // Partial: zaznam do payment_matches + status na tx, ať UI vidí link
+            // (předtím tady byl jen `return` bez zápisu — transakce zůstávaly
+            // unmatched, partial match se v UI nikdy nezobrazil).
+            $pdo->beginTransaction();
+            try {
+                $pdo->prepare(
+                    "INSERT INTO payment_matches
+                        (supplier_id, bank_transaction_id, purchase_invoice_id, amount, match_type, match_confidence)
+                     VALUES (?, ?, ?, ?, 'auto', 70)"
+                )->execute([$supplierId, $transactionId, $pi['id'], $absAmount]);
+                $pdo->prepare(
+                    "UPDATE bank_transactions
+                        SET match_status = 'auto_partial', matched_at = NOW()
+                      WHERE id = ?"
+                )->execute([$transactionId]);
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            return [
+                'status' => 'auto_partial',
+                'purchase_invoice_id' => (int) $pi['id'],
+                'diff' => $diff,
+                'expected' => (float) $pi['amount_to_pay'],
+                'got' => $absAmount,
+            ];
         }
         return ['status' => 'unmatched', 'reason' => 'amount_mismatch_purchase', 'expected' => $pi['amount_to_pay'], 'got' => $absAmount];
     }

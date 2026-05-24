@@ -154,10 +154,18 @@ final class BankStatementAction
         // GPC zero-paduje účet (`0000001000000005`), currencies bez padding (`1000000005`) — porovnáváme
         // normalizované hodnoty (REGEXP_REPLACE non-digits + TRIM leading zeros).
         $sid = SupplierGuard::currentId($request);
+        // account_label: vlastní pojmenování účtu z currencies.label (např. "CZK — Fio Bank")
+        // přes scalar subselect (LIMIT 1 — sup. může mít jen 1 záznam per account_number+bank_code).
         $stmt = $this->db->pdo()->prepare(
             "SELECT bs.id, bs.file_name, bs.account_number, bs.currency, bs.statement_date, bs.statement_number,
                     bs.prev_balance, bs.curr_balance, bs.transaction_count, bs.matched_count, bs.imported_at,
-                    (bs.file_content IS NOT NULL) AS has_file
+                    (bs.file_content IS NOT NULL) AS has_file,
+                    (SELECT cur.label FROM currencies cur
+                      WHERE cur.supplier_id = ?
+                        AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
+                          = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
+                        AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
+                      LIMIT 1) AS account_label
                FROM bank_statements bs
               WHERE EXISTS (
                   SELECT 1 FROM currencies cur
@@ -169,7 +177,7 @@ final class BankStatementAction
               ORDER BY bs.statement_date DESC, bs.id DESC
               LIMIT 200"
         );
-        $stmt->execute([$sid]);
+        $stmt->execute([$sid, $sid]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         foreach ($rows as &$r) {
             $r['id'] = (int) $r['id'];
@@ -299,7 +307,13 @@ final class BankStatementAction
                     bs.prev_balance, bs.curr_balance, bs.credit_total, bs.debit_total,
                     bs.transaction_count, bs.matched_count,
                     bs.imported_at, bs.imported_by,
-                    (bs.file_content IS NOT NULL) AS has_file
+                    (bs.file_content IS NOT NULL) AS has_file,
+                    (SELECT cur.label FROM currencies cur
+                      WHERE cur.supplier_id = ?
+                        AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
+                          = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
+                        AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
+                      LIMIT 1) AS account_label
                FROM bank_statements bs
               WHERE bs.id = ?
                 AND EXISTS (
@@ -310,7 +324,7 @@ final class BankStatementAction
                      AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
                 )"
         );
-        $stmt->execute([$id, $sid]);
+        $stmt->execute([$sid, $id, $sid]);
         $s = $stmt->fetch(\PDO::FETCH_ASSOC);
         if (!$s) return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
 
@@ -395,9 +409,14 @@ final class BankStatementAction
             if ($invoiceId <= 0) {
                 // Fallback: purchase_invoice match (přijatá faktura, my platíme dodavateli)
                 $stmt = $this->db->pdo()->prepare(
-                    'SELECT id FROM purchase_invoices WHERE supplier_id = ? AND varsymbol = ? LIMIT 1'
+                    // OR na vendor_invoice_number — viz StatementMatcher::matchPurchase
+                    // (uživatel při manuálním matchi taky zadá VS dodavatele, ne naše PF-...).
+                    'SELECT id FROM purchase_invoices
+                       WHERE supplier_id = ?
+                         AND (varsymbol = ? OR vendor_invoice_number = ?)
+                       LIMIT 1'
                 );
-                $stmt->execute([$sid, $varsymbol]);
+                $stmt->execute([$sid, $varsymbol, $varsymbol]);
                 $pid = (int) $stmt->fetchColumn();
                 if ($pid > 0) {
                     return $this->manualMatchPurchase($request, $response, $txId, $pid);

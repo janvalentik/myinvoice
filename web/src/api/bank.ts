@@ -4,6 +4,8 @@ export interface BankStatement {
   id: number
   file_name: string
   account_number: string
+  /** Vlastní pojmenování účtu z currencies.label (např. "CZK — Fio Bank"), pokud match. */
+  account_label: string | null
   currency: string | null
   statement_date: string
   statement_number: string | null

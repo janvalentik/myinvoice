@@ -103,14 +103,25 @@ async function rematchStatement() {
 
   <div v-else-if="statement">
     <RouterLink to="/bank" class="text-sm text-neutral-600 hover:text-neutral-900">{{ t('bank.back') }}</RouterLink>
-    <h1 class="text-2xl font-semibold mt-1">
-      {{ t('bank.statement_title', { number: statement.statement_number, date: formatDate(statement.statement_date) }) }}
-    </h1>
-    <p class="text-sm text-neutral-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-      <span>{{ t('bank.account') }}<span class="font-mono">{{ statement.account_number }}</span></span>
-      <span v-if="statement.currency" class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">{{ statement.currency }}</span>
-      <span>· {{ statement.file_name }}</span>
-    </p>
+    <div class="flex items-start justify-between gap-3 mt-1 flex-wrap">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-semibold">
+          {{ t('bank.statement_title', { number: statement.statement_number, date: formatDate(statement.statement_date) }) }}
+        </h1>
+        <p class="text-sm text-neutral-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span>{{ t('bank.account') }}<span class="font-mono">{{ statement.account_number }}</span></span>
+          <span v-if="statement.account_label" class="text-neutral-400">— {{ statement.account_label }}</span>
+          <span v-if="statement.currency" class="text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">{{ statement.currency }}</span>
+          <span>· {{ statement.file_name }}</span>
+        </p>
+      </div>
+      <a v-if="statement.has_file" :href="bankApi.downloadUrl(statement.id)"
+         :title="t('bank.download_hint')"
+         class="cursor-pointer inline-flex items-center gap-1.5 h-9 px-3 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 text-sm font-medium rounded-md shrink-0">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        {{ t('bank.download') }}
+      </a>
+    </div>
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 mb-4">
       <div class="bg-white border border-neutral-200 rounded-lg p-4 shadow-sm">

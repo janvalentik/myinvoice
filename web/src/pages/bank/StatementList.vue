@@ -164,7 +164,10 @@ async function onFileSelected(e: Event) {
         <tbody class="divide-y divide-neutral-100">
           <tr v-for="s in statements" :key="s.id" @click="router.push(`/bank/${s.id}`)" class="cursor-pointer hover:bg-neutral-50">
             <td class="px-3 py-2 text-xs">{{ formatDate(s.statement_date) }}<span v-if="s.statement_number" class="text-neutral-400 ml-1">#{{ s.statement_number }}</span></td>
-            <td class="px-3 py-2 font-mono text-xs">{{ s.account_number }}</td>
+            <td class="px-3 py-2 text-xs">
+              <div class="font-mono">{{ s.account_number }}</div>
+              <div v-if="s.account_label" class="text-neutral-400 mt-0.5">{{ s.account_label }}</div>
+            </td>
             <td class="px-3 py-2">
               <span v-if="s.currency" class="text-xs px-2 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">{{ s.currency }}</span>
               <span v-else class="text-xs text-neutral-400">—</span>
@@ -208,6 +211,7 @@ async function onFileSelected(e: Event) {
             <div class="font-mono text-sm font-semibold whitespace-nowrap">{{ formatMoney(s.curr_balance, s.currency ?? 'CZK') }}</div>
           </div>
           <div class="font-mono text-xs text-neutral-500 mt-0.5">{{ s.account_number }}</div>
+          <div v-if="s.account_label" class="text-xs text-neutral-400">{{ s.account_label }}</div>
           <div class="text-xs text-neutral-500 truncate mt-0.5">{{ s.file_name }}</div>
           <div class="flex items-baseline justify-between gap-2 mt-2">
             <span class="text-xs text-neutral-500">{{ s.transaction_count }} transakcí</span>
