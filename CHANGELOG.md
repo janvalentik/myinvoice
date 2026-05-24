@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.2] — 2026-05-24
+
+Patch release nad v4.1.1 (~3 hodiny později) — čtyři logické bugy v bank
+matching a AI importu odhalené reálnými user reporty plus výrazné cost
+optimization recheck skriptu.
+
+### Fixed (Banka — párování přijatých faktur)
+
+- **Auto-párování přijatých faktur nefungovalo, i když VS sedělo na
+  číslo dokladu dodavatele**. `StatementMatcher` hledal
+  `purchase_invoices.varsymbol` (= naše interní `PF-YYYYMM-NNNN`), ale
+  do bank převodu uživatel typicky zadává **VS dodavatele** =
+  `vendor_invoice_number`. Match nikdy neprošel. Fix: WHERE klauzule
+  `(varsymbol = ? OR vendor_invoice_number = ?)`. Stejně v manuálním
+  matchi přes `/api/bank-transactions/{id}/match` s varsymbol fallbackem.
+- **`auto_partial` pro outgoing payments byl tichý** — když byl rozdíl
+  0,01–1,0 Kč, `matchPurchase()` vracel jen JSON status, ale **nezapisoval
+  nic do DB**. Transakce zůstala `unmatched`, UI partial match nikdy
+  nezobrazil. Fix: `payment_matches` insert + `tx.match_status =
+  'auto_partial'` (stejně jako exact path, jen confidence 70 vs 95).
+- **Tolerance `auto_exact` 0,01 Kč → 0,05 Kč** — user report Vodafone
+  faktury (bank −1 502,00 Kč vs faktura 1 502,02 Kč = diff 0,02 Kč ze
+  21 % DPH roundingu) padla jako partial místo exact, faktura zůstala
+  neoznačena jako paid. Nová tolerance pokrývá DPH rounding step
+  (1 241,34 × 1,21 = 1 502,0214 → různá round-by-row vs round-by-total
+  strategie dává ±2-4 haléře rozdíl). Konstanty `EXACT_MATCH_TOLERANCE`
+  / `PARTIAL_MATCH_TOLERANCE` v `StatementMatcher` — snadné rozšíření
+  per-měna v budoucnu.
+
+### Added (Banka — UI)
+
+- **Sloupec „pojmenování účtu"** v `/bank` seznamu (např.
+  „CZK — Fio Bank") — z `currencies.label` per supplier scope. Šedě pod
+  číslem účtu v desktop tabulce i mobile kartě.
+- **Tlačítko Stáhnout originální GPC** přesunuté do panelu transakcí
+  vedle „Přepárovat výpis" (od původního header umístění je tam víc
+  kompaktní). Zobrazuje se jen pokud `has_file=true`.
+
+### Fixed (AI import — rounding)
+
+- **AI rounding počítaný vůči chybnému AI total**, ne vůči přepočtenému
+  items total. User report Vodafone faktura 1025255728:
+  ```
+  Items recompute:  1502,02   ← deterministický InvoiceMath
+  AI total_with_vat: 1502,03  ← AI math off-by-one v 21 % DPH
+  PDF "K úhradě":   1502,00
+
+  Před fixem: rounding = rounded − AI_total = -0,03  → UI 1501,99 ✗
+  Po fixu:    rounding = rounded − items_recompute = -0,02  → UI 1502,00 ✓
+  ```
+  Refaktor: `computeRounding()` smazána (postavená na chybném předpokladu);
+  rounding se počítá AŽ PO `recompute()` v nové `applyRoundingFromPdfTotal()`
+  s priority `total_with_vat_rounded` (PDF "K úhradě") → fallback
+  `total_with_vat` (AI). Regression test pokrývá Vodafone case explicitně.
+
+### Changed (Recheck — cost optimization)
+
+- **`api/bin/recheck-ai-extracted-invoices.php` přepsán na hybrid hierarchii**
+  zdrojů PDF totalu (per user request „je to docela nákladné dělat vše
+  znovu přes AI"):
+  1. **ISDOC** (PDF/A-3 embedded — iDoklad / Fakturoid / Pohoda /
+     MyInvoice vlastní faktury) — autoritativní `LegalMonetaryTotal/PayableRoundedAmount`,
+     zdarma, ~10 ms.
+  2. **PDF text regex** (nová composer dep `smalot/pdfparser` ^2.12,
+     ~3 MB) — max peněžní hodnota s mandatorním currency suffixem
+     (Kč/CZK/EUR/USD/€). Funguje napříč layouty (max je typicky total
+     faktury). Zdarma, ~50-200 ms.
+  3. **AI fallback** (jen pokud 1 i 2 selhaly) — nový lightweight
+     `AnthropicClient::extractPdfTotal()` (max_tokens 100, minimalistický
+     prompt, ~5-10× levnější per call než `extractInvoice` —
+     Haiku ~$0.0001 vs $0.001).
+
+  Nové CLI flagy `--ai-only` (legacy behavior) a `--no-ai`. Statistika
+  per source na konci („Ušetřeno AI volání: 91 % z 80 zpracovaných").
+
+### Migrations
+
+Žádné — vše code-only changes. Stačí pull image + restart.
+
 ## [4.1.1] — 2026-05-24
 
 Patch release nad v4.1.0 (~3 hodiny později) — production hotfix
