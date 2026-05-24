@@ -64,6 +64,24 @@ return [
         // s citlivými daty. Vyžaduje validní `app.secret_encryption_key` (jinak
         // by uživatelé skončili v silent-500 — viz health warning).
         'require_totp' => false,
+
+        // E-mailové OTP jako 2. faktor pro uživatele BEZ TOTP. Opt-in (default OFF).
+        // Když ho zapneš, každý, kdo nemá aktivní authenticator app (totp_enabled=0),
+        // dostane po ověření hesla 6místný kód na e-mail a musí ho zadat. Vhodné pro
+        // uživatele (typicky účetní), kteří nechtějí/neumí authenticator appku.
+        //
+        // POZOR: vyžaduje funkční `smtp`. Když e-maily nechodí, uživatelé bez
+        // TOTP se nepřihlásí — pak buď oprav SMTP, nebo nastav enabled=false.
+        // „Důvěryhodné zařízení" (remember-device cookie) druhý faktor po danou
+        // dobu přeskakuje; heslo se vyžaduje vždy.
+        'email_otp' => [
+            'enabled'                 => false, // true = vyžadovat e-mailový kód u uživatelů bez TOTP
+            'code_ttl_minutes'        => 10,    // platnost kódu
+            'max_attempts'            => 5,     // pokusů o zadání jednoho kódu, pak je nutný nový
+            'resend_cooldown_seconds' => 60,    // min. prodleva mezi rozesláním nového kódu
+            'trusted_device_days'     => 30,    // „zapamatovat toto zařízení" na kolik dní
+            'trusted_cookie_name'     => '__Host-myinvoice_td', // pro HTTP dev změnit (viz session.cookie_name)
+        ],
     ],
     'smtp' => [
         // Connection

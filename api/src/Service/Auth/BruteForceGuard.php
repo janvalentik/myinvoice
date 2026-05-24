@@ -153,6 +153,52 @@ final class BruteForceGuard
         $stmt->execute(["totp:user:{$userId}"]);
     }
 
+    /**
+     * E-mail OTP brute-force counter — per user. Analogie TOTP lockoutu pro
+     * uživatele bez authenticator appky (6místný kód = 10⁶ keyspace).
+     * Lockout: 10 selhání / 10 min.
+     */
+    public function isEmailOtpLocked(int $userId): bool
+    {
+        $key = "eotp:fail:{$userId}";
+        $threshold = 10;
+        if (($r = $this->redis->client()) !== null) {
+            return (int) ($r->get($key) ?? 0) >= $threshold;
+        }
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT COUNT(*) FROM login_attempts
+              WHERE bucket_key = ? AND success = 0
+                AND created_at >= NOW() - INTERVAL 600 SECOND"
+        );
+        $stmt->execute(["eotp:user:{$userId}"]);
+        return (int) $stmt->fetchColumn() >= $threshold;
+    }
+
+    public function recordEmailOtpFailure(int $userId): void
+    {
+        $key = "eotp:fail:{$userId}";
+        if (($r = $this->redis->client()) !== null) {
+            $r->incr($key);
+            $r->expire($key, 600);
+            return;
+        }
+        $stmt = $this->db->pdo()->prepare(
+            "INSERT INTO login_attempts (bucket_key, email, ip_packed, success) VALUES (?, '', '', 0)"
+        );
+        $stmt->execute(["eotp:user:{$userId}"]);
+    }
+
+    public function recordEmailOtpSuccess(int $userId): void
+    {
+        $key = "eotp:fail:{$userId}";
+        if (($r = $this->redis->client()) !== null) {
+            $r->del($key);
+            return;
+        }
+        $stmt = $this->db->pdo()->prepare('DELETE FROM login_attempts WHERE bucket_key = ?');
+        $stmt->execute(["eotp:user:{$userId}"]);
+    }
+
     private function bucketKey(string $email, string $ip): string
     {
         // /24 pro IPv4, /64 pro IPv6 — zabraňuje obcházení přes sousední IP

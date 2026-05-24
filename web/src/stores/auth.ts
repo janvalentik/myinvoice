@@ -32,13 +32,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function login(email: string, password: string, captchaToken?: string, totp?: string) {
+  async function login(
+    email: string,
+    password: string,
+    captchaToken?: string,
+    totp?: string,
+    opts?: { emailOtp?: string; rememberDevice?: boolean; resendOtp?: boolean },
+  ) {
     loading.value = true
     try {
       const data = await authApi.login({
         email,
         password,
         totp: totp || undefined,
+        email_otp: opts?.emailOtp || undefined,
+        remember_device: opts?.rememberDevice || undefined,
+        resend_otp: opts?.resendOtp || undefined,
         cf_turnstile_response: captchaToken,
       })
       user.value = data.user

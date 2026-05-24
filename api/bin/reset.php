@@ -11,7 +11,7 @@ declare(strict_types=1);
  *
  * Ponechává (globální číselníky + schema): countries, vat_rates, units,
  *       exchange_rates (cache ČNB kurzů — drahé refetchnout), migrations
- * Maže: users, sessions, password_resets, login_attempts, api_tokens,
+ * Maže: users, sessions, password_resets, login_otps, trusted_devices, login_attempts, api_tokens,
  *       supplier, clients, projects, invoices, work_reports, activity_log,
  *       bank_statements, bank_transactions, payment_matches (bank N:N matching),
  *       invoice_counters, purchase_invoice_counters, invoice_pdfs (PDF historie),
@@ -135,6 +135,8 @@ $wipe = [
     // Auth + sessions
     'sessions',
     'password_resets',
+    'login_otps',                    // e-mailové 2FA kódy (migrace 0047)
+    'trusted_devices',               // „zapamatovaná zařízení" pro e-mailové 2FA (migrace 0047)
     'login_attempts',
     'api_tokens',                    // Personal Access Tokens (FK→users, ale TRUNCATE FK ignoruje)
     'activity_log',

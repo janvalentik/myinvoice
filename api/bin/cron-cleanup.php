@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /**
  * Denní cleanup — login_attempts (>24h), expirované sessions, použité password_resets,
- * log files >90 dní.
+ * login_otps + trusted_devices (e-mailové 2FA), log files >90 dní.
  *
  * POZN: PDF se NEMAŽE. Aktivní cache může pominout (renderer ji znovu vytvoří),
  * ale archivovaná historie (storage/invoices/sup-N/_archive) obsahuje verze
@@ -41,6 +41,14 @@ $report['expired_sessions'] = (int) $n;
 // 3) password_resets — použité nebo expirované >7 dní
 $n = $pdo->exec("DELETE FROM password_resets WHERE used_at IS NOT NULL OR expires_at < NOW() - INTERVAL 7 DAY");
 $report['password_resets'] = (int) $n;
+
+// 3b) login_otps (e-mailové 2FA kódy) — použité/expirované >1 den
+$n = $pdo->exec("DELETE FROM login_otps WHERE used_at < NOW() - INTERVAL 1 DAY OR expires_at < NOW() - INTERVAL 1 DAY");
+$report['login_otps'] = (int) $n;
+
+// 3c) trusted_devices — expirovaná „zapamatovaná zařízení"
+$n = $pdo->exec("DELETE FROM trusted_devices WHERE expires_at < NOW()");
+$report['trusted_devices'] = (int) $n;
 
 // 4) ARES/VIES cache — starší 30 dní
 $n = $pdo->exec("DELETE FROM ares_cache WHERE fetched_at < NOW() - INTERVAL 30 DAY");

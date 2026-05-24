@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
@@ -11,6 +11,10 @@ import { useTurnstile } from '@/composables/useTurnstile'
 const router = useRouter()
 const auth = useAuthStore()
 
+// Štítek pro „zapamatovat zařízení". Odpovídá cfg.auth.email_otp.trusted_device_days
+// (default 30) — čistě informativní, vlastní platnost řídí backend.
+const REMEMBER_DAYS = 30
+
 const email = ref('')
 const password = ref('')
 const totp = ref('')
@@ -19,6 +23,32 @@ const error = ref<string>('')
 const captchaRequired = ref(false)
 const captchaSiteKey = ref('')
 const captchaScriptUrl = ref('')
+
+// E-mailové OTP (2. faktor pro uživatele bez TOTP — jen když je zapnuté v configu)
+const emailOtp = ref('')
+const emailOtpRequired = ref(false)
+const rememberDevice = ref(false)
+const otpEmailMasked = ref('')
+const otpResendCooldown = ref(0)
+const otpInfo = ref<string>('')
+let cooldownTimer: ReturnType<typeof setInterval> | null = null
+
+function startCooldown(seconds: number) {
+  otpResendCooldown.value = Math.max(0, Math.floor(seconds))
+  if (cooldownTimer) clearInterval(cooldownTimer)
+  if (otpResendCooldown.value <= 0) return
+  cooldownTimer = setInterval(() => {
+    otpResendCooldown.value -= 1
+    if (otpResendCooldown.value <= 0 && cooldownTimer) {
+      clearInterval(cooldownTimer)
+      cooldownTimer = null
+    }
+  }, 1000)
+}
+
+onUnmounted(() => {
+  if (cooldownTimer) clearInterval(cooldownTimer)
+})
 
 const turnstile = useTurnstile()
 const turnstileEl = ref<HTMLElement | null>(null)
@@ -60,18 +90,34 @@ async function submit() {
     return
   }
   error.value = ''
+  otpInfo.value = ''
   try {
-    await auth.login(email.value.trim(), password.value, turnstile.token.value || undefined, totp.value || undefined)
+    await auth.login(email.value.trim(), password.value, turnstile.token.value || undefined, totp.value || undefined, {
+      emailOtp: emailOtp.value || undefined,
+      rememberDevice: rememberDevice.value,
+    })
     router.push('/')
   } catch (e: any) {
     const code = e?.response?.data?.error?.code
     const msg  = e?.response?.data?.error?.message
+    const data = e?.response?.data?.error
     if (code === 'totp_required') {
       totpRequired.value = true
       error.value = ''
       // Token byl spotřebovaný 1. pokusem (heslo OK, čekáme na TOTP).
       // Reset → fresh token pro další pokus s TOTP kódem (jinak by 2. submit
       // šel s already-consumed tokenem → captcha_failed → user musí submit 2x).
+      turnstile.reset()
+    } else if (code === 'email_otp_required') {
+      // Heslo OK, user nemá TOTP → backend poslal kód na e-mail.
+      emailOtpRequired.value = true
+      error.value = ''
+      otpEmailMasked.value = data?.email_masked || ''
+      startCooldown(data?.cooldown_remaining ?? 0)
+      turnstile.reset()
+    } else if (code === 'invalid_email_otp') {
+      emailOtp.value = ''
+      error.value = msg || t('auth.email_otp_invalid')
       turnstile.reset()
     } else if (code === 'invalid_totp') {
       totp.value = ''
@@ -87,6 +133,31 @@ async function submit() {
       error.value = msg || t('auth.too_many_attempts')
     } else {
       error.value = msg || t('auth.login_failed')
+      turnstile.reset()
+    }
+  }
+}
+
+// Poslat e-mailový kód znovu. Re-submitne heslo s resend_otp=1; backend pošle
+// nový kód (s cooldownem) a vrátí znovu email_otp_required.
+async function resendCode() {
+  if (otpResendCooldown.value > 0) return
+  error.value = ''
+  otpInfo.value = ''
+  try {
+    await auth.login(email.value.trim(), password.value, turnstile.token.value || undefined, undefined, {
+      resendOtp: true,
+    })
+    // Úspěch by tu být neměl (kód je vyžadovaný), ale pro jistotu:
+    router.push('/')
+  } catch (e: any) {
+    const data = e?.response?.data?.error
+    if (data?.code === 'email_otp_required') {
+      startCooldown(data?.cooldown_remaining ?? 0)
+      if (data?.otp_sent) otpInfo.value = t('auth.email_otp_sent')
+      turnstile.reset()
+    } else {
+      error.value = data?.message || t('auth.login_failed')
       turnstile.reset()
     }
   }
@@ -138,6 +209,40 @@ async function submit() {
               class="w-full h-10 px-3 border border-neutral-300 rounded-md font-mono text-lg tracking-widest text-center focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"
             />
             <p class="text-xs text-neutral-500 mt-1">{{ t('auth.totp_hint') }}</p>
+          </div>
+
+          <div v-if="emailOtpRequired">
+            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('auth.email_otp_code') }}</label>
+            <input
+              v-model="emailOtp"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              pattern="\d{6}"
+              placeholder="000000"
+              autofocus
+              class="w-full h-10 px-3 border border-neutral-300 rounded-md font-mono text-lg tracking-widest text-center focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none"
+            />
+            <p class="text-xs text-neutral-500 mt-1">{{ t('auth.email_otp_hint', { email: otpEmailMasked }) }}</p>
+
+            <label class="flex items-center gap-2 mt-3 text-sm text-neutral-700 cursor-pointer select-none">
+              <input v-model="rememberDevice" type="checkbox" class="rounded border-neutral-300 text-primary-600 focus:ring-primary-500/20" />
+              {{ t('auth.remember_device', { days: REMEMBER_DAYS }) }}
+            </label>
+
+            <div class="mt-2">
+              <button
+                type="button"
+                :disabled="otpResendCooldown > 0"
+                @click="resendCode"
+                class="text-sm text-primary-600 hover:underline disabled:text-neutral-400 disabled:no-underline disabled:cursor-not-allowed"
+              >
+                {{ otpResendCooldown > 0 ? t('auth.resend_in', { s: otpResendCooldown }) : t('auth.resend_code') }}
+              </button>
+            </div>
+
+            <p v-if="otpInfo" class="text-xs text-success-600 mt-1">{{ otpInfo }}</p>
           </div>
 
           <!-- Turnstile container — vždy v DOM. Lokální template ref + watch

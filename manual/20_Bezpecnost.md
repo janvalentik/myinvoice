@@ -3,7 +3,7 @@
 Bezpečnost MyInvoice stojí na 4 vrstvách:
 
 1. **Autentizace** — bcrypt hesla + peppered + brute-force ochrana + CAPTCHA
-2. **2FA (TOTP)** — volitelné druhé ověření přes mobilní aplikaci
+2. **2FA** — volitelné druhé ověření: TOTP (mobilní aplikace) nebo e-mailový kód
 3. **Síťová izolace** — IP allowlist (volitelný, doporučeno v produkci)
 4. **Autorizace** — role-based access (admin / accountant / readonly)
 5. **Audit** — activity log všech mutací
@@ -112,6 +112,46 @@ Chování:
 > ⚠️ Vyžaduje validní `app.secret_encryption_key` (32B base64). Při špatné
 > konfiguraci by uživatelé skončili v silent-500 — health endpoint vrací
 > warning, viz [§ 99 Řešení problémů](99_Reseni_problemu.md).
+
+### 20.2.5 E-mailové ověření (pro uživatele bez authenticator app)
+
+Pro uživatele, kteří nechtějí (nebo neumí) authenticator aplikaci — typicky
+externí účetní — lze zapnout **e-mailové OTP** jako druhý faktor. Kdo nemá
+aktivní TOTP, dostane po zadání hesla 6místný kód na e-mail a musí ho opsat.
+
+Zapnutí v `cfg.php` (výchozí stav je **vypnuto** — nejde o breaking change):
+
+```php
+'auth' => [
+    'email_otp' => [
+        'enabled'                 => true,  // vyžadovat e-mailový kód u uživatelů bez TOTP
+        'code_ttl_minutes'        => 10,    // platnost kódu
+        'max_attempts'            => 5,     // pokusů na jeden kód, pak je nutný nový
+        'resend_cooldown_seconds' => 60,    // min. prodleva mezi odesláním nového kódu
+        'trusted_device_days'     => 30,    // „zapamatovat toto zařízení" na kolik dní
+        'trusted_cookie_name'     => '__Host-myinvoice_td',
+    ],
+],
+```
+
+Chování:
+
+- **Priorita TOTP.** Má-li uživatel aktivní authenticator app, vyžaduje se
+  TOTP a e-mailové OTP se neuplatní. E-mailový kód je pouze fallback.
+- **Po heslu** se zobrazí pole pro kód z e-mailu + tlačítko *„Kód nedorazil?
+  Odeslat znovu"* s odpočtem (cooldown). Kód je jednorázový a hashovaný v DB
+  (sloupec `login_otps.code_hash`, nikdy plaintext).
+- **„Zapamatovat toto zařízení na 30 dní"** (checkbox) vystaví cookie
+  důvěryhodného zařízení; na něm se druhý faktor po danou dobu nevyžaduje.
+  Heslo se vyžaduje vždy. Týká se jen e-mailového OTP, ne TOTP.
+- **Brute-force.** Šestimístný kód je chráněn per-user lockoutem (10 selhání /
+  10 min) stejně jako TOTP.
+
+> ⚠️ Vyžaduje funkční **SMTP**. Když e-maily nechodí, uživatelé bez TOTP se
+> nepřihlásí — buď oprav SMTP, nebo nastav `enabled => false`. Nouzově lze
+> uživateli zrušit i důvěryhodná zařízení a čekající kódy:
+> `php api/bin/reset-2fa.php <email>` (vedle vypnutí TOTP smaže i
+> `trusted_devices` a `login_otps` daného účtu).
 
 ## 20.3 Brute-force ochrana
 

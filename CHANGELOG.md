@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.3] — 2026-05-24
+
+Volitelné **e-mailové OTP** jako druhý faktor pro uživatele bez authenticator
+aplikace (typicky externí účetní). Opt-in, výchozí stav vypnuto — žádný dopad
+na existující instalace.
+
+### Added (2FA — e-mailové ověření)
+
+- **E-mailové OTP fallback.** Kdo nemá aktivní TOTP, dostane po ověření hesla
+  6místný kód na e-mail a musí ho opsat. Řízeno `cfg.auth.email_otp.enabled`
+  (default `false`). TOTP má přednost — e-mailový kód je čistě fallback pro
+  uživatele bez authenticator appky.
+- **„Zapamatovat toto zařízení na 30 dní"** — volitelná cookie důvěryhodného
+  zařízení (`trusted_devices`), na kterém se druhý faktor po danou dobu
+  nevyžaduje. Heslo se vyžaduje vždy. Doba dle `trusted_device_days`.
+- **Tlačítko „Kód nedorazil? Odeslat znovu"** s odpočtem (anti-spam cooldown,
+  default 60 s). Kód platí 10 min, je jednorázový a v DB jen jako sha256 hash
+  (`login_otps`), nikdy plaintext.
+- **E-mailová šablona `login_otp`** (cs/en, editovatelná v adminu).
+- Migrace `0047_email_otp_2fa.sql` — tabulky `login_otps` + `trusted_devices`.
+
+### Security
+
+- Šestimístný kód chráněn per-user lockoutem (10 selhání / 10 min) stejně jako
+  TOTP. `cron-cleanup.php` maže expirované kódy i důvěryhodná zařízení.
+- `reset-2fa.php` nově vedle vypnutí TOTP maže i `trusted_devices` a
+  `login_otps` účtu (úplný reset 2FA). `reset.php` wipuje obě nové tabulky.
+
+### Tests
+
+- 15 nových live-DB testů (`EmailOtpServiceTest`, `TrustedDeviceServiceTest`):
+  vydání/ověření kódu, jednorázovost, reuse, cooldown, max pokusů, expirace,
+  hashování, vázání na uživatele. Celkem 367 testů zelených.
+
+### Fixed
+
+- **Kniha DPH** měla v levé navigaci stejnou ikonu jako DPH přiznání —
+  dostala vlastní ikonu otevřené knihy.
+
 ## [4.1.2] — 2026-05-24
 
 Patch release nad v4.1.1 (~3 hodiny později) — čtyři logické bugy v bank

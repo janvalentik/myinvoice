@@ -9,10 +9,12 @@ use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\BruteForceGuard;
+use MyInvoice\Service\Auth\EmailOtpService;
 use MyInvoice\Service\Auth\PasswordHasher;
 use MyInvoice\Service\Auth\SecretEncryption;
 use MyInvoice\Service\Auth\SessionManager;
 use MyInvoice\Service\Auth\TotpService;
+use MyInvoice\Service\Auth\TrustedDeviceService;
 use MyInvoice\Service\Captcha\TurnstileVerifier;
 use MyInvoice\Service\IpMatcher;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -31,6 +33,8 @@ final class LoginAction
         private readonly Config $config,
         private readonly TotpService $totp,
         private readonly SecretEncryption $crypto,
+        private readonly EmailOtpService $emailOtp,
+        private readonly TrustedDeviceService $trustedDevices,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -39,6 +43,9 @@ final class LoginAction
         $email = trim((string) ($body['email'] ?? ''));
         $password = (string) ($body['password'] ?? '');
         $totpCode = isset($body['totp']) ? trim((string) $body['totp']) : '';
+        $emailOtpCode = isset($body['email_otp']) ? trim((string) $body['email_otp']) : '';
+        $resendOtp = !empty($body['resend_otp']);
+        $rememberDevice = !empty($body['remember_device']);
         $turnstileToken = isset($body['cf_turnstile_response']) ? (string) $body['cf_turnstile_response'] : null;
 
         $ip        = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
@@ -97,8 +104,17 @@ final class LoginAction
             return Json::error($response, 'invalid_credentials', 'Neplatné přihlašovací údaje.', 401);
         }
 
-        // TOTP — pokud má user aktivní 2FA, vyžaduj kód
-        if ((int) $user['totp_enabled'] === 1 && !empty($user['totp_secret'])) {
+        // Druhý faktor. Dvě vzájemně výlučné větve:
+        //   A) user má aktivní TOTP → vyžaduj TOTP kód (authenticator app)
+        //   B) user nemá TOTP → e-mailové OTP (povinné, pokud cfg.auth.email_otp.enabled)
+        //      přeskočí se na „důvěryhodném zařízení" (remember-device cookie).
+        $totpActive     = (int) $user['totp_enabled'] === 1 && !empty($user['totp_secret']);
+        // Default OFF — opt-in feature, ať to není breaking change pro existující
+        // instalace (jinak by se uživatelům bez TOTP náhle vyžadoval e-mailový kód).
+        $emailOtpOn     = (bool) $this->config->get('auth.email_otp.enabled', false);
+        $issueTrustedTd = false;  // vystavit trusted-device cookie po úspěšném loginu?
+
+        if ($totpActive) {
             if ($totpCode === '') {
                 // Nepočítej jako fail — uživatel zadal heslo OK, jen čekáme na 2FA
                 return Json::error($response, 'totp_required', 'TOTP kód požadován.', 401);
@@ -120,6 +136,42 @@ final class LoginAction
                 return Json::error($response, 'invalid_totp', 'Neplatný TOTP kód.', 401);
             }
             $this->bf->recordTotpSuccess((int) $user['id']);
+        } elseif ($emailOtpOn) {
+            $tdCookieName = $this->trustedDevices->cookieName();
+            $tdToken = $request->getCookieParams()[$tdCookieName] ?? null;
+            $deviceTrusted = $this->trustedDevices->verify(is_string($tdToken) ? $tdToken : null, (int) $user['id']);
+
+            if (!$deviceTrusted) {
+                if ($emailOtpCode === '') {
+                    // Heslo OK → pošli (nebo přeresetuj) kód a vyžádej ho. Není to fail.
+                    $issued = $this->emailOtp->issue($user, $ip, $resendOtp);
+                    $this->logger->log('auth.email_otp_sent', (int) $user['id'], 'user', (int) $user['id'], [
+                        'email' => $email, 'sent' => $issued['sent'], 'resend' => $resendOtp,
+                    ], $ip, $userAgent);
+                    return Json::error($response, 'email_otp_required', 'Zadejte kód, který jsme poslali na váš e-mail.', 401, [
+                        'otp_sent'           => $issued['sent'],
+                        'cooldown_remaining' => $issued['cooldown_remaining'],
+                        'email_masked'       => $this->maskEmail((string) $user['email']),
+                    ]);
+                }
+                // Per-user lockout — stejná ochrana jako u TOTP (6místný kód).
+                if ($this->bf->isEmailOtpLocked((int) $user['id'])) {
+                    $this->logger->log('auth.email_otp_locked', (int) $user['id'], 'user', (int) $user['id'], [
+                        'email' => $email,
+                    ], $ip, $userAgent);
+                    return Json::error($response, 'too_many_attempts', 'Příliš mnoho pokusů o ověření kódu. Zkus to později.', 429);
+                }
+                if (!$this->emailOtp->verify((int) $user['id'], $emailOtpCode)) {
+                    $this->bf->recordEmailOtpFailure((int) $user['id']);
+                    $this->bf->recordFailure($email, $ip);
+                    $this->logger->log('auth.login_failed', (int) $user['id'], 'user', (int) $user['id'], [
+                        'email' => $email, 'reason' => 'email_otp_invalid',
+                    ], $ip, $userAgent);
+                    return Json::error($response, 'invalid_email_otp', 'Neplatný nebo expirovaný kód.', 401);
+                }
+                $this->bf->recordEmailOtpSuccess((int) $user['id']);
+                $issueTrustedTd = $rememberDevice;
+            }
         }
 
         // Rehash pokud zastaral cost
@@ -161,7 +213,7 @@ final class LoginAction
         $requireTotp   = (bool) $this->config->get('auth.require_totp', false);
         $mustSetupTotp = $requireTotp && !$totpEnabled;
 
-        return Json::ok($response, [
+        $result = Json::ok($response, [
             'user' => [
                 'id'              => (int) $user['id'],
                 'email'           => $user['email'],
@@ -173,5 +225,35 @@ final class LoginAction
             ],
             'csrf_token' => $session['csrf_token'],
         ])->withHeader('Set-Cookie', $cookie);
+
+        // „Zapamatovat zařízení" — vystav trusted-device cookie, ať se příště
+        // email OTP nevyžaduje (platí jen pro email-OTP fallback, ne pro TOTP).
+        if ($issueTrustedTd) {
+            $tdToken = $this->trustedDevices->issue((int) $user['id'], $ip, $userAgent);
+            $tdCookie = sprintf(
+                '%s=%s; HttpOnly; Path=/; Max-Age=%d; SameSite=%s%s',
+                $this->trustedDevices->cookieName(),
+                $tdToken,
+                $this->trustedDevices->days() * 86400,
+                $cookieSameSite,
+                $cookieSecure ? '; Secure' : '',
+            );
+            $result = $result->withAddedHeader('Set-Cookie', $tdCookie);
+        }
+
+        return $result;
+    }
+
+    /** r***@hulan.cz — náznak adresy pro UI, bez prozrazení celého e-mailu. */
+    private function maskEmail(string $email): string
+    {
+        $at = strpos($email, '@');
+        if ($at === false || $at === 0) {
+            return '***';
+        }
+        $local = substr($email, 0, $at);
+        $domain = substr($email, $at);
+        $first = mb_substr($local, 0, 1);
+        return $first . str_repeat('*', max(1, mb_strlen($local) - 1)) . $domain;
     }
 }

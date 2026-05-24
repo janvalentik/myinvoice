@@ -31,6 +31,9 @@ export interface LoginPayload {
   email: string
   password: string
   totp?: string
+  email_otp?: string
+  remember_device?: boolean
+  resend_otp?: boolean
   cf_turnstile_response?: string
 }
 
