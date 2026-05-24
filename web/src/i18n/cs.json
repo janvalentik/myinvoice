@@ -56,6 +56,8 @@
       "exchange_rate_load_cnb": "Načíst z ČNB",
       "exchange_rate_source": "Zdroj kurzu",
       "reverse_charge": "Reverse charge (přenesená daň. povinnost)",
+      "is_fixed_asset": "Pořízení dlouhodobého majetku",
+      "is_fixed_asset_hint": "Doklad za majetek vymezený v § 4 odst. 4 písm. c) (vozidlo, stroj). Hodnota se na DPHDP3 uvede navíc na ř. 47 jako doplňující údaj.",
       "language": "Jazyk dokladu",
       "note_above_items": "Poznámka nad položkami",
       "note_below_items": "Poznámka pod položkami",

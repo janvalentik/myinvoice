@@ -80,6 +80,34 @@ V editoru faktury (vystavené i přijaté) je sekce **Klasifikace** s VAT picker
 - Nechat prázdné → auto-default
 - Vybrat konkrétní kód → manual override (např. specifický kód pro export)
 
+### Reverse charge v cizí měně (od v4.1.0)
+
+Pro RC plnění (typicky `reverse_charge=true` na fakturě, kódy 5 / 23 / 24)
+v cizí měně:
+
+1. **Kurz** se aplikuje na základ DPH (`pii.total_without_vat × invoice.exchange_rate`).
+2. **Samovyměřená daň** se dopočte ze sazby (`základ_CZK × vat_rate / 100`),
+   protože vendor vystavil bez DPH.
+3. **Odpočet** se uvede na ř. 43 jako mirror primary řádku (3 / 10 / 12 — viz
+   `dphdp3_line_secondary` v `vat_classifications`).
+
+Příklad: faktura z DE, 1 000 € @ kurz 25, vat_classification_code='23' →
+ř. 3 (`p_zb23=25000`, `dan_pzb23=5250`) + ř. 43 (`odp_rezim=25000`,
+`odp_rez_nar=5250`) + KH sekce A.2.
+
+### Pořízení dlouhodobého majetku (od v4.1.0)
+
+Checkbox **„Pořízení dlouhodobého majetku"** v editoru přijaté faktury označí
+doklad za majetek vymezený v § 4 odst. 4 písm. c) (vozidlo, stroj). Pro
+mixed doklady lze flag nastavit i per řádek.
+
+Hodnota se na DPHDP3 uvede:
+- **ř. 40** (nebo 41/42/43 podle klasifikace) — běžný odpočet
+- **ř. 47** (atribut `nar_maj`) — doplňující údaj o hodnotě majetku
+
+Daň se v součtech ř. 46 neduplikuje (ř. 47 je informativní). V Knize DPH
+je samostatná sekce **47.047** se sumací.
+
 ## Kontrolní hlášení (DPHKH1)
 
 ### Cesta: `Daně → Kontrolní hlášení`
@@ -87,6 +115,11 @@ V editoru faktury (vystavené i přijaté) je sekce **Klasifikace** s VAT picker
 KH se podává **vždy měsíčně** s sekcemi:
 
 - **A.1** — Plnění v režimu přenesené daňové povinnosti (dodavatel)
+- **A.2** — Pořízení zboží z jiného členského státu EU (od v4.1.0). Vyžaduje
+  klasifikační kód `23` na řádcích faktury; pro EU vendora + RC + 21 % se
+  přiřadí automaticky. Atributy: `k_stat`, `vatid_dod`, `c_evid_dd`, `dppd`,
+  `zakl_dane1/dan1`, `zakl_dane2/dan2`. Daň je samovyměřená — Kniha DPH ji
+  i u řádků RC počítá z `základ × sazba/100`.
 - **A.4** — Tuzemská plnění s DPH **nad 10 000 Kč** (individuálně)
 - **A.5** — Tuzemská plnění s DPH **do 10 000 Kč** (sumace)
 - **B.1** — Přenesená daňová povinnost (odběratel)
@@ -106,6 +139,11 @@ jen pro vnitřní přehled a archivaci. Žurnál seskupený podle řádků DPH p
 - `36.001` — Uskutečněná tuzemsko, základ daně 21 % (ř.1 přiznání)
 - `43.012` + `43.043` — Dovoz služby ze 3. země (ř.12 přiznání DPH +
   ř.43 nárok na odpočet z téhož plnění)
+- `43.003` + `43.043` — RC pořízení zboží z EU (ř.3 výstup + ř.43 mirror
+  odpočet, od v4.1.0)
+- `47.047` — Hodnota pořízeného majetku (§ 4 odst. 4 písm. c, od v4.1.0).
+  Doplňující údaj k ř. 40-45 — informativní řádek, nepřičítá se do celkového
+  součtu odpočtu (jinak by se daň majetku duplikovala).
 - a další řádky podle klasifikací v `vat_classifications`
 
 Per řádek faktury sekce: **Datum plnění | Zaúčtování | Doklad (PF / VF +

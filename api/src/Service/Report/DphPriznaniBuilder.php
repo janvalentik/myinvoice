@@ -101,28 +101,76 @@ final class DphPriznaniBuilder
         EpoSupplierBlockBuilder::fillVetaP($vetaP, $supplier);
         $dphdp3->appendChild($vetaP);
 
-        // ── Veta1: tuzemská plnění (řádky 1, 2, 40, 41) ────────────────
-        // Schema má pevná pole: obrat23/dan23 (ř.1, sale 21%), obrat5/dan5 (ř.2, sale 12%),
-        // p_zb23/dan_pzb23 (ř.40, purchase 21%), p_zb5/dan_pzb5 (ř.41, purchase 12%).
+        // ── Veta1 / Veta4: namapování řádků 1-13 (Veta1) a 40-47 (Veta4) ──
+        //
+        // Mapping odpovídá EPO XSD (api/xsd/dphdp3.xsd), reálně podanému
+        // přiznání a oficiálnímu MFČR DPHDP3 formuláři (verze 03.01):
+        //
+        // Veta1 — DPH na výstupu (vč. samovyměřené u RC):
+        //   ř.1  obrat23/dan23           = sale 21 %
+        //   ř.2  obrat5/dan5             = sale 12 %
+        //   ř.3  p_zb23/dan_pzb23        = pořízení zboží z JČS 21 % (EU)
+        //   ř.4  p_zb5/dan_pzb5          = pořízení zboží z JČS 12 % (EU)
+        //   ř.5  p_sl23_e/dan_psl23_e    = přijetí služby z EU 21 %
+        //   ř.6  p_sl5_e/dan_psl5_e      = přijetí služby z EU 12 %
+        //   ř.7  dov_zb23/dan_dzb23      = dovoz zboží 21 %
+        //   ř.8  dov_zb5/dan_dzb5        = dovoz zboží 12 %
+        //   ř.10 rez_pren23/dan_rpren23  = tuzemský reverse charge 21 %
+        //   ř.11 rez_pren5/dan_rpren5    = tuzemský reverse charge 12 %
+        //   ř.12 p_sl23_z/dan_psl23_z    = přijetí služby ze 3. země 21 %
+        //   ř.13 p_sl5_z/dan_psl5_z      = přijetí služby ze 3. země 12 %
+        //
+        // Veta4 — Nárok na odpočet daně:
+        //   ř.40 pln23/odp_tuz23_nar     = tuzemsko 21 %
+        //   ř.41 pln5/odp_tuz5_nar       = tuzemsko 12 %
+        //   ř.42 dov_cu/odp_cu_nar       = dovoz CÚ
+        //   ř.43 odp_rezim/odp_rez_nar   = RC mirror odpočet (z ř. 3-13)
+        //   ř.47 nar_maj/—               = hodnota pořízeného majetku
+        //                                  (doplňující údaj, jen základ; XSD má
+        //                                  jediný atribut, daň se neuvádí)
+        $lineMap = [
+            // Veta1 (výstup)
+            '1'  => ['veta' => 1, 'base' => 'obrat23',    'vat' => 'dan23'],
+            '2'  => ['veta' => 1, 'base' => 'obrat5',     'vat' => 'dan5'],
+            '3'  => ['veta' => 1, 'base' => 'p_zb23',     'vat' => 'dan_pzb23'],
+            '4'  => ['veta' => 1, 'base' => 'p_zb5',      'vat' => 'dan_pzb5'],
+            '5'  => ['veta' => 1, 'base' => 'p_sl23_e',   'vat' => 'dan_psl23_e'],
+            '6'  => ['veta' => 1, 'base' => 'p_sl5_e',    'vat' => 'dan_psl5_e'],
+            '7'  => ['veta' => 1, 'base' => 'dov_zb23',   'vat' => 'dan_dzb23'],
+            '8'  => ['veta' => 1, 'base' => 'dov_zb5',    'vat' => 'dan_dzb5'],
+            '10' => ['veta' => 1, 'base' => 'rez_pren23', 'vat' => 'dan_rpren23'],
+            '11' => ['veta' => 1, 'base' => 'rez_pren5',  'vat' => 'dan_rpren5'],
+            '12' => ['veta' => 1, 'base' => 'p_sl23_z',   'vat' => 'dan_psl23_z'],
+            '13' => ['veta' => 1, 'base' => 'p_sl5_z',    'vat' => 'dan_psl5_z'],
+            // Veta4 (odpočet)
+            '40' => ['veta' => 4, 'base' => 'pln23',      'vat' => 'odp_tuz23_nar'],
+            '41' => ['veta' => 4, 'base' => 'pln5',       'vat' => 'odp_tuz5_nar'],
+            '42' => ['veta' => 4, 'base' => 'dov_cu',     'vat' => 'odp_cu_nar'],
+            '43' => ['veta' => 4, 'base' => 'odp_rezim',  'vat' => 'odp_rez_nar'],
+            '47' => ['veta' => 4, 'base' => 'nar_maj',    'vat' => null],
+        ];
+
         $totalDanZdanitelne = 0.0;
         $totalDanOdpocitatelne = 0.0;
-        $veta1Attrs = []; // map line# → [obrat_attr, dan_attr]
-        $lineMap = [
-            '1'  => ['obrat23', 'dan23'],     // sale 21%
-            '2'  => ['obrat5',  'dan5'],      // sale 12%
-            '40' => ['p_zb23',  'dan_pzb23'], // purchase 21% (s odpočtem)
-            '41' => ['p_zb5',   'dan_pzb5'],  // purchase 12% (s odpočtem)
-        ];
+        $veta1Attrs = [];
+        $veta4Attrs = [];
+
         foreach ($lines as $lineNum => $data) {
             $lineKey = (string) $lineNum;
             if (isset($lineMap[$lineKey])) {
-                [$obratAttr, $danAttr] = $lineMap[$lineKey];
-                $veta1Attrs[$obratAttr] = $this->formatAmount($data['base']);
-                $veta1Attrs[$danAttr]   = $this->formatAmount($data['vat']);
+                $m = $lineMap[$lineKey];
+                $target = &${'veta' . $m['veta'] . 'Attrs'};
+                $target[$m['base']] = $this->formatAmount($data['base']);
+                if ($m['vat'] !== null) {
+                    $target[$m['vat']] = $this->formatAmount($data['vat']);
+                }
+                unset($target);
             }
             if ($this->isOutputLine($lineKey)) {
                 $totalDanZdanitelne += $data['vat'];
-            } else {
+            } elseif ((int) $lineKey !== 47) {
+                // ř.47 je doplňující údaj k ř.40-45, jeho daň se NEzapočítává
+                // (jinak by se daň majetku duplikovala s odpočtem z ř.40).
                 $totalDanOdpocitatelne += $data['vat'];
             }
         }
@@ -130,6 +178,11 @@ final class DphPriznaniBuilder
             $veta1 = $dom->createElement('Veta1');
             foreach ($veta1Attrs as $k => $v) $veta1->setAttribute($k, $v);
             $dphdp3->appendChild($veta1);
+        }
+        if (!empty($veta4Attrs)) {
+            $veta4 = $dom->createElement('Veta4');
+            foreach ($veta4Attrs as $k => $v) $veta4->setAttribute($k, $v);
+            $dphdp3->appendChild($veta4);
         }
 
         // ── VetaR: poradi (wrapper element, summary attrs jdou jinam) ────

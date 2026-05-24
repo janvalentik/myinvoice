@@ -71,7 +71,8 @@ final class DphBookBuilder
         foreach ($receivedRows as $r) {
             $cls = $this->resolveClassification($r['vat_classification_code'] ?? null, $codes, 'purchase', (float) $r['vat_rate']);
             $this->addToSection($sections, 'received', $cls, $r);
-            // Secondary line (např. dovoz služby: primary 12 + secondary 43)
+            // Secondary line (např. dovoz služby: primary 12 + secondary 43,
+            // nebo RC: 3/10 + 43 mirror odpočet po migraci 0044).
             if (!empty($cls['dphdp3_line_secondary'])) {
                 $clsSecondary = array_merge($cls, [
                     'dphdp3_line' => $cls['dphdp3_line_secondary'],
@@ -79,6 +80,22 @@ final class DphBookBuilder
                     'is_secondary' => true,
                 ]);
                 $this->addToSection($sections, 'received', $clsSecondary, $r);
+            }
+            // ř. 47 — doplňující sekce pro pořízený majetek (§ 4 odst. 4 písm. c).
+            // Stejná logika jako VatClassificationMapper::countsAsFixedAssetLine
+            // (primary nebo secondary v 40-45 range = patří do ř. 47).
+            if (!empty($r['is_fixed_asset'])) {
+                $primary = (int) ($cls['dphdp3_line'] ?? 0);
+                $secondary = (int) ($cls['dphdp3_line_secondary'] ?? 0);
+                $eligible = ($primary >= 40 && $primary <= 45) || ($secondary >= 40 && $secondary <= 45);
+                if ($eligible) {
+                    $clsAsset = array_merge($cls, [
+                        'dphdp3_line' => '47',
+                        'dphdp3_line_secondary' => null,
+                        'is_secondary' => true, // nepřičítat do global totals (jinak duplikace)
+                    ]);
+                    $this->addToSection($sections, 'received', $clsAsset, $r);
+                }
             }
         }
 
@@ -198,12 +215,14 @@ final class DphBookBuilder
                    pi.vat_classification_code,
                    pi.status,
                    pi.exchange_rate,
+                   pi.reverse_charge,
                    COALESCE(cur.code, 'CZK') AS currency,
                    c.company_name AS counterparty_name,
                    c.dic AS counterparty_dic,
                    COALESCE(it.description, '') AS description,
                    COALESCE(pii.vat_classification_code, pi.vat_classification_code) AS line_class_code,
                    pii.vat_rate_snapshot AS vat_rate,
+                   (CASE WHEN pii.is_fixed_asset = 1 OR pi.is_fixed_asset = 1 THEN 1 ELSE 0 END) AS is_fixed_asset,
                    SUM(pii.total_without_vat) AS base,
                    SUM(pii.total_vat) AS vat,
                    SUM(pii.total_with_vat) AS total
@@ -219,7 +238,9 @@ final class DphBookBuilder
              WHERE pi.supplier_id = ?
                AND pi.status != 'cancelled'
                AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
-          GROUP BY pi.id, COALESCE(pii.vat_classification_code, pi.vat_classification_code), pii.vat_rate_snapshot
+          GROUP BY pi.id, COALESCE(pii.vat_classification_code, pi.vat_classification_code),
+                   pii.vat_rate_snapshot,
+                   (CASE WHEN pii.is_fixed_asset = 1 OR pi.is_fixed_asset = 1 THEN 1 ELSE 0 END)
           ORDER BY COALESCE(pi.tax_date, pi.issue_date), pi.id
         ");
         $stmt->execute([$supplierId, $start, $end]);
@@ -236,6 +257,21 @@ final class DphBookBuilder
     private function normalizeRow(array $r, string $direction): array
     {
         $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
+        $vatRate = (float) ($r['vat_rate'] ?? 0);
+        $baseRaw = (float) $r['base'];
+        $vatRaw  = (float) $r['vat'];
+        // Reverse charge: vendor fakturoval bez DPH (vatRaw=0) — Kniha DPH musí
+        // ukázat samovyměřenou daň (jako DPHDP3), jinak by řádek byl 0 a uživatele
+        // matlo. Per memory [[project_multicurrency_purchase]] vat se počítá nad
+        // basem v invoice currency, pak se přepočte kurzem.
+        if ($direction === 'received' && $vatRaw == 0.0 && !empty($r['reverse_charge']) && $vatRate > 0) {
+            $vatRaw = round($baseRaw * $vatRate / 100, 2);
+        }
+        $totalRaw = (float) $r['total'];
+        if ($totalRaw == 0.0 && $baseRaw + $vatRaw != 0.0) {
+            // RC + bez total → dopočti z base + vypočtené daně
+            $totalRaw = $baseRaw + $vatRaw;
+        }
         return [
             'invoice_id'          => (int) $r['id'],
             'direction'           => $direction,                // issued | received
@@ -247,14 +283,15 @@ final class DphBookBuilder
             'counterparty_name'   => (string) ($r['counterparty_name'] ?? ''),
             'counterparty_dic'    => (string) ($r['counterparty_dic'] ?? ''),
             'vat_classification_code' => $r['line_class_code'] ?? $r['vat_classification_code'] ?? null,
-            'vat_rate'            => (float) ($r['vat_rate'] ?? 0),
+            'vat_rate'            => $vatRate,
             'currency'            => (string) $r['currency'],
             'exchange_rate'       => $rate,
-            'base'                => (float) $r['base'] * $rate,
-            'vat'                 => (float) $r['vat']  * $rate,
-            'total'               => (float) $r['total'] * $rate,
+            'base'                => $baseRaw * $rate,
+            'vat'                 => $vatRaw  * $rate,
+            'total'               => $totalRaw * $rate,
             'status'              => (string) $r['status'],
             'is_draft'            => ($r['status'] === 'draft'),
+            'is_fixed_asset'      => (bool) ($r['is_fixed_asset'] ?? false),
         ];
     }
 
@@ -306,9 +343,13 @@ final class DphBookBuilder
     private function addToSection(array &$sections, string $directionScope, array $cls, array $row): void
     {
         $sectionPrefix = $directionScope === 'issued' ? '36' : '15';
-        // Sekce s line=43 jsou secondary (dovoz služby — nárok na odpočet)
+        // Sekce s line=43 jsou secondary (dovoz služby / RC mirror — nárok na odpočet)
         if ($cls['dphdp3_line'] === '43') {
             $sectionPrefix = '43';
+        }
+        // Sekce ř.47 = doplňující údaj o hodnotě pořízeného majetku
+        if ($cls['dphdp3_line'] === '47') {
+            $sectionPrefix = '47';
         }
         $line = $cls['dphdp3_line'] ?: '000';
         $linePadded = str_pad($line, 3, '0', \STR_PAD_LEFT);
@@ -353,7 +394,10 @@ final class DphBookBuilder
             return sprintf('%s ř.%s - %s: %s', $prefix, str_pad($line, 3, '0', \STR_PAD_LEFT), $direction, $what . $rateLabel);
         }
         if ($prefix === '43') {
-            return sprintf('%s ř.%s - %s: Z dovozu služby - sazba%s', $prefix, str_pad($line, 3, '0', \STR_PAD_LEFT), $direction, $rateLabel);
+            return sprintf('%s ř.%s - %s: Z reverse charge / dovozu služby - sazba%s', $prefix, str_pad($line, 3, '0', \STR_PAD_LEFT), $direction, $rateLabel);
+        }
+        if ($prefix === '47') {
+            return sprintf('%s ř.%s - PŘIJATÁ: Hodnota pořízeného majetku (§ 4 odst. 4 písm. c)', $prefix, str_pad($line, 3, '0', \STR_PAD_LEFT));
         }
         // 15.XXX = přijaté
         // Speciální popisy pro 40/41 (tuzemsko), 12 (dovoz služby), 7 (dovoz zboží), atd.
@@ -369,12 +413,14 @@ final class DphBookBuilder
 
     private function sectionOrder(string $key): int
     {
-        // 15.XXX -> 1, 36.XXX -> 0 (vystavené první), 43.XXX -> 2
+        // 36.XXX = vystavené (0), 15.XXX = přijaté (1), 43.XXX = RC/dovoz mirror (2),
+        // 47.XXX = hodnota pořízeného majetku doplňující údaj (3).
         $prefix = substr($key, 0, 2);
         return match ($prefix) {
             '36' => 0,
             '15' => 1,
             '43' => 2,
+            '47' => 3,
             default => 9,
         };
     }

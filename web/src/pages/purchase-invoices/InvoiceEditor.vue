@@ -60,6 +60,7 @@ const form = ref<{
   exchange_rate_date: string
   exchange_rate_source: ExchangeRateSource
   reverse_charge: boolean
+  is_fixed_asset: boolean
   language: 'cs' | 'en'
   note_above_items: string
   note_below_items: string
@@ -87,6 +88,7 @@ const form = ref<{
   exchange_rate_date: today,
   exchange_rate_source: 'cnb',
   reverse_charge: false,
+  is_fixed_asset: false,
   language: 'cs',
   note_above_items: '',
   note_below_items: '',
@@ -285,6 +287,7 @@ function populate(inv: PurchaseInvoice) {
   form.value.exchange_rate_date = inv.exchange_rate_date || inv.issue_date
   form.value.exchange_rate_source = inv.exchange_rate_source
   form.value.reverse_charge = inv.reverse_charge
+  form.value.is_fixed_asset = (inv as { is_fixed_asset?: boolean }).is_fixed_asset ?? false
   form.value.language = inv.language
   form.value.note_above_items = inv.note_above_items || ''
   form.value.note_below_items = inv.note_below_items || ''
@@ -429,6 +432,7 @@ async function submit() {
       exchange_rate_date: form.value.exchange_rate_date || null,
       exchange_rate_source: form.value.exchange_rate_source,
       reverse_charge: form.value.reverse_charge,
+      is_fixed_asset: form.value.is_fixed_asset,
       language: form.value.language,
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
@@ -701,11 +705,15 @@ function fieldErr(key: string): string | null {
           />
         </div>
 
-        <!-- Reverse charge + language -->
+        <!-- Reverse charge + fixed asset + language -->
         <div class="flex flex-wrap items-center gap-6 pt-2 border-t border-neutral-100">
           <label class="inline-flex items-center gap-2 text-sm">
             <input type="checkbox" v-model="form.reverse_charge" class="rounded" />
             {{ t('purchase_invoice.fields.reverse_charge') }}
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm" :title="t('purchase_invoice.fields.is_fixed_asset_hint')">
+            <input type="checkbox" v-model="form.is_fixed_asset" class="rounded" />
+            {{ t('purchase_invoice.fields.is_fixed_asset') }}
           </label>
           <div class="inline-flex items-center gap-2">
             <label class="text-sm text-neutral-700">{{ t('purchase_invoice.fields.language') }}:</label>

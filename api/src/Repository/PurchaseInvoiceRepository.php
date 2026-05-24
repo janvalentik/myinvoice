@@ -73,7 +73,7 @@ final class PurchaseInvoiceRepository
             'SELECT pii.id, pii.purchase_invoice_id, pii.description, pii.quantity, pii.unit,
                     pii.unit_price_without_vat, pii.vat_rate_id, pii.vat_rate_snapshot,
                     pii.total_without_vat, pii.total_vat, pii.total_with_vat,
-                    pii.order_index, pii.vat_classification_code,
+                    pii.order_index, pii.vat_classification_code, pii.is_fixed_asset,
                     vr.code AS vat_code, vr.label_cs AS vat_label_cs, vr.label_en AS vat_label_en
                FROM purchase_invoice_items pii
                JOIN vat_rates vr ON vr.id = pii.vat_rate_id
@@ -321,8 +321,8 @@ final class PurchaseInvoiceRepository
              advance_paid_amount,
              payment_currency_id, payment_exchange_rate,
              paid_amount_payment_ccy, paid_amount_invoice_ccy, exchange_diff_base,
-             status, vat_classification_code, expense_category_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?)';
+             status, vat_classification_code, is_fixed_asset, expense_category_id, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -354,6 +354,7 @@ final class PurchaseInvoiceRepository
             isset($data['paid_amount_invoice_ccy']) ? (float) $data['paid_amount_invoice_ccy'] : null,
             isset($data['exchange_diff_base']) ? (float) $data['exchange_diff_base'] : null,
             isset($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
+            !empty($data['is_fixed_asset']) ? 1 : 0,
             isset($data['expense_category_id']) && $data['expense_category_id'] ? (int) $data['expense_category_id'] : null,
             $userId,
         ]);
@@ -399,7 +400,7 @@ final class PurchaseInvoiceRepository
                 advance_paid_amount = ?,
                 payment_currency_id = ?, payment_exchange_rate = ?,
                 paid_amount_payment_ccy = ?, paid_amount_invoice_ccy = ?, exchange_diff_base = ?,
-                vat_classification_code = ?, expense_category_id = ?'
+                vat_classification_code = ?, is_fixed_asset = ?, expense_category_id = ?'
               . ($hasVarsymbol ? ', varsymbol = ?' : '')
               . ' WHERE id = ? AND supplier_id = ?';
 
@@ -426,6 +427,7 @@ final class PurchaseInvoiceRepository
             isset($data['paid_amount_invoice_ccy']) ? (float) $data['paid_amount_invoice_ccy'] : null,
             isset($data['exchange_diff_base']) ? (float) $data['exchange_diff_base'] : null,
             isset($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
+            !empty($data['is_fixed_asset']) ? 1 : 0,
             isset($data['expense_category_id']) && $data['expense_category_id'] ? (int) $data['expense_category_id'] : null,
         ];
         if ($hasVarsymbol) $params[] = $manualVarsymbol;
@@ -460,8 +462,9 @@ final class PurchaseInvoiceRepository
             'INSERT INTO purchase_invoice_items
                 (purchase_invoice_id, description, quantity, unit, unit_price_without_vat,
                  vat_rate_id, vat_rate_snapshot,
-                 total_without_vat, total_vat, total_with_vat, order_index, vat_classification_code)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
+                 total_without_vat, total_vat, total_with_vat, order_index,
+                 vat_classification_code, is_fixed_asset)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)'
         );
 
         $vatRates = $this->vatRateMap();
@@ -503,6 +506,7 @@ final class PurchaseInvoiceRepository
                 $rate,
                 (int) ($item['order_index'] ?? $i),
                 $code !== null ? (string) $code : null,
+                !empty($item['is_fixed_asset']) ? 1 : 0,
             ]);
         }
     }
@@ -544,6 +548,10 @@ final class PurchaseInvoiceRepository
         if ($isForeign && $r === 0) {
             return $isEu ? '24' : '25';
         }
+        // EU vendor + RC + 21 % → pořízení zboží z JČS (kód 23, ř. 3 + ř. 43 mirror + KH A.2).
+        // Vzácnější použití (vendor obvykle fakturuje bez DPH), ale když má 21 % sazbu
+        // (typicky reverse-charge invoice s vyčíslenou daní pro info), tohle je správně.
+        if ($isEu && $reverseCharge && $r >= 21) return '23';
         // CZ tuzemsko (nebo zahraniční vendor s CZ DPH, vzácné)
         if ($reverseCharge && $r >= 21) return '5';
         if ($r >= 21)                   return '40';
@@ -796,6 +804,7 @@ final class PurchaseInvoiceRepository
             if (isset($row[$f]) && $row[$f] !== null) $row[$f] = (int) $row[$f];
         }
         $row['reverse_charge'] = isset($row['reverse_charge']) ? (bool) $row['reverse_charge'] : false;
+        $row['is_fixed_asset'] = isset($row['is_fixed_asset']) ? (bool) $row['is_fixed_asset'] : false;
         foreach ([
             'total_without_vat', 'total_vat', 'total_with_vat', 'rounding',
             'advance_paid_amount', 'amount_to_pay',
@@ -825,6 +834,7 @@ final class PurchaseInvoiceRepository
         ] as $f) {
             if (isset($row[$f])) $row[$f] = (float) $row[$f];
         }
+        $row['is_fixed_asset'] = isset($row['is_fixed_asset']) ? (bool) $row['is_fixed_asset'] : false;
         return $row;
     }
 }

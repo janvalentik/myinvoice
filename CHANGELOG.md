@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] — 2026-05-24
+
+Dvě regulační opravy DPH výkazů (issue #29, Pavel Třešňák) — reverse charge
+v cizí měně a pořízení dlouhodobého majetku. Stejné úpravy se promítly do
+DPHDP3, kontrolního hlášení i interní Knihy DPH.
+
+### Fixed
+
+- **Reverse charge / EU pořízení v cizí měně**: kurz se nyní aplikuje na
+  základ DPH (1 000 € × 25 = 25 000 Kč na ř. 3) a samovyměřená daň se
+  dopočítá ze sazby (5 250 Kč). Současně se mirror odpočet zobrazí na
+  ř. 43 a v kontrolním hlášení se vygeneruje sekce **A.2** s atributy
+  `k_stat`, `vatid_dod`, `c_evid_dd`, `dppd`, `zakl_dane1/dan1`,
+  `zakl_dane2/dan2`. Migrace 0044 doplnila `dphdp3_line_secondary='43'`
+  pro kódy 5 (tuzemský RC) a 23 (EU pořízení zboží), takže mirror
+  odpočet jde do XML automaticky.
+- **Mapping atributů Veta1/Veta4 v DPHDP3**: ř. 3-13 (výstup samovyměřené
+  daně) a ř. 40-47 (odpočet) byly propojeny se správnými atributy EPO XSD
+  (`p_zb23/dan_pzb23`, `pln23/odp_tuz23_nar`, `odp_rezim/odp_rez_nar`,
+  `nar_maj`, ...). Dříve některé řádky (3-13) propadaly bez ukládání do
+  XML a ř. 40/41 šel do špatného atributu.
+
+### Added
+
+- **Pořízení dlouhodobého majetku — ř. 47 DPHDP3**: nový příznak
+  `is_fixed_asset` na hlavičce přijaté faktury (a per řádek pro mixed
+  doklady). Když je nastaven a doklad jde do odpočtu (ř. 40-45 přímo
+  nebo přes RC mirror na ř. 43), hodnota majetku se navíc uvede na ř. 47
+  jako doplňující údaj (atribut `nar_maj`). Daň se neduplikuje
+  v součtu — ř. 47 je informativní řádek vedle ř. 40.
+- **Editor přijaté faktury**: checkbox „Pořízení dlouhodobého majetku"
+  vedle reverse charge, plus tooltip s odkazem na § 4 odst. 4 písm. c).
+- **Kniha DPH** ukazuje samovyměřenou daň u RC řádků (předtím byla 0)
+  a má dvě nové sekce: **43.XXX** (RC mirror odpočet) a **47.XXX**
+  (hodnota pořízeného majetku, sumační doplňující údaj).
+- **Auto-klasifikace**: EU vendor + RC + 21 % → kód `23` (Pořízení zboží
+  z JČS) místo `40` (tuzemsko), takže řádek dorazí do KH A.2 automaticky.
+
+### Changed
+
+- `VatClassificationMapper::aggregateForDphPriznani` přepočítá per řádek
+  (ne per agregaci) kvůli aplikaci kurzu, dopočtu samovyměřené daně
+  a podpoře secondary line.
+
+### Migration
+
+- **0044**: `is_fixed_asset` sloupec na `purchase_invoices` i
+  `purchase_invoice_items`; secondary line `'43'` pro kódy 5 a 23.
+
 ## [4.0.7] — 2026-05-22
 
 Drobný hotfix — UI tlačítko pro hromadný export přijatých faktur ve formátech

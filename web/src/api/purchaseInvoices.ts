@@ -76,6 +76,7 @@ export interface PurchaseInvoice {
   exchange_rate_date: string | null
   exchange_rate_source: ExchangeRateSource
   reverse_charge: boolean
+  is_fixed_asset: boolean
   language: 'cs' | 'en'
   note_above_items: string | null
   note_below_items: string | null
@@ -184,6 +185,7 @@ export interface PurchaseInvoicePayload {
   exchange_rate_date?: string | null
   exchange_rate_source?: ExchangeRateSource
   reverse_charge?: boolean
+  is_fixed_asset?: boolean
   language?: 'cs' | 'en'
   note_above_items?: string | null
   note_below_items?: string | null

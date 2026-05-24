@@ -54,6 +54,8 @@ final class KontrolniHlaseniBuilder
         // Sekce A.1 / B.1 (reverse charge — výsledně směřujeme na kódy s is_reverse_charge=1)
         $a1 = $this->collectReverseChargeIssued($supplierId, $start, $end);
         $b1 = $this->collectReverseChargePurchases($supplierId, $start, $end);
+        // Sekce A.2 (pořízení zboží z JČS) — kódy s kh_section='A.2' (typicky kód 23)
+        $a2 = $this->collectEuAcquisitions($supplierId, $start, $end);
 
         $dom = new \DOMDocument('1.0', 'UTF-8');
         $dom->preserveWhiteSpace = false;
@@ -99,6 +101,33 @@ final class KontrolniHlaseniBuilder
             $v->setAttribute('duzp', $this->formatDate($r['tax_date']));
             $v->setAttribute('zakl_dane1', $this->formatAmount($r['base']));
             $v->setAttribute('kod_pred_pl', '5');
+            $dphkh->appendChild($v);
+        }
+
+        // VetaA2 — pořízení zboží z jiného členského státu (intra-EU acquisition).
+        // Per XSD: k_stat (země dodavatele), vatid_dod (DIČ bez prefixu země),
+        // c_evid_dd (číslo dokladu dodavatele), dppd (datum povinnosti přiznat daň
+        // — required), zakl_dane1/dan1 (21%), zakl_dane2/dan2 (12%).
+        // Plnění je z definice samovyměřené (vendor fakturuje bez DPH, my si daň
+        // přiznáme sami) — `dan1`/`dan2` = base × sazba/100, ne pii.total_vat
+        // (které je 0 pro RC).
+        $rowNum = 0;
+        foreach ($a2 as $r) {
+            $vatId = $this->cleanDic($r['counterparty_dic'] ?? '');
+            // Některé doklady (např. od neplátce v EU) nemusí mít VAT ID dodavatele
+            // → atribut zůstává prázdný, jinak XSD pole povoluje.
+            $rowNum++;
+            $v = $dom->createElement('VetaA2');
+            $v->setAttribute('c_radku', (string) $rowNum);
+            $kStat = (string) ($r['country_iso2'] ?? '');
+            if ($kStat !== '') $v->setAttribute('k_stat', $kStat);
+            if ($vatId !== '') $v->setAttribute('vatid_dod', $vatId);
+            $v->setAttribute('c_evid_dd', (string) $r['vendor_invoice_number']);
+            $v->setAttribute('dppd', $this->formatDate($r['tax_date']));
+            $v->setAttribute('zakl_dane1', $this->formatAmount($r['base21']));
+            $v->setAttribute('dan1',       $this->formatAmount($r['vat21']));
+            $v->setAttribute('zakl_dane2', $this->formatAmount($r['base12']));
+            $v->setAttribute('dan2',       $this->formatAmount($r['vat12']));
             $dphkh->appendChild($v);
         }
 
@@ -201,7 +230,10 @@ final class KontrolniHlaseniBuilder
         $vetaC->setAttribute('pln_rez_pren', $this->formatAmount($plnRezPren));
         $vetaC->setAttribute('rez_pren23',   $this->formatAmount($rezPren23));
         $vetaC->setAttribute('rez_pren5',    '0');
-        $vetaC->setAttribute('celk_zd_a2',   '0');
+        // celk_zd_a2 = celkový základ pořízení zboží z JČS (sekce A.2)
+        $celkA2 = 0.0;
+        foreach ($a2 as $r) { $celkA2 += (float) $r['base21'] + (float) $r['base12']; }
+        $vetaC->setAttribute('celk_zd_a2',   $this->formatAmount($celkA2));
         $dphkh->appendChild($vetaC);
 
         // Termín podání = 25. následujícího měsíce
@@ -215,6 +247,7 @@ final class KontrolniHlaseniBuilder
             'summary'  => [
                 'period'              => sprintf('%04d-%02d', $year, $month),
                 'a1_count'            => count($a1),
+                'a2_count'            => count($a2),
                 'a4_count'            => count($a4),
                 'a5_count_aggregated' => $a5['count'],
                 'b1_count'            => count($b1),
@@ -360,6 +393,77 @@ final class KontrolniHlaseniBuilder
                 'vendor_invoice_number' => $r['varsymbol'],
             ]);
         }, $rows);
+    }
+
+    /**
+     * Pořízení zboží z jiného členského státu (sekce A.2) — kódy s `kh_section='A.2'`
+     * (typicky kód 23 "Pořízení zboží z JČS"). Sběr per řádek s rozdělením base/vat
+     * po sazbách (21% / 12%), kurz aplikovaný, samovyměřená daň dopočtená.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function collectEuAcquisitions(int $supplierId, string $start, string $end): array
+    {
+        $stmt = $this->db->pdo()->prepare("
+            SELECT pi.id,
+                   pi.vendor_invoice_number,
+                   COALESCE(pi.tax_date, pi.issue_date) AS tax_date,
+                   pi.exchange_rate,
+                   COALESCE(cur.code, 'CZK')            AS currency,
+                   c.dic                                AS counterparty_dic,
+                   co.iso2                              AS country_iso2,
+                   pii.vat_rate_snapshot,
+                   COALESCE(pii.total_without_vat, 0)   AS base,
+                   COALESCE(pii.total_vat, 0)           AS vat
+              FROM purchase_invoices pi
+              JOIN clients c                   ON c.id  = pi.vendor_id
+         LEFT JOIN countries co                ON co.id = c.country_id
+              JOIN purchase_invoice_items pii  ON pii.purchase_invoice_id = pi.id
+              JOIN vat_classifications vc      ON vc.code =
+                   COALESCE(pii.vat_classification_code, pi.vat_classification_code)
+         LEFT JOIN currencies cur              ON cur.id = pi.currency_id
+             WHERE pi.supplier_id = ?
+               AND pi.status NOT IN ('draft', 'cancelled')
+               AND vc.kh_section = 'A.2'
+               AND (vc.supplier_id IS NULL OR vc.supplier_id = pi.supplier_id)
+               AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
+        ");
+        $stmt->execute([$supplierId, $start, $end]);
+
+        // Group per faktura, breakdown po sazbě
+        $byInvoice = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $id = (int) $r['id'];
+            $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
+            $vatRate = (float) $r['vat_rate_snapshot'];
+            $baseRaw = (float) $r['base'];
+            // RC: vendor fakturuje bez DPH, dopočti samovyměřenou daň
+            $vatRaw = (float) $r['vat'];
+            if ($vatRaw == 0.0) {
+                $vatRaw = round($baseRaw * $vatRate / 100, 2);
+            }
+            $baseCzk = round($baseRaw * $rate, 2);
+            $vatCzk  = round($vatRaw  * $rate, 2);
+
+            if (!isset($byInvoice[$id])) {
+                $byInvoice[$id] = [
+                    'vendor_invoice_number' => $r['vendor_invoice_number'],
+                    'tax_date'              => $r['tax_date'],
+                    'counterparty_dic'      => $r['counterparty_dic'],
+                    'country_iso2'          => strtoupper((string) ($r['country_iso2'] ?? '')),
+                    'base21' => 0.0, 'vat21' => 0.0,
+                    'base12' => 0.0, 'vat12' => 0.0,
+                ];
+            }
+            if (abs($vatRate - 21.0) < 0.5) {
+                $byInvoice[$id]['base21'] += $baseCzk;
+                $byInvoice[$id]['vat21']  += $vatCzk;
+            } elseif (abs($vatRate - 12.0) < 0.5) {
+                $byInvoice[$id]['base12'] += $baseCzk;
+                $byInvoice[$id]['vat12']  += $vatCzk;
+            }
+        }
+        return array_values($byInvoice);
     }
 
     /**

@@ -56,6 +56,8 @@
       "exchange_rate_load_cnb": "Load from ČNB",
       "exchange_rate_source": "Rate source",
       "reverse_charge": "Reverse charge",
+      "is_fixed_asset": "Fixed asset acquisition",
+      "is_fixed_asset_hint": "Invoice covers long-term assets per § 4(4)(c) of CZ VAT Act (vehicle, machinery). Value is reported additionally on DPHDP3 row 47 as supplementary data.",
       "language": "Document language",
       "note_above_items": "Note above items",
       "note_below_items": "Note below items",
