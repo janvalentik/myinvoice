@@ -81,9 +81,11 @@ final class StartFakturoidImportAction
 
     private function spawnWorker(int $jobId): void
     {
-        // Stejný ověřený mechanismus jako admin/cron-jobs (BackgroundProcess) —
-        // dřívější ruční `cmd /c start /b` worker pod IIS nespustil (job uvízl "queued").
-        $rootDir = dirname(__DIR__, 4);
+        // Stejný ověřený mechanismus jako admin/cron-jobs (BackgroundProcess).
+        // POZOR: root z Bootstrap::rootDir(), NE dirname(__DIR__, 4) — to z
+        // api/src/Action/Admin/Import/ ukazovalo na .../api → cesta api/api/bin/…
+        // neexistovala a worker se nikdy nespustil (job uvízl "queued").
+        $rootDir = \MyInvoice\Bootstrap::rootDir();
         \MyInvoice\Service\BackgroundProcess::spawnPhp(
             $rootDir . '/api/bin/import-worker.php',
             ['--job-id=' . $jobId],
