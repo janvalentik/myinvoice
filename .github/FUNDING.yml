@@ -11,5 +11,4 @@
 # přímo /donate/ stránku) místo readme fragmentu.
 
 custom:
-  - "https://myinvoice.cz/#podpora-autora"
   - "https://github.com/radekhulan/myinvoice#podpora-autora"
