@@ -14,6 +14,34 @@ v cizí měně a pořízení dlouhodobého majetku. Stejné úpravy se promítly
 DPHDP3, kontrolního hlášení i interní Knihy DPH. Plus dvě Docker / deploy
 opravy reportované týmiž uživateli na PaaS prostředích.
 
+### Fixed (Banka)
+
+- **GPC výpis v EUR se zobrazoval jako CZK** — `StatementImporter` ukládal
+  `bank_statements.currency = NULL` (sloupec ignoroval); UI pak měnu
+  formátovalo fallbackem na CZK i u skutečně EUR / USD výpisů. Fix:
+  měna výpisu se detekuje z 075 transakcí (pozice 118-122, ISO 4217
+  numeric — kód `00978` = EUR atd.), fallback je lookup do
+  `currencies.account_number`. Per-transakce currency je uložená jako
+  předtím + fallback na statement currency pro banky, které 075.currency
+  nevyplňují. Existující výpisy importované před touto verzí mají
+  `currency = NULL` — pro nápravu je smaž a re-importuj (Banka → koš).
+
+### Added (Banka)
+
+- **Smazání výpisu** — tlačítko (koš) v seznamu Banka i v detailu výpisu.
+  CASCADE smaže i transakce a payment_matches; status zaplacených faktur
+  zůstává (uživatel řeší ručně, pokud je to relevantní).
+- **Stažení originálního GPC souboru** — tlačítko v seznamu/detailu vrátí
+  originální bajty (uložené v `bank_statements.file_content` od migrace
+  0045). Výpisy importované před touto verzí soubor nemají → tlačítko
+  pro ně nezobrazuji (`has_file=false`).
+- **Sloupec měny v seznamu /bank** + měnový badge na mobilních kartách.
+  Zůstatek je nyní formátován měnou výpisu (předtím vždy CZK).
+
+### Migration
+
+- **0045**: `bank_statements.file_content MEDIUMBLOB NULL` pro download.
+
 ### Fixed (Docker / deploy)
 
 - **ARES/VIES lookup na ENV-only deploy** (issue #30): image-baked stub

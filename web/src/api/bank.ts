@@ -4,6 +4,7 @@ export interface BankStatement {
   id: number
   file_name: string
   account_number: string
+  currency: string | null
   statement_date: string
   statement_number: string | null
   prev_balance: number
@@ -11,6 +12,7 @@ export interface BankStatement {
   transaction_count: number
   matched_count: number
   imported_at: string
+  has_file: boolean
 }
 
 export type MatchStatus = 'unmatched' | 'auto_exact' | 'auto_partial' | 'manual' | 'ignored'
@@ -75,4 +77,14 @@ export const bankApi = {
   scan: () => api.post<{ scanned: number; imported: number; duplicate: number; errors: number }>(
     '/bank-statements/scan', {},
   ).then(r => r.data),
+  delete: (id: number) =>
+    api.delete<{ deleted: true }>(`/bank-statements/${id}`).then(r => r.data),
+  /**
+   * Build download URL pro originální GPC. Vrací absolutní URL — UI ji použije
+   * v `<a href>` (browser stáhne přímo). Auth cookie se posílá automaticky.
+   */
+  downloadUrl: (id: number): string => {
+    const base = api.defaults.baseURL ?? ''
+    return `${base.replace(/\/$/, '')}/bank-statements/${id}/download`
+  },
 }

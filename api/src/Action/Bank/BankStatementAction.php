@@ -155,8 +155,9 @@ final class BankStatementAction
         // normalizované hodnoty (REGEXP_REPLACE non-digits + TRIM leading zeros).
         $sid = SupplierGuard::currentId($request);
         $stmt = $this->db->pdo()->prepare(
-            "SELECT bs.id, bs.file_name, bs.account_number, bs.statement_date, bs.statement_number,
-                    bs.prev_balance, bs.curr_balance, bs.transaction_count, bs.matched_count, bs.imported_at
+            "SELECT bs.id, bs.file_name, bs.account_number, bs.currency, bs.statement_date, bs.statement_number,
+                    bs.prev_balance, bs.curr_balance, bs.transaction_count, bs.matched_count, bs.imported_at,
+                    (bs.file_content IS NOT NULL) AS has_file
                FROM bank_statements bs
               WHERE EXISTS (
                   SELECT 1 FROM currencies cur
@@ -176,8 +177,108 @@ final class BankStatementAction
             $r['matched_count'] = (int) $r['matched_count'];
             $r['prev_balance'] = (float) $r['prev_balance'];
             $r['curr_balance'] = (float) $r['curr_balance'];
+            $r['has_file'] = (bool) $r['has_file'];
         }
         return Json::ok($response, $rows);
+    }
+
+    /**
+     * DELETE /api/bank-statements/{id}
+     *
+     * Smaže výpis vč. transakcí (ON DELETE CASCADE) a payment_matches (CASCADE
+     * přes bank_transactions). NEresetuje status faktur — ty zůstávají paid
+     * (manuální cleanup u faktur, kterých se to týká, je doménou uživatele).
+     */
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) ($args['id'] ?? 0);
+        $sid = SupplierGuard::currentId($request);
+        if ($sid <= 0 || $id <= 0) {
+            return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
+        }
+
+        // RBAC — pouze admin/accountant (stejně jako upload)
+        $user = (array) $request->getAttribute(AuthMiddleware::ATTR_USER, []);
+        if (!in_array(($user['role'] ?? ''), ['admin', 'accountant'], true)) {
+            return Json::error($response, 'forbidden', 'Pouze admin nebo účetní.', 403);
+        }
+
+        // Supplier scope check — stejný pattern jako detail()
+        $pdo = $this->db->pdo();
+        $owned = $pdo->prepare(
+            "SELECT bs.file_name FROM bank_statements bs
+              WHERE bs.id = ?
+                AND EXISTS (
+                  SELECT 1 FROM currencies cur
+                   WHERE cur.supplier_id = ?
+                     AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
+                       = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
+                     AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
+                )"
+        );
+        $owned->execute([$id, $sid]);
+        $fileName = $owned->fetchColumn();
+        if ($fileName === false) {
+            return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
+        }
+
+        $pdo->prepare('DELETE FROM bank_statements WHERE id = ?')->execute([$id]);
+
+        $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
+        $this->logger->log('bank.statement_deleted', $user['id'] ?? null, 'bank_statement', $id, [
+            'file_name' => $fileName,
+        ], $ip, $request->getHeaderLine('User-Agent'));
+
+        return Json::ok($response, ['deleted' => true]);
+    }
+
+    /**
+     * GET /api/bank-statements/{id}/download
+     *
+     * Vrátí originální obsah GPC souboru (uložený v bank_statements.file_content
+     * od migrace 0045). Pro statementy importované před touto migrací vrací 404.
+     */
+    public function download(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) ($args['id'] ?? 0);
+        $sid = SupplierGuard::currentId($request);
+        if ($sid <= 0 || $id <= 0) {
+            return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
+        }
+
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT bs.file_name, bs.file_content
+               FROM bank_statements bs
+              WHERE bs.id = ?
+                AND EXISTS (
+                  SELECT 1 FROM currencies cur
+                   WHERE cur.supplier_id = ?
+                     AND TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(cur.account_number, ''), '[^0-9]', ''))
+                       = TRIM(LEADING '0' FROM REGEXP_REPLACE(IFNULL(bs.account_number, ''),  '[^0-9]', ''))
+                     AND (bs.bank_code IS NULL OR cur.bank_code IS NULL OR cur.bank_code = bs.bank_code)
+                )"
+        );
+        $stmt->execute([$id, $sid]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            return Json::error($response, 'not_found', 'Výpis nenalezen.', 404);
+        }
+        if ($row['file_content'] === null || $row['file_content'] === '') {
+            return Json::error($response, 'file_unavailable',
+                'Originální soubor není k dispozici (výpis byl importován před verzí 4.1.0).', 410);
+        }
+
+        $fileName = (string) ($row['file_name'] ?: ('vypis-' . $id . '.gpc'));
+        // ASCII-only filename pro Content-Disposition (RFC 6266 fallback) +
+        // odstranění CRLF / quotes (header injection guard).
+        $safeName = preg_replace('/[\x00-\x1f"\\\\]/', '_', $fileName) ?? $fileName;
+
+        $response->getBody()->write((string) $row['file_content']);
+        return $response
+            ->withHeader('Content-Type', 'text/plain; charset=windows-1250')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $safeName . '"')
+            ->withHeader('Content-Length', (string) strlen((string) $row['file_content']))
+            ->withHeader('X-Content-Type-Options', 'nosniff');
     }
 
     public function detail(Request $request, Response $response, array $args): Response
