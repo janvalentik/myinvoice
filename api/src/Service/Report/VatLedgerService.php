@@ -201,6 +201,7 @@ final class VatLedgerService
             'kh_section'            => $clsf['kh_section'] ?? null,
             'is_reverse_charge'     => $isRc,
             'vat_rate'              => $vatRate,
+            'currency'              => (string) $r['currency'],
             'base_czk'              => round($baseRaw * $rate, 2),
             'vat_czk'               => round($vatRaw * $rate, 2),
             'total_with_vat_czk'    => round((float) $r['inv_total'] * $rate, 2),

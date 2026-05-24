@@ -36,6 +36,7 @@ final class DphBookBuilder
 {
     public function __construct(
         private readonly Connection $db,
+        private readonly VatLedgerService $ledger,
     ) {}
 
     /**
@@ -52,49 +53,48 @@ final class DphBookBuilder
         $start = sprintf('%04d-%02d-01', $year, $month);
         $end = (new \DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
 
-        // Načti všechny relevantní klasifikační kódy (pro lookup label / dphdp3_line)
-        $codes = $this->loadClassifications();
-
-        // Vystavené (36.XXX) — řádky 1..9 DPHDP3 obecně, 40..43 nejsou pro sale
-        $issuedRows = $this->collectIssued($supplierId, $start, $end);
-        // Přijaté (15.XXX / 43.XXX) — řádky 40..47 obecně, 12+43 pro dovoz služby
-        $receivedRows = $this->collectReceived($supplierId, $start, $end);
-
-        // Group do sekcí: každá unique (direction, dphdp3_line, vat_rate) je samostatná sekce.
-        // Klasifikace bez kódu nebo bez dphdp3_line spadne do "uncategorized" sekce.
+        // Kanonické řádky ze sdílené VatLedgerService (vč. draftů — Kniha je pracovní
+        // žurnál). Seskupíme per (doklad, kód, sazba) do jednoho řádku přehledu a
+        // zařadíme do sekcí dle dphdp3_line (+ mirror 43, + ř.47 majetek).
         $sections = [];
-
-        foreach ($issuedRows as $r) {
-            $cls = $this->resolveClassification($r['vat_classification_code'] ?? null, $codes, 'sale', (float) $r['vat_rate']);
-            $this->addToSection($sections, 'issued', $cls, $r);
-        }
-        foreach ($receivedRows as $r) {
-            $cls = $this->resolveClassification($r['vat_classification_code'] ?? null, $codes, 'purchase', (float) $r['vat_rate']);
-            $this->addToSection($sections, 'received', $cls, $r);
-            // Secondary line (např. dovoz služby: primary 12 + secondary 43,
-            // nebo RC: 3/10 + 43 mirror odpočet po migraci 0044).
-            if (!empty($cls['dphdp3_line_secondary'])) {
-                $clsSecondary = array_merge($cls, [
-                    'dphdp3_line' => $cls['dphdp3_line_secondary'],
-                    'dphdp3_line_secondary' => null,
-                    'is_secondary' => true,
-                ]);
-                $this->addToSection($sections, 'received', $clsSecondary, $r);
+        foreach ($this->groupLedgerRows($supplierId, $start, $end) as $g) {
+            $scope = $g['source'] === 'sale' ? 'issued' : 'received';
+            $line = $g['dphdp3_line'];
+            // Bez klasifikace / bez řádku → uncategorized (fallback dle sazby + směru).
+            if ($line === null) {
+                $line = $g['vat_rate'] >= 20.5
+                    ? ($g['source'] === 'sale' ? '1' : '40')
+                    : ($g['vat_rate'] > 0 ? ($g['source'] === 'sale' ? '2' : '41') : null);
             }
-            // ř. 47 — doplňující sekce pro pořízený majetek (§ 4 odst. 4 písm. c).
-            // Stejná logika jako VatClassificationMapper::countsAsFixedAssetLine
-            // (primary nebo secondary v 40-45 range = patří do ř. 47).
-            if (!empty($r['is_fixed_asset'])) {
-                $primary = (int) ($cls['dphdp3_line'] ?? 0);
-                $secondary = (int) ($cls['dphdp3_line_secondary'] ?? 0);
-                $eligible = ($primary >= 40 && $primary <= 45) || ($secondary >= 40 && $secondary <= 45);
-                if ($eligible) {
-                    $clsAsset = array_merge($cls, [
-                        'dphdp3_line' => '47',
+            $cls = [
+                'code'                  => $g['code'] ?? '',
+                'label'                 => $g['label'] !== '' ? $g['label'] : '(bez klasifikace)',
+                'dphdp3_line'           => $line,
+                'dphdp3_line_secondary' => $g['dphdp3_line_secondary'],
+                'kh_section'            => $g['kh_section'],
+                'vat_rate'              => $g['vat_rate'],
+            ];
+            $row = $this->toBookRow($g);
+            $this->addToSection($sections, $scope, $cls, $row);
+
+            // Secondary (ř.43 mirror odpočet u RC / dovozu služby).
+            if (!empty($cls['dphdp3_line_secondary'])) {
+                $this->addToSection($sections, $scope, array_merge($cls, [
+                    'dphdp3_line'           => $cls['dphdp3_line_secondary'],
+                    'dphdp3_line_secondary' => null,
+                    'is_secondary'          => true,
+                ]), $row);
+            }
+            // ř.47 — hodnota pořízeného majetku (primary nebo secondary v 40-45).
+            if ($g['is_fixed_asset']) {
+                $p = (int) ($cls['dphdp3_line'] ?? 0);
+                $s = (int) ($cls['dphdp3_line_secondary'] ?? 0);
+                if (($p >= 40 && $p <= 45) || ($s >= 40 && $s <= 45)) {
+                    $this->addToSection($sections, $scope, array_merge($cls, [
+                        'dphdp3_line'           => '47',
                         'dphdp3_line_secondary' => null,
-                        'is_secondary' => true, // nepřičítat do global totals (jinak duplikace)
-                    ]);
-                    $this->addToSection($sections, 'received', $clsAsset, $r);
+                        'is_secondary'          => true,
+                    ]), $row);
                 }
             }
         }
@@ -152,193 +152,57 @@ final class DphBookBuilder
     }
 
     /**
-     * Vystavené faktury (per řádek/per sazba pokud potřeba).
+     * Kanonické řádky ze služby seskupené per (zdroj, doklad, kód, sazba) — jeden
+     * řádek přehledu Knihy DPH. Vč. draftů.
      *
      * @return list<array<string,mixed>>
      */
-    private function collectIssued(int $supplierId, string $start, string $end): array
+    private function groupLedgerRows(int $supplierId, string $start, string $end): array
     {
-        // Per-item rozdělení, ale pro Knihu DPH je smysluplnější per-faktura
-        // (1 řádek = 1 doklad s primární klasifikací + sazbou). Když faktura
-        // má víc sazeb, dělíme ji do víc řádků agregovaných po sazbě.
-        $stmt = $this->db->pdo()->prepare("
-            SELECT i.id,
-                   i.varsymbol AS doc_number,
-                   COALESCE(i.tax_date, i.issue_date) AS tax_date,
-                   i.issue_date,
-                   i.vat_classification_code,
-                   i.status,
-                   i.exchange_rate,
-                   COALESCE(cur.code, 'CZK') AS currency,
-                   c.company_name AS counterparty_name,
-                   c.dic AS counterparty_dic,
-                   COALESCE(it.description, '') AS description,
-                   COALESCE(ii.vat_classification_code, i.vat_classification_code) AS line_class_code,
-                   ii.vat_rate_snapshot AS vat_rate,
-                   SUM(ii.total_without_vat) AS base,
-                   SUM(ii.total_vat) AS vat,
-                   SUM(ii.total_with_vat) AS total
-              FROM invoices i
-              JOIN clients c ON c.id = i.client_id
-              JOIN invoice_items ii ON ii.invoice_id = i.id
-         LEFT JOIN (
-                SELECT invoice_id, MIN(description) AS description
-                  FROM invoice_items
-                 GROUP BY invoice_id
-              ) it ON it.invoice_id = i.id
-         LEFT JOIN currencies cur ON cur.id = i.currency_id
-             WHERE i.supplier_id = ?
-               AND i.status != 'cancelled'
-               AND i.invoice_type != 'proforma'
-               AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?
-          GROUP BY i.id, COALESCE(ii.vat_classification_code, i.vat_classification_code), ii.vat_rate_snapshot
-          ORDER BY COALESCE(i.tax_date, i.issue_date), i.id
-        ");
-        $stmt->execute([$supplierId, $start, $end]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        return array_map(fn ($r) => $this->normalizeRow($r, 'issued'), $rows);
+        $grouped = [];
+        foreach ($this->ledger->rows($supplierId, $start, $end, includeDrafts: true) as $r) {
+            $key = $r['source'] . ':' . $r['invoice_id'] . ':' . ($r['code'] ?? '') . ':' . $r['vat_rate'];
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = $r;
+                $grouped[$key]['base_czk'] = 0.0;
+                $grouped[$key]['vat_czk'] = 0.0;
+            }
+            $grouped[$key]['base_czk'] += (float) $r['base_czk'];
+            $grouped[$key]['vat_czk']  += (float) $r['vat_czk'];
+        }
+        return array_values($grouped);
     }
 
     /**
-     * Přijaté faktury (per sazba).
+     * Mapuje kanonický (seskupený) řádek na řádek přehledu Knihy DPH (PDF/UI shape).
      *
-     * @return list<array<string,mixed>>
-     */
-    private function collectReceived(int $supplierId, string $start, string $end): array
-    {
-        $stmt = $this->db->pdo()->prepare("
-            SELECT pi.id,
-                   pi.varsymbol AS doc_number,
-                   pi.vendor_invoice_number AS original_doc_number,
-                   COALESCE(pi.tax_date, pi.issue_date) AS tax_date,
-                   pi.issue_date,
-                   pi.vat_classification_code,
-                   pi.status,
-                   pi.exchange_rate,
-                   pi.reverse_charge,
-                   COALESCE(cur.code, 'CZK') AS currency,
-                   c.company_name AS counterparty_name,
-                   c.dic AS counterparty_dic,
-                   COALESCE(it.description, '') AS description,
-                   COALESCE(pii.vat_classification_code, pi.vat_classification_code) AS line_class_code,
-                   pii.vat_rate_snapshot AS vat_rate,
-                   (CASE WHEN pii.is_fixed_asset = 1 OR pi.is_fixed_asset = 1 THEN 1 ELSE 0 END) AS is_fixed_asset,
-                   -- is_reverse_charge klasifikace (kódy 5/23) — skalární subquery místo JOIN,
-                   -- aby globální + per-tenant varianta kódu nezdvojily SUM. Scope na tenanta.
-                   (SELECT MAX(vc.is_reverse_charge) FROM vat_classifications vc
-                     WHERE vc.code = COALESCE(pii.vat_classification_code, pi.vat_classification_code)
-                       AND (vc.supplier_id IS NULL OR vc.supplier_id = pi.supplier_id)) AS code_is_rc,
-                   SUM(pii.total_without_vat) AS base,
-                   SUM(pii.total_vat) AS vat,
-                   SUM(pii.total_with_vat) AS total
-              FROM purchase_invoices pi
-              JOIN clients c ON c.id = pi.vendor_id
-              JOIN purchase_invoice_items pii ON pii.purchase_invoice_id = pi.id
-         LEFT JOIN (
-                SELECT purchase_invoice_id, MIN(description) AS description
-                  FROM purchase_invoice_items
-                 GROUP BY purchase_invoice_id
-              ) it ON it.purchase_invoice_id = pi.id
-         LEFT JOIN currencies cur ON cur.id = pi.currency_id
-             WHERE pi.supplier_id = ?
-               AND pi.status != 'cancelled'
-               AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
-          GROUP BY pi.id, COALESCE(pii.vat_classification_code, pi.vat_classification_code),
-                   pii.vat_rate_snapshot,
-                   (CASE WHEN pii.is_fixed_asset = 1 OR pi.is_fixed_asset = 1 THEN 1 ELSE 0 END)
-          ORDER BY COALESCE(pi.tax_date, pi.issue_date), pi.id
-        ");
-        $stmt->execute([$supplierId, $start, $end]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        return array_map(fn ($r) => $this->normalizeRow($r, 'received'), $rows);
-    }
-
-    /**
-     * Normalizace + CZK přepočet. Vrací row se všemi sloupci pro PDF/UI.
-     *
-     * @param array<string,mixed> $r
+     * @param array<string,mixed> $g
      * @return array<string,mixed>
      */
-    private function normalizeRow(array $r, string $direction): array
+    private function toBookRow(array $g): array
     {
-        $rate = ($r['currency'] === 'CZK' || !$r['exchange_rate']) ? 1.0 : (float) $r['exchange_rate'];
-        $vatRate = (float) ($r['vat_rate'] ?? 0);
-        $baseRaw = (float) $r['base'];
-        $vatRaw  = (float) $r['vat'];
-        // Reverse charge: vendor fakturoval bez DPH (vatRaw=0) — Kniha DPH musí
-        // ukázat samovyměřenou daň (jako DPHDP3), jinak by řádek byl 0 a uživatele
-        // matlo. Per memory [[project_multicurrency_purchase]] vat se počítá nad
-        // basem v invoice currency, pak se přepočte kurzem.
-        // RC detekce shodná s DphPriznaniBuilder: per-faktura flag NEBO příznak
-        // is_reverse_charge na klasifikaci (kódy 5/23) — jinak by Kniha DPH a DPHDP3
-        // u dokladu bez flagu rozcházely (samovyměřená daň 0 vs. dopočtená).
-        $isRc = !empty($r['reverse_charge']) || !empty($r['code_is_rc']);
-        if ($direction === 'received' && $vatRaw == 0.0 && $isRc && $vatRate > 0) {
-            $vatRaw = round($baseRaw * $vatRate / 100, 2);
-        }
-        $totalRaw = (float) $r['total'];
-        if ($totalRaw == 0.0 && $baseRaw + $vatRaw != 0.0) {
-            // RC + bez total → dopočti z base + vypočtené daně
-            $totalRaw = $baseRaw + $vatRaw;
-        }
+        $base = (float) $g['base_czk'];
+        $vat = (float) $g['vat_czk'];
         return [
-            'invoice_id'          => (int) $r['id'],
-            'direction'           => $direction,                // issued | received
-            'doc_number'          => $r['doc_number'],          // naše interní VS
-            'original_doc_number' => $r['original_doc_number'] ?? null,
-            'tax_date'            => $r['tax_date'],
-            'accounting_date'     => $r['issue_date'],          // jako "zaúčtování"
-            'description'         => (string) ($r['description'] ?? ''),
-            'counterparty_name'   => (string) ($r['counterparty_name'] ?? ''),
-            'counterparty_dic'    => (string) ($r['counterparty_dic'] ?? ''),
-            'vat_classification_code' => $r['line_class_code'] ?? $r['vat_classification_code'] ?? null,
-            'vat_rate'            => $vatRate,
-            'currency'            => (string) $r['currency'],
-            'exchange_rate'       => $rate,
-            'base'                => $baseRaw * $rate,
-            'vat'                 => $vatRaw  * $rate,
-            'total'               => $totalRaw * $rate,
-            'status'              => (string) $r['status'],
-            'is_draft'            => ($r['status'] === 'draft'),
-            'is_fixed_asset'      => (bool) ($r['is_fixed_asset'] ?? false),
-        ];
-    }
-
-    /**
-     * Resolve classification — vrátí pole se sloupci nebo "uncategorized" fallback.
-     *
-     * @param array<string,array<string,mixed>> $codes
-     * @return array<string,mixed>
-     */
-    private function resolveClassification(?string $code, array $codes, string $direction, float $vatRate): array
-    {
-        if ($code && isset($codes[$code])) {
-            $c = $codes[$code];
-            return [
-                'code'                  => (string) $c['code'],
-                'label'                 => (string) $c['label'],
-                'direction'             => (string) $c['direction'],
-                'dphdp3_line'           => $c['dphdp3_line'] ? (string) $c['dphdp3_line'] : null,
-                'dphdp3_line_secondary' => $c['dphdp3_line_secondary'] ? (string) $c['dphdp3_line_secondary'] : null,
-                'kh_section'            => $c['kh_section'] ? (string) $c['kh_section'] : null,
-                'vat_rate'              => $c['vat_rate'] !== null ? (float) $c['vat_rate'] : $vatRate,
-            ];
-        }
-        // Fallback — uncategorized; použijeme implicit mapping podle direction + sazby
-        $line = null;
-        if ($direction === 'sale') {
-            $line = abs($vatRate - 21.0) < 0.5 ? '1' : (abs($vatRate - 12.0) < 0.5 ? '2' : null);
-        } else { // purchase
-            $line = abs($vatRate - 21.0) < 0.5 ? '40' : (abs($vatRate - 12.0) < 0.5 ? '41' : null);
-        }
-        return [
-            'code'                  => '',
-            'label'                 => '(bez klasifikace)',
-            'direction'             => $direction,
-            'dphdp3_line'           => $line,
-            'dphdp3_line_secondary' => null,
-            'kh_section'            => null,
-            'vat_rate'              => $vatRate,
+            'invoice_id'              => (int) $g['invoice_id'],
+            'direction'               => $g['source'] === 'sale' ? 'issued' : 'received',
+            'doc_number'              => $g['doc_number'],
+            'original_doc_number'     => $g['source'] === 'purchase' ? $g['vendor_invoice_number'] : null,
+            'tax_date'                => $g['tax_date'],
+            'accounting_date'         => $g['issue_date'],
+            'description'             => (string) ($g['description'] ?? ''),
+            'counterparty_name'       => (string) ($g['counterparty_name'] ?? ''),
+            'counterparty_dic'        => (string) ($g['counterparty_dic'] ?? ''),
+            'vat_classification_code' => $g['code'],
+            'vat_rate'                => (float) $g['vat_rate'],
+            'currency'                => (string) $g['currency'],
+            'exchange_rate'           => (float) $g['exchange_rate'],
+            'base'                    => $base,
+            'vat'                     => $vat,
+            'total'                   => $base + $vat,
+            'status'                  => (string) $g['status'],
+            'is_draft'                => (bool) $g['is_draft'],
+            'is_fixed_asset'          => (bool) $g['is_fixed_asset'],
         ];
     }
 
@@ -432,27 +296,6 @@ final class DphBookBuilder
             '47' => 3,
             default => 9,
         };
-    }
-
-    /**
-     * @return array<string, array<string,mixed>> code => row
-     */
-    private function loadClassifications(): array
-    {
-        $stmt = $this->db->pdo()->query("
-            SELECT code, label, direction, dphdp3_line, dphdp3_line_secondary,
-                   kh_section, vat_rate, is_reverse_charge
-              FROM vat_classifications
-             WHERE archived = 0
-          ORDER BY supplier_id IS NULL DESC, supplier_id ASC, display_order ASC
-        ");
-        $out = [];
-        if ($stmt !== false) {
-            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-                $out[(string) $r['code']] = $r;
-            }
-        }
-        return $out;
     }
 
     /**
