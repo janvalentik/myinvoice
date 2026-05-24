@@ -25,9 +25,17 @@ use PHPUnit\Framework\TestCase;
 final class EpoXsdValidationTest extends TestCase
 {
     private XmlSchemaValidator $validator;
+    private ?\MyInvoice\Infrastructure\Database\Connection $conn = null;
 
     /** @var array<string, callable(): array{xml: string, summary: array, warnings: array}> */
     private array $builders = [];
+
+    protected function tearDown(): void
+    {
+        // Uvolni MySQL connection (per-metodu container by jinak kumuloval connections
+        // přes celý běh → MariaDB max_connections).
+        $this->conn?->close();
+    }
 
     protected function setUp(): void
     {
@@ -47,6 +55,7 @@ final class EpoXsdValidationTest extends TestCase
 
         $container = Bootstrap::buildApp()->getContainer();
         $this->validator = $container->get(XmlSchemaValidator::class);
+        $this->conn = $container->get(\MyInvoice\Infrastructure\Database\Connection::class);
 
         $supplierId = 1;
         $year = (int) date('Y');

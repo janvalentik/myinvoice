@@ -46,6 +46,12 @@ final class SecurityFixesTest extends TestCase
         }
     }
 
+    protected function tearDown(): void
+    {
+        // Uvolni MySQL connection (per-metodu container → kumulace → max_connections).
+        if (isset($this->db)) $this->db->close();
+    }
+
     /**
      * #2 — SafeLogoPath rejects cfg.php exfiltration attempt
      */

@@ -101,6 +101,7 @@ final class KhDphTaxScenariosTest extends TestCase
         foreach (array_merge($this->clientIds['customers'], $this->clientIds['vendors']) as $id) {
             $pdo->prepare('DELETE FROM clients WHERE id = ?')->execute([$id]);
         }
+        $this->db->close(); // uvolni MySQL connection (kumulace přes běh → max_connections)
     }
 
     public function testAllTaxScenariosClassifyCorrectly(): void

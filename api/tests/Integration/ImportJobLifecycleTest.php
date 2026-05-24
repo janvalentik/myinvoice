@@ -59,6 +59,7 @@ final class ImportJobLifecycleTest extends TestCase
         foreach ($this->created as $id) {
             $this->db->pdo()->prepare('DELETE FROM import_jobs WHERE id = ?')->execute([$id]);
         }
+        $this->db->close(); // uvolni MySQL connection (jinak kumulace přes běh → max_connections)
     }
 
     /** Vytvoří job a vynutí mu status + updated_at (explicitní hodnota přebije ON UPDATE). */

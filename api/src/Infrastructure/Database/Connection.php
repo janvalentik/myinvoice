@@ -44,6 +44,17 @@ final class Connection
         return $this->pdo;
     }
 
+    /**
+     * Uvolní PDO spojení (nastaví na null → GC zavře MySQL connection). Web ho
+     * nepotřebuje (1 connection per request, zavře se na konci), ale testy stavějí
+     * container per metodu — bez uvolnění by se connections kumulovaly přes celý
+     * běh a narazily na MariaDB max_connections. Při dalším pdo() se vytvoří znovu.
+     */
+    public function close(): void
+    {
+        $this->pdo = null;
+    }
+
     public function ping(): bool
     {
         try {

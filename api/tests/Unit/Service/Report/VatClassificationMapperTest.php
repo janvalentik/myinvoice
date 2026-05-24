@@ -6,6 +6,7 @@ namespace MyInvoice\Tests\Unit\Service\Report;
 
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\Report\VatClassificationMapper;
+use MyInvoice\Service\Report\VatLedgerService;
 use PDO;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -42,7 +43,7 @@ final class VatClassificationMapperTest extends TestCase
         $prop = $ref->getProperty('pdo');
         $prop->setValue($conn, $this->pdo);
 
-        $this->mapper = new VatClassificationMapper($conn);
+        $this->mapper = new VatClassificationMapper($conn, new VatLedgerService($conn));
     }
 
     public function testEuAcquisitionInEurAppliesExchangeRate(): void
@@ -151,6 +152,17 @@ final class VatClassificationMapperTest extends TestCase
         )");
         $this->pdo->exec("INSERT INTO currencies (id, code) VALUES (1, 'CZK'), (2, 'EUR')");
 
+        // VatLedgerService JOINuje clients + countries (kvůli protistraně/zemi pro KH).
+        $this->pdo->exec("CREATE TABLE countries (id INTEGER PRIMARY KEY, iso2 TEXT NOT NULL)");
+        $this->pdo->exec("INSERT INTO countries (id, iso2) VALUES (1, 'CZ'), (4, 'DE')");
+        $this->pdo->exec("CREATE TABLE clients (
+            id INTEGER PRIMARY KEY, company_name TEXT NOT NULL DEFAULT '',
+            dic TEXT NULL, country_id INTEGER NULL
+        )");
+        // Dodavatelé použití v testech: 100 = DE (EU pořízení), 200 = CZ.
+        $this->pdo->exec("INSERT INTO clients (id, company_name, dic, country_id) VALUES
+            (100, 'Vendor DE', 'DE123456789', 4), (200, 'Vendor CZ', 'CZ22222220', 1)");
+
         $this->pdo->exec("CREATE TABLE vat_classifications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             supplier_id INTEGER NULL,
@@ -170,6 +182,9 @@ final class VatClassificationMapperTest extends TestCase
             id INTEGER PRIMARY KEY,
             supplier_id INTEGER NOT NULL,
             vendor_id INTEGER NOT NULL,
+            varsymbol TEXT NULL,
+            vendor_invoice_number TEXT NULL,
+            document_kind TEXT NULL,
             issue_date TEXT NOT NULL,
             tax_date TEXT NULL,
             currency_id INTEGER NOT NULL,
@@ -177,13 +192,15 @@ final class VatClassificationMapperTest extends TestCase
             reverse_charge INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'received',
             vat_classification_code TEXT NULL,
-            is_fixed_asset INTEGER NOT NULL DEFAULT 0
+            is_fixed_asset INTEGER NOT NULL DEFAULT 0,
+            total_with_vat REAL NOT NULL DEFAULT 0
         )");
 
         $this->pdo->exec("CREATE TABLE purchase_invoice_items (
             id INTEGER PRIMARY KEY,
             purchase_invoice_id INTEGER NOT NULL,
             vat_rate_snapshot REAL NOT NULL,
+            description TEXT NULL,
             total_without_vat REAL NOT NULL,
             total_vat REAL NOT NULL,
             vat_classification_code TEXT NULL,
@@ -193,6 +210,8 @@ final class VatClassificationMapperTest extends TestCase
         $this->pdo->exec("CREATE TABLE invoices (
             id INTEGER PRIMARY KEY,
             supplier_id INTEGER NOT NULL,
+            client_id INTEGER NULL,
+            varsymbol TEXT NULL,
             issue_date TEXT NOT NULL,
             tax_date TEXT NULL,
             currency_id INTEGER NOT NULL,
@@ -200,13 +219,15 @@ final class VatClassificationMapperTest extends TestCase
             reverse_charge INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'issued',
             invoice_type TEXT NOT NULL DEFAULT 'invoice',
-            vat_classification_code TEXT NULL
+            vat_classification_code TEXT NULL,
+            total_with_vat REAL NOT NULL DEFAULT 0
         )");
 
         $this->pdo->exec("CREATE TABLE invoice_items (
             id INTEGER PRIMARY KEY,
             invoice_id INTEGER NOT NULL,
             vat_rate_snapshot REAL NOT NULL,
+            description TEXT NULL,
             total_without_vat REAL NOT NULL,
             total_vat REAL NOT NULL,
             vat_classification_code TEXT NULL

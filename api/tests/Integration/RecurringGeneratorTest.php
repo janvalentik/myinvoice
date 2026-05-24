@@ -106,6 +106,7 @@ final class RecurringGeneratorTest extends TestCase
     protected function tearDown(): void
     {
         if (empty($this->createdInvoiceIds) && empty($this->createdTemplateIds)) {
+            if (isset($this->db)) $this->db->close();
             return;
         }
         $pdo = $this->db->pdo();
@@ -119,6 +120,7 @@ final class RecurringGeneratorTest extends TestCase
             $pdo->prepare('DELETE FROM recurring_invoice_template_items WHERE template_id = ?')->execute([$id]);
             $pdo->prepare('DELETE FROM recurring_invoice_templates WHERE id = ?')->execute([$id]);
         }
+        $this->db->close();
     }
 
     public function testGeneratorCreatesIssuedInvoiceWithLinkBack(): void
