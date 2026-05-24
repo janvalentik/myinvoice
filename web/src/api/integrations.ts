@@ -159,4 +159,6 @@ export const integrationsApi = {
     api.get<ImportJob>(`/admin/imports/${id}`).then(r => r.data),
   cancelJob: (id: number) =>
     api.post<{ ok: boolean; cancel_requested: boolean }>(`/admin/imports/${id}/cancel`).then(r => r.data),
+  deleteJob: (id: number) =>
+    api.delete<{ ok: boolean; deleted: boolean }>(`/admin/imports/${id}`).then(r => r.data),
 }

@@ -232,6 +232,19 @@ final class ImportJobRepository
         return (bool) $stmt->fetchColumn();
     }
 
+    /**
+     * Ruční smazání jobu (escape hatch pro uživatele). Scope na tenanta.
+     * Povoleno v jakémkoli stavu — i "running" (mrtvý worker by stejně psal do 0 řádků).
+     */
+    public function delete(int $id, int $supplierId): bool
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'DELETE FROM import_jobs WHERE id = ? AND supplier_id = ?'
+        );
+        $stmt->execute([$id, $supplierId]);
+        return $stmt->rowCount() === 1;
+    }
+
     private function cast(array $row): array
     {
         $row['id']            = (int) $row['id'];

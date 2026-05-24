@@ -136,6 +136,19 @@ async function cancelImport() {
   }
 }
 
+async function deleteImport() {
+  if (!currentJob.value) return
+  if (!confirm(t('integrations.idoklad.delete_confirm'))) return
+  try {
+    await integrationsApi.deleteJob(currentJob.value.id)
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+    currentJob.value = null
+    toast.success(t('integrations.idoklad.deleted'))
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  }
+}
+
 const isJobRunning = computed(() =>
   currentJob.value && ['queued', 'running'].includes(currentJob.value.status)
 )
@@ -576,11 +589,17 @@ onUnmounted(() => {
                 {{ t('integrations.idoklad.status.' + currentJob.status) }}
               </span>
             </div>
-            <button v-if="isJobRunning" type="button" @click="cancelImport"
-                    :disabled="currentJob.cancel_requested"
-                    class="cursor-pointer h-8 px-3 text-xs border border-danger-500/50 text-danger-500 hover:bg-danger-50 disabled:opacity-50 rounded-md">
-              {{ currentJob.cancel_requested ? t('integrations.idoklad.cancelling') : t('integrations.idoklad.cancel') }}
-            </button>
+            <div class="flex gap-2">
+              <button v-if="isJobRunning" type="button" @click="cancelImport"
+                      :disabled="currentJob.cancel_requested"
+                      class="cursor-pointer h-8 px-3 text-xs border border-danger-500/50 text-danger-500 hover:bg-danger-50 disabled:opacity-50 rounded-md">
+                {{ currentJob.cancel_requested ? t('integrations.idoklad.cancelling') : t('integrations.idoklad.cancel') }}
+              </button>
+              <button type="button" @click="deleteImport"
+                      class="cursor-pointer h-8 px-3 text-xs border border-neutral-300 text-neutral-600 hover:bg-neutral-100 rounded-md">
+                {{ t('integrations.idoklad.delete') }}
+              </button>
+            </div>
           </div>
 
           <div v-if="currentJob.current_step" class="text-sm text-neutral-600">{{ currentJob.current_step }}</div>
@@ -782,11 +801,17 @@ onUnmounted(() => {
                 {{ t('integrations.idoklad.status.' + currentJob.status) }}
               </span>
             </div>
-            <button v-if="isJobRunning" type="button" @click="cancelImport"
-                    :disabled="currentJob.cancel_requested"
-                    class="cursor-pointer h-8 px-3 text-xs border border-danger-500/50 text-danger-500 hover:bg-danger-50 disabled:opacity-50 rounded-md">
-              {{ currentJob.cancel_requested ? t('integrations.idoklad.cancelling') : t('integrations.idoklad.cancel') }}
-            </button>
+            <div class="flex gap-2">
+              <button v-if="isJobRunning" type="button" @click="cancelImport"
+                      :disabled="currentJob.cancel_requested"
+                      class="cursor-pointer h-8 px-3 text-xs border border-danger-500/50 text-danger-500 hover:bg-danger-50 disabled:opacity-50 rounded-md">
+                {{ currentJob.cancel_requested ? t('integrations.idoklad.cancelling') : t('integrations.idoklad.cancel') }}
+              </button>
+              <button type="button" @click="deleteImport"
+                      class="cursor-pointer h-8 px-3 text-xs border border-neutral-300 text-neutral-600 hover:bg-neutral-100 rounded-md">
+                {{ t('integrations.idoklad.delete') }}
+              </button>
+            </div>
           </div>
           <div v-if="currentJob.current_step" class="text-sm text-neutral-600">{{ currentJob.current_step }}</div>
           <div class="grid grid-cols-3 gap-2 text-sm">
