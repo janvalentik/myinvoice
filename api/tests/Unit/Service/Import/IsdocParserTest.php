@@ -254,6 +254,105 @@ XML;
         self::assertSame('Praha 3', $result['invoices'][0]['client']['city']);
     }
 
+    public function testForeignCurrencyUnitPriceIsReadFromLineExtensionAmountCurr(): void
+    {
+        $ns = self::NS;
+        $xml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="$ns">
+  <DocumentType>1</DocumentType>
+  <ID>2026-0007</ID>
+  <IssueDate>2026-05-04</IssueDate>
+  <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <ForeignCurrencyCode>EUR</ForeignCurrencyCode>
+  <CurrRate>24.36</CurrRate>
+  <RefCurrRate>1</RefCurrRate>
+  <PaymentMeans><Payment><Details><PaymentDueDate>2026-05-18</PaymentDueDate></Details></Payment></PaymentMeans>
+  <AccountingSupplierParty><Party><PartyIdentification><ID>01698401</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyIdentification><ID>27140130</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <InvoiceLines>
+    <InvoiceLine>
+      <InvoicedQuantity unitCode="ks">1.0</InvoicedQuantity>
+      <LineExtensionAmountCurr>2520.0</LineExtensionAmountCurr>
+      <LineExtensionAmount>61387.2</LineExtensionAmount>
+      <UnitPrice>61387.2</UnitPrice>
+      <ClassifiedTaxCategory><Percent>21</Percent></ClassifiedTaxCategory>
+      <Item><Description>Vývoj systému</Description></Item>
+    </InvoiceLine>
+  </InvoiceLines>
+</Invoice>
+XML;
+        $result = $this->parser->parse($xml);
+        $item = $result['invoices'][0]['items'][0];
+        self::assertSame('EUR', $result['invoices'][0]['currency']);
+        self::assertSame(2520.0, $item['unit_price_without_vat']);
+    }
+
+    public function testForeignCurrencyMultipleQuantityUnitPriceDividedCorrectly(): void
+    {
+        $ns = self::NS;
+        $xml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="$ns">
+  <DocumentType>1</DocumentType>
+  <ID>2026-0008</ID>
+  <IssueDate>2026-05-04</IssueDate>
+  <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <ForeignCurrencyCode>EUR</ForeignCurrencyCode>
+  <CurrRate>24.36</CurrRate>
+  <RefCurrRate>1</RefCurrRate>
+  <PaymentMeans><Payment><Details><PaymentDueDate>2026-05-18</PaymentDueDate></Details></Payment></PaymentMeans>
+  <AccountingSupplierParty><Party><PartyIdentification><ID>01698401</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyIdentification><ID>27140130</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <InvoiceLines>
+    <InvoiceLine>
+      <InvoicedQuantity unitCode="hod">5.0</InvoicedQuantity>
+      <LineExtensionAmountCurr>500.0</LineExtensionAmountCurr>
+      <LineExtensionAmount>12180.0</LineExtensionAmount>
+      <UnitPrice>12180.0</UnitPrice>
+      <ClassifiedTaxCategory><Percent>21</Percent></ClassifiedTaxCategory>
+      <Item><Description>Konzultace</Description></Item>
+    </InvoiceLine>
+  </InvoiceLines>
+</Invoice>
+XML;
+        $result = $this->parser->parse($xml);
+        $item = $result['invoices'][0]['items'][0];
+        self::assertSame(100.0, $item['unit_price_without_vat']);
+    }
+
+    public function testForeignCurrencyFallsBackToUnitPriceWhenNoLineExtensionAmountCurr(): void
+    {
+        $ns = self::NS;
+        $xml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="$ns">
+  <DocumentType>1</DocumentType>
+  <ID>2026-0009</ID>
+  <IssueDate>2026-05-04</IssueDate>
+  <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <ForeignCurrencyCode>EUR</ForeignCurrencyCode>
+  <CurrRate>24.36</CurrRate>
+  <RefCurrRate>1</RefCurrRate>
+  <PaymentMeans><Payment><Details><PaymentDueDate>2026-05-18</PaymentDueDate></Details></Payment></PaymentMeans>
+  <AccountingSupplierParty><Party><PartyIdentification><ID>01698401</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyIdentification><ID>27140130</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <InvoiceLines>
+    <InvoiceLine>
+      <InvoicedQuantity unitCode="ks">1.0</InvoicedQuantity>
+      <LineExtensionAmount>61387.2</LineExtensionAmount>
+      <UnitPrice>2520.0</UnitPrice>
+      <ClassifiedTaxCategory><Percent>21</Percent></ClassifiedTaxCategory>
+      <Item><Description>Vývoj systému</Description></Item>
+    </InvoiceLine>
+  </InvoiceLines>
+</Invoice>
+XML;
+        $result = $this->parser->parse($xml);
+        $item = $result['invoices'][0]['items'][0];
+        self::assertSame(2520.0, $item['unit_price_without_vat']);
+    }
+
     public function testStreetNameWithoutBuildingNumberStaysIntact(): void
     {
         // Pokud zdrojový ISDOC od jiného systému posílá adresu v jednom poli

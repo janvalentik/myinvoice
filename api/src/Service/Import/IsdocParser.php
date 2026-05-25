@@ -123,10 +123,11 @@ final class IsdocParser
             ?: null;
 
         // Items
+        $hasForeignCurrency = $currency !== $localCur;
         $items = [];
         foreach ($xpath->query('i:InvoiceLines/i:InvoiceLine', $root) ?: [] as $lineEl) {
             if (!$lineEl instanceof \DOMElement) continue;
-            $items[] = $this->parseLine($xpath, $lineEl);
+            $items[] = $this->parseLine($xpath, $lineEl, $hasForeignCurrency);
         }
 
         return [
@@ -175,14 +176,24 @@ final class IsdocParser
     /**
      * @return array<string,mixed>
      */
-    private function parseLine(\DOMXPath $xpath, \DOMElement $line): array
+    private function parseLine(\DOMXPath $xpath, \DOMElement $line, bool $hasForeignCurrency = false): array
     {
         $qtyEl = $xpath->query('i:InvoicedQuantity', $line)->item(0);
         $quantity = $qtyEl instanceof \DOMElement ? (float) $qtyEl->textContent : 1.0;
         $unit = $qtyEl instanceof \DOMElement ? ($qtyEl->getAttribute('unitCode') ?: 'ks') : 'ks';
 
-        $unitPrice = (float) ($this->text($xpath, 'i:UnitPrice', $line) ?: '0');
-        $vatRate   = (float) ($this->text($xpath, 'i:ClassifiedTaxCategory/i:Percent', $line) ?: '0');
+        if ($hasForeignCurrency) {
+            $lineAmountCurr = $this->text($xpath, 'i:LineExtensionAmountCurr', $line);
+            if ($lineAmountCurr !== '' && $quantity > 0.0) {
+                $unitPrice = (float) $lineAmountCurr / $quantity;
+            } else {
+                $unitPrice = (float) ($this->text($xpath, 'i:UnitPrice', $line) ?: '0');
+            }
+        } else {
+            $unitPrice = (float) ($this->text($xpath, 'i:UnitPrice', $line) ?: '0');
+        }
+
+        $vatRate = (float) ($this->text($xpath, 'i:ClassifiedTaxCategory/i:Percent', $line) ?: '0');
 
         return [
             'description'            => $this->text($xpath, 'i:Item/i:Description', $line),
