@@ -17,6 +17,9 @@ export interface InvoiceItem {
   total_vat?: number
   total_with_vat?: number
   order_index: number
+  // 'discount' = systémově generovaná záporná slevová položka (z invoices.discount_percent).
+  // Editor ji při načtení vyfiltruje — needituje se a negeneruje znovu při uložení.
+  item_kind?: 'standard' | 'discount'
   linked_work_report_id?: number | null
   vat_code?: string
   vat_label_cs?: string
@@ -36,6 +39,8 @@ export interface InvoiceTotals {
   rounding?: number
   advance_paid_amount?: number
   amount_to_pay?: number
+  discount_percent?: number
+  discount_amount?: number
 }
 
 export type PaymentMethod = 'bank_transfer' | 'card' | 'cash' | 'other'
@@ -58,6 +63,7 @@ export interface Invoice {
   note_below_items: string | null
   recurring_template_id: number | null
   advance_paid_amount: number
+  discount_percent: number
   payment_method: PaymentMethod
   amount_to_pay: number
   total_without_vat: number
@@ -141,6 +147,7 @@ export interface InvoiceListItem {
   varsymbol: string | null
   invoice_type: InvoiceType
   parent_invoice_id: number | null
+  recurring_template_id?: number | null
   client_id: number
   project_id: number | null
   issue_date: string
@@ -192,6 +199,7 @@ export interface InvoicePayload {
   note_above_items?: string | null
   note_below_items?: string | null
   advance_paid_amount?: number
+  discount_percent?: number
   payment_method?: PaymentMethod
   exchange_rate?: number | null
   // Volitelný ruční override čísla faktury (varsymbol). Prázdný řetězec / null =

@@ -171,11 +171,15 @@
   </thead>
   <tbody>
     {% for item in invoice.items %}
-    <tr>
+    <tr{% if item.item_kind == 'discount' %} class="discount-row"{% endif %}>
       <td>{{ item.description|nl2br }}</td>
+      {% if item.item_kind == 'discount' %}
+      <td></td><td></td><td></td>
+      {% else %}
       <td class="num nowrap">{{ item.quantity|number_format(item.quantity == item.quantity|round(0) ? 0 : 3, decimal_sep, thousand_sep) }}</td>
       <td>{{ item.unit }}</td>
       <td class="num nowrap">{{ item.unit_price_without_vat|number_format(2, decimal_sep, thousand_sep) }}</td>
+      {% endif %}
       {% if supplier.is_vat_payer %}
       <td class="center nowrap">{{ item.vat_rate_snapshot|number_format(item.vat_rate_snapshot == item.vat_rate_snapshot|round(0) ? 0 : 2, decimal_sep, thousand_sep) }}&nbsp;%</td>
       <td class="num nowrap">{{ item.total_without_vat|number_format(2, decimal_sep, thousand_sep) }}</td>

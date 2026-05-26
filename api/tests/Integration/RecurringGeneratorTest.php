@@ -279,6 +279,175 @@ final class RecurringGeneratorTest extends TestCase
         $this->assertNull($data['varsymbol']);
     }
 
+    public function testGeneratorMaterializesTemplateDiscountLine(): void
+    {
+        $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
+
+        $tplId = $this->repo->create([
+            'supplier_id'      => $this->supplierId,
+            'client_id'        => $this->clientId,
+            'name'             => 'TEST recurring sleva (PHPUnit)',
+            'frequency'        => 'monthly',
+            'end_of_month'     => false,
+            'anchor_date'      => $today,
+            'next_run_date'    => $today,
+            'invoice_type'     => 'invoice',
+            'currency_id'      => $this->currencyId,
+            'language'         => 'cs',
+            'payment_method'   => 'bank_transfer',
+            'payment_due_days' => 7,
+            'discount_percent' => 10.0,
+            'increment_month_in_descriptions' => false,
+            'auto_issue'       => false,
+            'auto_send_email'  => false,
+        ], $this->userId);
+        $this->createdTemplateIds[] = $tplId;
+
+        $this->repo->replaceItems($tplId, [[
+            'description' => 'Paušál',
+            'quantity' => 1.0,
+            'unit' => 'měs',
+            'unit_price_without_vat' => 1000.00,
+            'vat_rate_id' => $this->vatRateId,
+            'order_index' => 0,
+        ]]);
+
+        $result = $this->generator->generate($tplId, $today, $this->userId, '127.0.0.1', 'phpunit');
+        $this->createdInvoiceIds[] = $result['invoice_id'];
+
+        // Šablona si pamatuje discount_percent
+        $tpl = $this->repo->find($tplId);
+        $this->assertEqualsWithDelta(10.0, (float) $tpl['discount_percent'], 0.001);
+
+        // Vygenerovaná faktura: standardní položka + záporná slevová (item_kind='discount')
+        $items = $this->db->pdo()->prepare(
+            "SELECT item_kind, total_without_vat FROM invoice_items WHERE invoice_id = ? ORDER BY order_index"
+        );
+        $items->execute([$result['invoice_id']]);
+        $rows = $items->fetchAll(PDO::FETCH_ASSOC);
+        $discountRows = array_values(array_filter($rows, fn ($r) => $r['item_kind'] === 'discount'));
+        $this->assertCount(1, $discountRows, 'Měla by vzniknout 1 slevová položka');
+        $this->assertEqualsWithDelta(-100.0, (float) $discountRows[0]['total_without_vat'], 0.001);
+
+        // discount_percent na faktuře + základ po slevě
+        $inv = $this->db->pdo()->prepare("SELECT discount_percent, total_without_vat, total_vat FROM invoices WHERE id = ?");
+        $inv->execute([$result['invoice_id']]);
+        $invRow = $inv->fetch(PDO::FETCH_ASSOC);
+        $this->assertEqualsWithDelta(10.0, (float) $invRow['discount_percent'], 0.001);
+        $this->assertEqualsWithDelta(900.0, (float) $invRow['total_without_vat'], 0.001);
+
+        // Regrese: vat_rate_snapshot se musí nastavit z vat_rates (dřív se vkládalo 0 →
+        // DPH vycházela 0). Vybraná sazba je >0 %, takže DPH PO slevě musí být kladné.
+        $this->assertGreaterThan(0.0, (float) $invRow['total_vat'], 'DPH musí být aplikováno (regrese vat_rate_snapshot=0)');
+        $snap = $this->db->pdo()->prepare('SELECT DISTINCT vat_rate_snapshot FROM invoice_items WHERE invoice_id = ?');
+        $snap->execute([$result['invoice_id']]);
+        $this->assertNotContains('0.00', $snap->fetchAll(PDO::FETCH_COLUMN), 'Položky musí mít reálný vat_rate_snapshot, ne 0');
+    }
+
+    public function testGenerateForceDraftLeavesDraftDespiteAutoIssue(): void
+    {
+        // „Vygenerovat koncept" u at_issue šablony s auto_issue=true → přesto draft.
+        $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $tplId = $this->repo->create([
+            'supplier_id'      => $this->supplierId,
+            'client_id'        => $this->clientId,
+            'name'             => 'TEST force-draft (PHPUnit)',
+            'frequency'        => 'monthly',
+            'end_of_month'     => false,
+            'anchor_date'      => $today,
+            'next_run_date'    => $today,
+            'invoice_type'     => 'invoice',
+            'currency_id'      => $this->currencyId,
+            'language'         => 'cs',
+            'payment_method'   => 'bank_transfer',
+            'payment_due_days' => 7,
+            'increment_month_in_descriptions' => false,
+            'auto_issue'       => true,
+            'auto_send_email'  => false,
+        ], $this->userId);
+        $this->createdTemplateIds[] = $tplId;
+        $this->repo->replaceItems($tplId, [[
+            'description' => 'Konzultace', 'quantity' => 1.0, 'unit' => 'h',
+            'unit_price_without_vat' => 1000.00, 'vat_rate_id' => $this->vatRateId, 'order_index' => 0,
+        ]]);
+
+        $res = $this->generator->generate($tplId, $today, $this->userId, '127.0.0.1', 'phpunit', true);
+        $this->createdInvoiceIds[] = $res['invoice_id'];
+
+        $this->assertFalse($res['issued'], 'forceDraft musí nechat draft i u auto_issue=true');
+        $this->assertNull($res['varsymbol']);
+        $this->assertEmpty($res['sent_to']);
+
+        $row = $this->db->pdo()->prepare('SELECT status, varsymbol FROM invoices WHERE id = ?');
+        $row->execute([$res['invoice_id']]);
+        $data = $row->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('draft', $data['status']);
+        $this->assertNull($data['varsymbol']);
+
+        // Rozvrh se posune (mirror běžné generace — cron tutéž periodu nevygeneruje znovu).
+        $tpl = $this->repo->find($tplId);
+        $this->assertNotSame($today, $tpl['next_run_date'], 'forceDraft posouvá rozvrh jako běžná generace');
+    }
+
+    public function testLastErrorIsRecordedAndCleared(): void
+    {
+        // Cron při selhání volá setLastError → banner na šabloně; úspěch volá clearLastError.
+        $tplId = $this->createPeriodTemplate('2027-03-31', ['end_of_month' => true]);
+
+        $this->repo->setLastError($tplId, 'Sazba DPH CZ-21 není platná k datu plnění 2027-03-31');
+        $tpl = $this->repo->find($tplId);
+        $this->assertStringContainsString('CZ-21', (string) $tpl['last_error']);
+        $this->assertNotNull($tpl['last_error_at']);
+
+        $this->repo->clearLastError($tplId);
+        $tpl = $this->repo->find($tplId);
+        $this->assertNull($tpl['last_error']);
+        $this->assertNull($tpl['last_error_at']);
+    }
+
+    public function testGeneratorRejectsExpiredVatRate(): void
+    {
+        $expiredRateId = (int) $this->db->pdo()->query(
+            "SELECT id FROM vat_rates WHERE valid_to IS NOT NULL AND valid_to < CURDATE() ORDER BY id LIMIT 1"
+        )->fetchColumn();
+        if ($expiredRateId <= 0) {
+            $this->markTestSkipped('Žádná vypršelá sazba v DB');
+        }
+
+        $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $tplId = $this->repo->create([
+            'supplier_id'      => $this->supplierId,
+            'client_id'        => $this->clientId,
+            'name'             => 'TEST recurring expired rate (PHPUnit)',
+            'frequency'        => 'monthly',
+            'end_of_month'     => false,
+            'anchor_date'      => $today,
+            'next_run_date'    => $today,
+            'invoice_type'     => 'invoice',
+            'currency_id'      => $this->currencyId,
+            'language'         => 'cs',
+            'payment_method'   => 'bank_transfer',
+            'payment_due_days' => 7,
+            'increment_month_in_descriptions' => false,
+            'auto_issue'       => false,
+            'auto_send_email'  => false,
+        ], $this->userId);
+        $this->createdTemplateIds[] = $tplId;
+
+        $this->repo->replaceItems($tplId, [[
+            'description' => 'Položka s vypršelou sazbou',
+            'quantity' => 1.0,
+            'unit' => 'ks',
+            'unit_price_without_vat' => 1000.00,
+            'vat_rate_id' => $expiredRateId,
+            'order_index' => 0,
+        ]]);
+
+        // Generování musí odmítnout vystavení faktury s vypršelou sazbou DPH.
+        $this->expectException(\DomainException::class);
+        $this->generator->generate($tplId, $today, $this->userId, '127.0.0.1', 'phpunit');
+    }
+
     public function testGeneratorPreviousMonthLastDayTaxDateMode(): void
     {
         // Šablona s tax_date_mode='previous_month_last_day': fakturuje se 1.6. za 5/2026,
@@ -592,6 +761,44 @@ final class RecurringGeneratorTest extends TestCase
         $tpl = $this->templateRow($tplId);
         $this->assertSame('2026-09-30', $tpl['last_run_date']);
         $this->assertSame('2026-10-31', $tpl['next_run_date'], 'Po vystavení se posune na další konec měsíce');
+    }
+
+    public function testIssuePeriodDispatchesSendWhenAutoSendEmail(): void
+    {
+        // Plný lifecycle „koncept → vystaveno A ODESLÁNO": ověříme, že issuePeriod při
+        // auto_send_email=true dispatchne odeslání. AutoIssueAndSendService mockujeme,
+        // ať test nesahá na SMTP — zbytek generátoru je reálný z containeru.
+        $container = Bootstrap::buildApp()->getContainer();
+        $issueAndSend = $this->createMock(\MyInvoice\Service\Invoice\AutoIssueAndSendService::class);
+        $issueAndSend->expects($this->once())
+            ->method('run')
+            ->willReturn(['issued' => true, 'sent_to' => ['klient@test.local'], 'varsymbol' => 'TST-SEND-1']);
+
+        $gen = new RecurringInvoiceGenerator(
+            $container->get(\MyInvoice\Infrastructure\Database\Connection::class),
+            $container->get(\MyInvoice\Repository\RecurringTemplateRepository::class),
+            $container->get(\MyInvoice\Repository\InvoiceRepository::class),
+            $container->get(\MyInvoice\Service\Invoice\InvoiceCalculator::class),
+            $container->get(\MyInvoice\Service\Currency\ExchangeRateApplier::class),
+            $issueAndSend,
+            $container->get(\MyInvoice\Service\Invoice\VarsymbolGenerator::class),
+            $container->get(\MyInvoice\Service\Invoice\SnapshotBuilder::class),
+            $container->get(\MyInvoice\Service\Pdf\InvoicePdfRenderer::class),
+            $container->get(\MyInvoice\Service\Stats\StatsRecomputer::class),
+            $container->get(\MyInvoice\Service\ActivityLogger::class),
+        );
+
+        $tplId = $this->createPeriodTemplate(
+            (new \DateTimeImmutable('today'))->format('Y-m-d'),
+            ['auto_issue' => true, 'auto_send_email' => true],
+        );
+
+        $open = $gen->openDraft($tplId, $this->userId, '127.0.0.1', 'phpunit');
+        $this->createdInvoiceIds[] = $open['invoice_id'];
+
+        $res = $gen->issuePeriod($tplId, $this->userId, '127.0.0.1', 'phpunit');
+        $this->assertTrue($res['issued']);
+        $this->assertSame(['klient@test.local'], $res['sent_to'], 'auto_send_email=true → issuePeriod dispatchne odeslání');
     }
 
     public function testIssuePeriodPicksUpExtraWorkAddedDuringPeriod(): void

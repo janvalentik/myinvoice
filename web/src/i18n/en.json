@@ -325,6 +325,7 @@
       "pause": "Pause",
       "resume": "Resume",
       "run_now": "Generate now",
+      "run_now_draft": "Generate draft",
       "detail": "Detail",
       "edit": "Edit",
       "delete": "Delete"
@@ -338,6 +339,13 @@
     "run_now_submit": "Generate",
     "run_now_done": "Invoice #{id}{varsymbol} generated",
     "run_now_with_send": "Invoice {varsymbol} generated and sent to: {recipients}",
+    "run_now_draft_title": "Generate draft invoice",
+    "run_now_draft_hint": "Creates a draft for the chosen date — does not issue or send. You'll edit and issue it manually.",
+    "run_now_draft_submit": "Create draft",
+    "run_now_draft_done": "Draft invoice #{id} created.",
+    "run_now_draft_period_note": "The draft will be created for the period with planned issue date {date} — you can edit it throughout the month.",
+    "last_error_title": "Last automatic generation failed",
+    "last_error_badge": "Generation failed",
     "delete_confirm": "Delete template „{name}\"?\n\nInvoices generated so far stay — they just lose the link to the template.",
     "deleted": "Template deleted.",
     "saved": "Template saved.",
@@ -347,6 +355,10 @@
     "section_invoice_meta": "Invoice",
     "section_automation": "Automation",
     "generated_invoices": "Generated invoices",
+    "amount": "Amount",
+    "amount_total": "Total",
+    "amount_czk_hint": "Multi-currency sum converted to CZK at today's CNB rate.",
+    "actions_col": "Actions",
     "generated_count": "{n} invoices",
     "badge_from_template": "Recurring",
     "badge_from_template_title": "Generated from template #{id}",
@@ -728,6 +740,10 @@
     "more_actions": "More actions",
     "items": "Items",
     "summary": "Summary",
+    "discount": {
+      "label": "Whole-invoice discount",
+      "applied": "Discount"
+    },
     "note": "Note",
     "activity": "Activity",
     "classification": {
@@ -1522,6 +1538,7 @@
       "invoice_reminder": "Invoice reminder",
       "proforma_reminder": "Proforma reminder",
       "invoice_approval": "Work-report approval request",
+      "recurring_draft_reminder": "Draft reminder (recurring)",
       "password_reset": "Password reset",
       "login_otp": "Sign-in verification code"
     },

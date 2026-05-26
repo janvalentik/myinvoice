@@ -199,6 +199,10 @@ function gotoClient(clientId: number) {
                 <button @click="gotoDetail(tpl.id)" class="cursor-pointer block text-left text-primary-700 font-medium hover:underline">
                   {{ tpl.name }}
                 </button>
+                <span v-if="tpl.last_error" :title="tpl.last_error"
+                  class="mt-0.5 inline-block text-xs px-1.5 py-0.5 rounded bg-danger-50 text-danger-700 border border-danger-200 whitespace-nowrap">
+                  ⚠ {{ t('recurring.last_error_badge') }}
+                </span>
                 <span v-if="tpl.draft_open_mode === 'period_start'"
                   :title="t('recurring.draft_open_mode_period_start')"
                   class="mt-0.5 inline-block text-xs px-1.5 py-0.5 rounded bg-primary-50 text-primary-700 border border-primary-200 whitespace-nowrap">
@@ -275,6 +279,9 @@ function gotoClient(clientId: number) {
               {{ tpl.client_company_name }}
             </button>
             <span v-if="tpl.project_name"> · {{ tpl.project_name }}</span>
+          </div>
+          <div v-if="tpl.last_error" class="mt-1 text-xs text-danger-700 truncate" :title="tpl.last_error">
+            ⚠ {{ t('recurring.last_error_badge') }}
           </div>
           <div class="flex items-baseline justify-between gap-2 mt-1.5 text-xs">
             <span class="text-neutral-600">

@@ -63,6 +63,14 @@ final class InvoiceRepository
 
         // VAT breakdown
         $row['vat_breakdown'] = $this->buildVatBreakdown($row['items']);
+        // Sleva: discount_percent je header zdroj pravdy, discount_amount je KLADNÁ
+        // magnituda slevy (= -součet záporných slevových položek item_kind='discount').
+        $discountAmount = 0.0;
+        foreach ($row['items'] as $it) {
+            if (($it['item_kind'] ?? 'standard') === 'discount') {
+                $discountAmount -= (float) $it['total_without_vat'];
+            }
+        }
         $row['totals'] = [
             'without_vat'        => $row['total_without_vat'],
             'vat'                => $row['total_vat'],
@@ -70,6 +78,8 @@ final class InvoiceRepository
             'rounding'           => $row['rounding'],
             'advance_paid_amount'=> $row['advance_paid_amount'],
             'amount_to_pay'      => $row['amount_to_pay'],
+            'discount_percent'   => $row['discount_percent'],
+            'discount_amount'    => round($discountAmount, 2),
         ];
 
         // CZK přepočet — jen pokud měna != CZK a faktura má zafixovaný kurz.
@@ -113,7 +123,7 @@ final class InvoiceRepository
             'SELECT ii.id, ii.invoice_id, ii.description, ii.quantity, ii.unit,
                     ii.unit_price_without_vat, ii.vat_rate_id, ii.vat_rate_snapshot,
                     ii.total_without_vat, ii.total_vat, ii.total_with_vat,
-                    ii.order_index, ii.linked_work_report_id,
+                    ii.order_index, ii.item_kind, ii.linked_work_report_id,
                     vr.code AS vat_code, vr.label_cs AS vat_label_cs, vr.label_en AS vat_label_en
                FROM invoice_items ii
                JOIN vat_rates vr ON vr.id = ii.vat_rate_id
@@ -213,7 +223,7 @@ final class InvoiceRepository
             $total = (int) $cntStmt->fetchColumn();
         }
 
-        $sql = "SELECT i.id, i.varsymbol, i.invoice_type, i.parent_invoice_id,
+        $sql = "SELECT i.id, i.varsymbol, i.invoice_type, i.parent_invoice_id, i.recurring_template_id,
                        i.client_id, i.project_id, i.supplier_id,
                        i.issue_date, i.tax_date, i.due_date,
                        i.currency_id, cur.code AS currency, cur.symbol AS currency_symbol, cur.decimals AS currency_decimals,
@@ -341,9 +351,9 @@ final class InvoiceRepository
         $sql = 'INSERT INTO invoices
             (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
              issue_date, tax_date, due_date, currency_id, reverse_charge, language,
-             note_above_items, note_below_items, advance_paid_amount, varsymbol,
+             note_above_items, note_below_items, advance_paid_amount, discount_percent, varsymbol,
              payment_method, status, vat_classification_code, revenue_category, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -361,6 +371,7 @@ final class InvoiceRepository
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             (float) ($data['advance_paid_amount'] ?? 0),
+            self::clampDiscountPercent($data['discount_percent'] ?? 0),
             $manualVarsymbol,
             $paymentMethod,
             !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
@@ -400,7 +411,7 @@ final class InvoiceRepository
                 issue_date = ?, tax_date = ?, due_date = ?,
                 currency_id = ?, reverse_charge = ?, language = ?,
                 note_above_items = ?, note_below_items = ?,
-                advance_paid_amount = ?,
+                advance_paid_amount = ?, discount_percent = ?,
                 vat_classification_code = ?, revenue_category = ?'
               . ($hasVarsymbol ? ', varsymbol = ?' : '')
               . ($hasPaymentMethod ? ', payment_method = ?' : '')
@@ -418,6 +429,7 @@ final class InvoiceRepository
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
             (float) ($data['advance_paid_amount'] ?? 0),
+            self::clampDiscountPercent($data['discount_percent'] ?? 0),
             !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
             !empty($data['revenue_category']) ? (string) $data['revenue_category'] : null,
         ];
@@ -436,6 +448,12 @@ final class InvoiceRepository
 
     /**
      * Přepíše položky faktury (smaže staré + insertne nové).
+     *
+     * Pokud má faktura header `discount_percent` > 0, po vložení uživatelských
+     * položek se DOPOČÍTÁ záporná slevová položka (item_kind='discount') na každou
+     * kombinaci sazba DPH + klasifikační kód — viz `materializeDiscountLines`.
+     * Příchozí položky s item_kind='discount' se ignorují (sleva je vždy generovaná
+     * z header pole, nikdy se neukládá z UI jako uživatelský řádek → žádné zdvojení).
      */
     public function replaceItems(int $invoiceId, array $items): void
     {
@@ -446,35 +464,46 @@ final class InvoiceRepository
             'INSERT INTO invoice_items
                 (invoice_id, description, quantity, unit, unit_price_without_vat,
                  vat_rate_id, vat_rate_snapshot,
-                 total_without_vat, total_vat, total_with_vat, order_index, vat_classification_code)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
+                 total_without_vat, total_vat, total_with_vat, order_index, item_kind, vat_classification_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)'
         );
 
         $vatRates = $this->loadVatRates();
 
-        // Reverse charge + země klienta — určuje klasifikační kód:
-        //   CZ klient → '1'/'2'/'3' (tuzemsko podle sazby)
-        //   EU klient s 0% → '22' (služby) — typický B2B reverse charge do EU
-        //   non-EU klient s 0% → '26' (vývoz do 3. země)
+        // Reverse charge + země klienta + jazyk + sleva — z hlavičky.
+        //   Klasifikační kód: CZ klient → '1'/'2'/'3' (tuzemsko podle sazby)
+        //                     EU klient s 0% → '22' (služby), non-EU s 0% → '26' (vývoz)
         $metaStmt = $pdo->prepare(
-            'SELECT i.reverse_charge, co.iso2
+            'SELECT i.reverse_charge, i.discount_percent, i.language, co.iso2
                FROM invoices i
                JOIN clients c    ON c.id  = i.client_id
                JOIN countries co ON co.id = c.country_id
               WHERE i.id = ?'
         );
         $metaStmt->execute([$invoiceId]);
-        $meta = $metaStmt->fetch(PDO::FETCH_ASSOC) ?: ['reverse_charge' => 0, 'iso2' => 'CZ'];
+        $meta = $metaStmt->fetch(PDO::FETCH_ASSOC) ?: ['reverse_charge' => 0, 'discount_percent' => 0, 'language' => 'cs', 'iso2' => 'CZ'];
         $reverseCharge = (bool) $meta['reverse_charge'];
         $countryIso = (string) ($meta['iso2'] ?? 'CZ');
+        $discountPercent = self::clampDiscountPercent($meta['discount_percent'] ?? 0);
+        $language = (string) ($meta['language'] ?? 'cs');
+
+        // Slevu agregujeme po (vat_rate_id, vat_rate_snapshot, code) — báze = součet
+        // round(qty*price, 2) jednotlivých řádků (stejné zaokrouhlení jako InvoiceMath).
+        $discountGroups = [];
+        $maxOrder = -1;
 
         foreach (array_values($items) as $i => $item) {
+            // Systémové slevové řádky z UI ignorujeme — generují se z header pole níže.
+            if (($item['item_kind'] ?? 'standard') === 'discount') {
+                continue;
+            }
             $vatRateId = (int) ($item['vat_rate_id'] ?? 0);
             $rate = $vatRates[$vatRateId] ?? 0.0;
             // Auto-klasifikace pro DPH přiznání / KH — bez ní by faktura nedorazila
             // do výkazů (VatClassificationMapper SKIPNE řádky s code=NULL).
             $code = $item['vat_classification_code']
                 ?? self::defaultSaleClassificationCode($rate, $reverseCharge, $countryIso);
+            $orderIndex = (int) ($item['order_index'] ?? $i);
             $stmt->execute([
                 $invoiceId,
                 (string) ($item['description'] ?? ''),
@@ -483,10 +512,87 @@ final class InvoiceRepository
                 (float) ($item['unit_price_without_vat'] ?? 0),
                 $vatRateId,
                 $rate,
-                (int) ($item['order_index'] ?? $i),
+                $orderIndex,
+                'standard',
                 $code !== null ? (string) $code : null,
             ]);
+
+            $maxOrder = max($maxOrder, $orderIndex);
+            if ($discountPercent > 0) {
+                $base = round((float) ($item['quantity'] ?? 1) * (float) ($item['unit_price_without_vat'] ?? 0), 2);
+                $key = $vatRateId . '|' . ($code ?? '');
+                if (!isset($discountGroups[$key])) {
+                    $discountGroups[$key] = [
+                        'vat_rate_id' => $vatRateId,
+                        'snapshot'    => $rate,
+                        'code'        => $code,
+                        'base'        => 0.0,
+                    ];
+                }
+                $discountGroups[$key]['base'] += $base;
+            }
         }
+
+        if ($discountPercent > 0 && $discountGroups !== []) {
+            $this->materializeDiscountLines($stmt, $invoiceId, $discountPercent, $discountGroups, $maxOrder + 1, $language);
+        }
+    }
+
+    /**
+     * Vloží záporné slevové položky (item_kind='discount') — jednu na každou skupinu
+     * (sazba DPH + klasifikační kód). unit_price = -round(báze * pct/100, 2), množství 1.
+     * Díky tomu sleva sníží základ i DPH v dané sazbě a propíše se do všech DPH výkazů
+     * (sumují invoice_items). Per-sazbu split = nutný pro správné DPH u smíšených sazeb.
+     *
+     * @param array<string, array{vat_rate_id:int, snapshot:float, code:?string, base:float}> $groups
+     */
+    private function materializeDiscountLines(
+        \PDOStatement $stmt,
+        int $invoiceId,
+        float $discountPercent,
+        array $groups,
+        int $startOrder,
+        string $language,
+    ): void {
+        $label = self::discountLabel($discountPercent, $language);
+        $order = $startOrder;
+        foreach ($groups as $g) {
+            $disc = round($g['base'] * $discountPercent / 100.0, 2);
+            if ($disc == 0.0) {
+                continue;
+            }
+            $stmt->execute([
+                $invoiceId,
+                $label,
+                1.0,
+                '',
+                -$disc,
+                $g['vat_rate_id'],
+                $g['snapshot'],
+                $order++,
+                'discount',
+                $g['code'] !== null ? (string) $g['code'] : null,
+            ]);
+        }
+    }
+
+    /**
+     * Lokalizovaný popis slevové položky, např. "Sleva 10 %" / "Discount 10 %".
+     * Procenta bez zbytečných nul (10, 12.5).
+     */
+    public static function discountLabel(float $discountPercent, string $language = 'cs'): string
+    {
+        $pct = rtrim(rtrim(number_format($discountPercent, 2, '.', ''), '0'), '.');
+        return ($language === 'en' ? 'Discount ' : 'Sleva ') . $pct . ' %';
+    }
+
+    /**
+     * Ořeže slevu do rozsahu 0–100 % (2 desetinná místa).
+     */
+    public static function clampDiscountPercent(mixed $value): float
+    {
+        $v = is_numeric($value) ? (float) $value : 0.0;
+        return round(max(0.0, min(100.0, $v)), 2);
     }
 
     /**
@@ -554,10 +660,13 @@ final class InvoiceRepository
         $row['client_id']           = (int) $row['client_id'];
         $row['project_id']          = $row['project_id'] !== null ? (int) $row['project_id'] : null;
         $row['parent_invoice_id']   = isset($row['parent_invoice_id']) && $row['parent_invoice_id'] !== null ? (int) $row['parent_invoice_id'] : null;
+        if (array_key_exists('recurring_template_id', $row)) {
+            $row['recurring_template_id'] = $row['recurring_template_id'] !== null ? (int) $row['recurring_template_id'] : null;
+        }
         if (isset($row['currency_id']))   $row['currency_id'] = (int) $row['currency_id'];
         if (isset($row['supplier_id']))   $row['supplier_id'] = (int) $row['supplier_id'];
         $row['reverse_charge']      = isset($row['reverse_charge']) ? (bool) $row['reverse_charge'] : false;
-        foreach (['total_without_vat', 'total_vat', 'total_with_vat', 'rounding', 'advance_paid_amount', 'amount_to_pay'] as $f) {
+        foreach (['total_without_vat', 'total_vat', 'total_with_vat', 'rounding', 'advance_paid_amount', 'amount_to_pay', 'discount_percent'] as $f) {
             if (array_key_exists($f, $row) && $row[$f] !== null) $row[$f] = (float) $row[$f];
         }
         if (array_key_exists('exchange_rate', $row)) {
@@ -816,6 +925,7 @@ final class InvoiceRepository
             $row[$f] = (float) $row[$f];
         }
         $row['linked_work_report_id'] = $row['linked_work_report_id'] !== null ? (int) $row['linked_work_report_id'] : null;
+        $row['item_kind'] = (string) ($row['item_kind'] ?? 'standard');
         return $row;
     }
 

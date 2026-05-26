@@ -86,8 +86,8 @@ final class FinalFromProformaCreator
                 'INSERT INTO invoices
                    (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
                     issue_date, tax_date, due_date, currency_id, reverse_charge, language,
-                    note_above_items, advance_paid_amount, payment_method, status, created_by)
-                 VALUES ("invoice", ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
+                    note_above_items, advance_paid_amount, discount_percent, payment_method, status, created_by)
+                 VALUES ("invoice", ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
             );
             $stmt->execute([
                 $proformaId,
@@ -101,17 +101,20 @@ final class FinalFromProformaCreator
                 $proforma['language'],
                 $noteAbove,
                 $advance,
+                (float) ($proforma['discount_percent'] ?? 0),
                 (string) ($proforma['payment_method'] ?? 'bank_transfer'),
                 $userId ?: null,
             ]);
             $finalId = (int) $pdo->lastInsertId();
 
+            // Položky kopírujeme včetně případné slevové (item_kind='discount') —
+            // zachová částku po slevě. Marker item_kind umožní pozdější re-save přepočítat.
             $itemStmt = $pdo->prepare(
                 'INSERT INTO invoice_items
                    (invoice_id, description, quantity, unit, unit_price_without_vat,
                     vat_rate_id, vat_rate_snapshot,
-                    total_without_vat, total_vat, total_with_vat, order_index)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)'
+                    total_without_vat, total_vat, total_with_vat, order_index, item_kind)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
             );
             foreach ($proforma['items'] as $item) {
                 $itemStmt->execute([
@@ -123,6 +126,7 @@ final class FinalFromProformaCreator
                     $item['vat_rate_id'],
                     $item['vat_rate_snapshot'],
                     $item['order_index'],
+                    (string) ($item['item_kind'] ?? 'standard'),
                 ]);
             }
 

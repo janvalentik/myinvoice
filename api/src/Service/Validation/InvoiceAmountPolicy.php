@@ -81,8 +81,12 @@ final class InvoiceAmountPolicy
         }
 
         $computed = InvoiceMath::compute($mathItems, !empty($data['reverse_charge']));
+        // Sleva na úrovni dokladu (0–100 %) sníží celkovou částku — kontrola pozitivity
+        // musí počítat s částkou PO slevě (sleva se materializuje až v repo při uložení).
+        $discount = max(0.0, min(100.0, (float) ($data['discount_percent'] ?? 0)));
+        $withVat = round((float) $computed['totals']['with_vat'] * (1 - $discount / 100.0), 2);
         $advance = round((float) ($data['advance_paid_amount'] ?? 0), 2);
-        $amountToPay = round((float) $computed['totals']['with_vat'] - $advance, 2);
+        $amountToPay = round($withVat - $advance, 2);
 
         return $amountToPay > 0 ? null : self::NON_POSITIVE_DRAFT_MESSAGE;
     }

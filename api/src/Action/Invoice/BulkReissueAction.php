@@ -117,14 +117,23 @@ final class BulkReissueAction
         $taxDate = $type === 'proforma' ? null : $issueDate;
 
         $pdo = $this->db->pdo();
+
+        // Safeguard: klonujeme do NOVÉHO data — přišpendlené sazby zdrojových položek
+        // musí být platné k DUZP klonu (jinak by se po změně sazby vystavila stará).
+        \MyInvoice\Service\Invoice\VatRateValidityGuard::assertValidOn(
+            $pdo,
+            array_map(static fn ($it) => (int) $it['vat_rate_id'], $source['items']),
+            $taxDate ?? $issueDate,
+        );
+
         $pdo->beginTransaction();
         try {
             $stmt = $pdo->prepare(
                 'INSERT INTO invoices
                    (invoice_type, client_id, project_id, supplier_id,
                     issue_date, tax_date, due_date, currency_id, reverse_charge, language,
-                    note_above_items, note_below_items, payment_method, status, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
+                    note_above_items, note_below_items, discount_percent, payment_method, status, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
             );
             $stmt->execute([
                 $type,
@@ -139,6 +148,7 @@ final class BulkReissueAction
                 $source['language'],
                 $source['note_above_items'],
                 $source['note_below_items'],
+                (float) ($source['discount_percent'] ?? 0),
                 (string) ($source['payment_method'] ?? 'bank_transfer'),
                 $userId,
             ]);
@@ -151,11 +161,13 @@ final class BulkReissueAction
                 'INSERT INTO invoice_items
                    (invoice_id, description, quantity, unit, unit_price_without_vat,
                     vat_rate_id, vat_rate_snapshot,
-                    total_without_vat, total_vat, total_with_vat, order_index, vat_classification_code)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)'
+                    total_without_vat, total_vat, total_with_vat, order_index, item_kind, vat_classification_code)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)'
             );
             foreach ($source['items'] as $item) {
-                $description = $incrementMonth
+                $kind = (string) ($item['item_kind'] ?? 'standard');
+                // Slevovou položku needitujeme přes MonthIncrementer (popis "Sleva X %").
+                $description = ($incrementMonth && $kind !== 'discount')
                     ? \MyInvoice\Service\Invoice\MonthIncrementer::increment((string) $item['description'])
                     : (string) $item['description'];
 
@@ -173,6 +185,7 @@ final class BulkReissueAction
                     $item['vat_rate_id'],
                     $item['vat_rate_snapshot'],
                     $item['order_index'],
+                    $kind,
                     $code !== null ? (string) $code : null,
                 ]);
             }

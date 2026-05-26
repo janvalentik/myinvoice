@@ -275,17 +275,27 @@ final class IdokladImportService
 
         $invoiceType = $this->mapIssuedDocumentType((int) ($i['DocumentType'] ?? 0));
 
+        // Sleva (issue #48/#50): iDoklad drží slevu na hlavičce (DiscountPercentage +
+        // DiscountType) i na položce (Items[].DiscountPercentage). Slevu na úrovni
+        // dokladu (DiscountType=OnDocument=3) mapujeme na naše invoices.discount_percent
+        // — InvoiceRepository::replaceItems z ní dopočítá zápornou položku „Sleva X %".
+        // Položkovou slevu (Individual/Grouped) zapečeme do jednotkové ceny, ať částka
+        // sedí i bez položkové slevy v našem modelu.
+        $docDiscountOnDocument = (int) ($i['DiscountType'] ?? 0) === 3;
+        $docDiscountPercent = $docDiscountOnDocument ? (float) ($i['DiscountPercentage'] ?? 0) : 0.0;
+
         $payload = [
-            'invoice_type'    => $invoiceType,
-            'client_id'       => $clientId,
-            'issue_date'      => (string) ($i['DateOfIssue'] ?? date('Y-m-d')),
-            'tax_date'        => $invoiceType === 'proforma' ? null : (string) ($i['DateOfTaxing'] ?? $i['DateOfIssue'] ?? date('Y-m-d')),
-            'due_date'        => (string) ($i['DateOfMaturity'] ?? $i['DateOfIssue'] ?? date('Y-m-d')),
-            'currency_id'     => $this->resolveCurrencyId((string) ($i['CurrencyCode'] ?? 'CZK'), $supplierId, isActive: true),
-            'reverse_charge'  => false,
-            'language'        => 'cs',
-            'varsymbol'       => $this->sanitizeVarsymbol((string) ($i['VariableSymbol'] ?? $i['DocumentNumber'] ?? '')),
-            'payment_method'  => 'bank_transfer',
+            'invoice_type'     => $invoiceType,
+            'client_id'        => $clientId,
+            'issue_date'       => (string) ($i['DateOfIssue'] ?? date('Y-m-d')),
+            'tax_date'         => $invoiceType === 'proforma' ? null : (string) ($i['DateOfTaxing'] ?? $i['DateOfIssue'] ?? date('Y-m-d')),
+            'due_date'         => (string) ($i['DateOfMaturity'] ?? $i['DateOfIssue'] ?? date('Y-m-d')),
+            'currency_id'      => $this->resolveCurrencyId((string) ($i['CurrencyCode'] ?? 'CZK'), $supplierId, isActive: true),
+            'reverse_charge'   => false,
+            'language'         => 'cs',
+            'varsymbol'        => $this->sanitizeVarsymbol((string) ($i['VariableSymbol'] ?? $i['DocumentNumber'] ?? '')),
+            'payment_method'   => 'bank_transfer',
+            'discount_percent' => $docDiscountPercent,
         ];
 
         $invoiceId = $this->invoices->createDraft($payload, $userId);
@@ -296,11 +306,18 @@ final class IdokladImportService
         foreach (($i['Items'] ?? []) as $idx => $line) {
             $rate = (float) ($line['VatRate'] ?? 0);
             $vatRateId = $this->matchVatRateId($vatRates, $rate);
+            $unitPrice = (float) ($line['UnitPrice'] ?? 0);
+            // Položková sleva se uplatní jen mimo režim OnDocument (tam je sleva už
+            // na hlavičce → zabránit dvojímu odečtu).
+            $itemDiscount = (float) ($line['DiscountPercentage'] ?? 0);
+            if (!$docDiscountOnDocument && $itemDiscount > 0) {
+                $unitPrice = round($unitPrice * (1 - $itemDiscount / 100.0), 4);
+            }
             $items[] = [
                 'description'            => (string) ($line['Name'] ?? $line['Description'] ?? ''),
                 'quantity'               => (float) ($line['Amount'] ?? 1),
                 'unit'                   => (string) ($line['Unit'] ?? 'ks'),
-                'unit_price_without_vat' => (float) ($line['UnitPrice'] ?? 0),
+                'unit_price_without_vat' => $unitPrice,
                 'vat_rate_id'            => $vatRateId,
                 'order_index'            => $idx,
             ];
@@ -383,17 +400,56 @@ final class IdokladImportService
         $vatRates = $this->loadVatRateMap();
         $defaultVatRateId = $this->matchVatRateId($vatRates, 21.0) ?? $this->matchVatRateId($vatRates, 0.0) ?? 0;
 
+        // Sleva (issue #48): přijaté faktury nemají header discount_percent — slevu
+        // z iDokladu (DiscountType=OnDocument) materializujeme rovnou jako zápornou
+        // položku „Sleva X %" na každou sazbu DPH (per-rate split = správné DPH).
+        // Položkovou slevu (Individual/Grouped) zapečeme do jednotkové ceny.
+        $docDiscountOnDocument = (int) ($i['DiscountType'] ?? 0) === 3;
+        $docDiscountPercent = $docDiscountOnDocument ? (float) ($i['DiscountPercentage'] ?? 0) : 0.0;
+
         $items = [];
+        $discountBaseByRate = []; // vat_rate_id => ['rate_id' => int, 'base' => float]
         foreach (($i['Items'] ?? []) as $idx => $line) {
             $rate = (float) ($line['VatRate'] ?? 0);
+            $vatRateId = $this->matchVatRateId($vatRates, $rate) ?? $defaultVatRateId;
+            $qty = (float) ($line['Amount'] ?? 1);
+            $unitPrice = (float) ($line['UnitPrice'] ?? 0);
+            $itemDiscount = (float) ($line['DiscountPercentage'] ?? 0);
+            if (!$docDiscountOnDocument && $itemDiscount > 0) {
+                $unitPrice = round($unitPrice * (1 - $itemDiscount / 100.0), 4);
+            }
             $items[] = [
                 'description'            => (string) ($line['Name'] ?? $line['Description'] ?? ''),
-                'quantity'               => (float) ($line['Amount'] ?? 1),
+                'quantity'               => $qty,
                 'unit'                   => (string) ($line['Unit'] ?? 'ks'),
-                'unit_price_without_vat' => (float) ($line['UnitPrice'] ?? 0),
-                'vat_rate_id'            => $this->matchVatRateId($vatRates, $rate) ?? $defaultVatRateId,
+                'unit_price_without_vat' => $unitPrice,
+                'vat_rate_id'            => $vatRateId,
                 'order_index'            => $idx,
             ];
+            if ($docDiscountPercent > 0) {
+                if (!isset($discountBaseByRate[$vatRateId])) {
+                    $discountBaseByRate[$vatRateId] = ['rate_id' => $vatRateId, 'base' => 0.0];
+                }
+                $discountBaseByRate[$vatRateId]['base'] += round($qty * $unitPrice, 2);
+            }
+        }
+
+        if ($docDiscountPercent > 0 && $discountBaseByRate !== []) {
+            $order = count($items);
+            foreach ($discountBaseByRate as $g) {
+                $disc = round($g['base'] * $docDiscountPercent / 100.0, 2);
+                if ($disc == 0.0) {
+                    continue;
+                }
+                $items[] = [
+                    'description'            => InvoiceRepository::discountLabel($docDiscountPercent, 'cs'),
+                    'quantity'               => 1.0,
+                    'unit'                   => '',
+                    'unit_price_without_vat' => -$disc,
+                    'vat_rate_id'            => $g['rate_id'],
+                    'order_index'            => $order++,
+                ];
+            }
         }
 
         // Auto-detect reverse charge: vendor non-CZ + všechny items vat_rate=0
@@ -614,6 +670,9 @@ final class IdokladImportService
                     throw new \RuntimeException("Klient #{$partnerId} nenalezen — naimportuj nejdřív kontakty.");
                 }
 
+                $docDiscountOnDocument = (int) ($i['DiscountType'] ?? 0) === 3;
+                $docDiscountPercent = $docDiscountOnDocument ? (float) ($i['DiscountPercentage'] ?? 0) : 0.0;
+
                 $payload = [
                     'invoice_type'      => 'credit_note',
                     'parent_invoice_id' => $parentInvoiceId,
@@ -626,6 +685,7 @@ final class IdokladImportService
                     'language'          => 'cs',
                     'varsymbol'         => $this->sanitizeVarsymbol((string) ($i['VariableSymbol'] ?? $i['DocumentNumber'] ?? '')),
                     'payment_method'    => 'bank_transfer',
+                    'discount_percent'  => $docDiscountPercent,
                 ];
                 $invoiceId = $this->invoices->createDraft($payload, $userId);
                 $this->db->pdo()->prepare(
@@ -637,11 +697,16 @@ final class IdokladImportService
                 $items = [];
                 foreach (($i['Items'] ?? []) as $idx => $line) {
                     $rate = (float) ($line['VatRate'] ?? 0);
+                    $unitPrice = (float) ($line['UnitPrice'] ?? 0);
+                    $itemDiscount = (float) ($line['DiscountPercentage'] ?? 0);
+                    if (!$docDiscountOnDocument && $itemDiscount > 0) {
+                        $unitPrice = round($unitPrice * (1 - $itemDiscount / 100.0), 4);
+                    }
                     $items[] = [
                         'description'            => (string) ($line['Name'] ?? $line['Description'] ?? ''),
                         'quantity'               => (float) ($line['Amount'] ?? 1),
                         'unit'                   => (string) ($line['Unit'] ?? 'ks'),
-                        'unit_price_without_vat' => (float) ($line['UnitPrice'] ?? 0),
+                        'unit_price_without_vat' => $unitPrice,
                         'vat_rate_id'            => $this->matchVatRateId($vatRates, $rate),
                         'order_index'            => $idx,
                     ];

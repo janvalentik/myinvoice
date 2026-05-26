@@ -648,7 +648,7 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
                 <td class="px-4 py-2.5 text-center" @click.stop>
                   <!-- Pro koncepty s workflow projektem (nebo s již vytvořeným výkazem)
                        zobraz tlačítko "Výkaz" místo "KONCEPT" badge — rychlý přístup k modalu. -->
-                  <button v-if="inv.status === 'draft' && (inv.project_requires_approval || inv.has_work_report)"
+                  <button v-if="inv.status === 'draft' && (inv.project_requires_approval || inv.has_work_report || inv.recurring_template_id)"
                     @click="openWorkReport(inv.id)"
                     class="cursor-pointer text-xs px-2 py-0.5 rounded border border-primary-500/40 text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1"
                     :title="t('invoice.wr_btn')">
@@ -720,7 +720,7 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
                       :title="t('invoice.reminder_at', { count: inv.reminder_count, date: formatDate(inv.last_reminder_at) })">⚠ {{ inv.reminder_count }}</span>
                     <!-- Pro koncepty s workflow projektem (nebo s již vytvořeným výkazem)
                          zobraz tlačítko "Výkaz" místo "KONCEPT" badge — stejně jako v desktop tabulce. -->
-                    <button v-if="inv.status === 'draft' && (inv.project_requires_approval || inv.has_work_report)"
+                    <button v-if="inv.status === 'draft' && (inv.project_requires_approval || inv.has_work_report || inv.recurring_template_id)"
                       @click="openWorkReport(inv.id)"
                       class="cursor-pointer text-xs px-2 py-0.5 rounded border border-primary-500/40 text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1"
                       :title="t('invoice.wr_btn')">

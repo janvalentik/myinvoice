@@ -41,6 +41,7 @@ export interface RecurringTemplate {
   language: 'cs' | 'en'
   payment_method: PaymentMethod
   reverse_charge: boolean
+  discount_percent: number
   payment_due_days: number
   tax_date_mode: TaxDateMode
   draft_open_mode: DraftOpenMode
@@ -54,6 +55,9 @@ export interface RecurringTemplate {
   status: RecurringStatus
 
   invoices_generated_count?: number
+  /** Poslední chyba (automatického) generování — banner na detailu/seznamu. */
+  last_error?: string | null
+  last_error_at?: string | null
   /** Součet faktury šablony (base + DPH, respektuje reverse_charge) — vrací list(). */
   total_with_vat?: number
   created_at: string
@@ -76,6 +80,7 @@ export interface RecurringTemplatePayload {
   language?: 'cs' | 'en'
   payment_method?: PaymentMethod
   reverse_charge?: boolean
+  discount_percent?: number
   payment_due_days?: number
   tax_date_mode?: TaxDateMode
   draft_open_mode?: DraftOpenMode
@@ -167,6 +172,9 @@ export const recurringApi = {
     api.delete<{ deleted: true }>(`/recurring/${id}`).then(r => r.data),
   pause:  (id: number) => api.post<RecurringTemplate>(`/recurring/${id}/pause`).then(r => r.data),
   resume: (id: number) => api.post<RecurringTemplate>(`/recurring/${id}/resume`).then(r => r.data),
-  runNow: (id: number, issueDate?: string) =>
-    api.post<RunNowResult>(`/recurring/${id}/run-now`, issueDate ? { issue_date: issueDate } : {}).then(r => r.data),
+  runNow: (id: number, issueDate?: string, draft = false) =>
+    api.post<RunNowResult>(`/recurring/${id}/run-now`, {
+      ...(issueDate ? { issue_date: issueDate } : {}),
+      ...(draft ? { draft: true } : {}),
+    }).then(r => r.data),
 }

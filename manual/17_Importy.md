@@ -180,6 +180,12 @@ Klikni **Spustit import**.
 | **credit-notes** | `invoices` se `invoice_type='credit_note'` + parent link na původní fakturu (přes `parent_invoice_id`). |
 | **purchases** | `purchase_invoices` + `purchase_invoice_items` (od v3.6.0). Klient → `clients` s `is_vendor=true`. |
 
+**Sleva** *(od v4.3.0)* — sleva z iDokladu se přenáší: sleva na úrovni dokladu
+(`DiscountType=OnDocument`) se u vydaných faktur uloží jako procentuální sleva
+(viz § 11.4.1), u přijatých jako záporná položka „Sleva X %" po sazbách DPH;
+položková sleva se zapečetí do jednotkové ceny. Importovaná částka tak odpovídá
+iDokladu (dřív se sleva ignorovala a faktura se importovala za plnou cenu).
+
 **Idempotence:** každý záznam má v DB sloupec `idoklad_id`, který se uloží při
 prvním importu. Druhý import téhož období záznamy **přeskočí** (žádné duplicity,
 žádný update existujících — import je čistě additivní).

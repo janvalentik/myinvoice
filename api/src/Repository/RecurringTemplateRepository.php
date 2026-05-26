@@ -120,8 +120,10 @@ final class RecurringTemplateRepository
                        t.frequency, t.day_of_month, t.end_of_month,
                        t.anchor_date, t.end_date, t.next_run_date, t.last_run_date,
                        t.invoice_type, t.currency_id, t.language, t.payment_method,
+                       t.reverse_charge, t.discount_percent,
                        t.payment_due_days, t.draft_open_mode, t.reminder_days_before,
                        t.auto_issue, t.auto_send_email, t.status,
+                       t.last_run_date, t.last_error, t.last_error_at,
                        t.created_at, t.updated_at,
                        c.company_name AS client_company_name,
                        p.name AS project_name,
@@ -185,14 +187,14 @@ final class RecurringTemplateRepository
      * respektuje t.reverse_charge). Použit v list() pro per-řádek i agregaci.
      */
     private const TEMPLATE_TOTAL_SQL =
-        "(SELECT COALESCE(SUM(
+        "((SELECT COALESCE(SUM(
                     ROUND(ri.quantity * ri.unit_price_without_vat, 2)
                   + CASE WHEN t.reverse_charge = 1 THEN 0
                          ELSE ROUND(ROUND(ri.quantity * ri.unit_price_without_vat, 2) * vr.rate_percent / 100, 2) END
                  ), 0)
             FROM recurring_invoice_template_items ri
             JOIN vat_rates vr ON vr.id = ri.vat_rate_id
-           WHERE ri.template_id = t.id)";
+           WHERE ri.template_id = t.id) * (100 - t.discount_percent) / 100)";
 
     /**
      * Načte šablony, u kterých má dnes cron něco udělat — jsou aktivní a jejich
@@ -298,11 +300,11 @@ final class RecurringTemplateRepository
         $sql = 'INSERT INTO recurring_invoice_templates
             (supplier_id, client_id, project_id, name,
              frequency, day_of_month, end_of_month, anchor_date, end_date, next_run_date,
-             invoice_type, currency_id, language, payment_method, reverse_charge,
+             invoice_type, currency_id, language, payment_method, reverse_charge, discount_percent,
              payment_due_days, tax_date_mode, draft_open_mode, reminder_days_before,
              note_above_items, note_below_items,
              increment_month_in_descriptions, auto_issue, auto_send_email, status, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -321,6 +323,7 @@ final class RecurringTemplateRepository
             (string) ($data['language'] ?? 'cs'),
             (string) ($data['payment_method'] ?? 'bank_transfer'),
             !empty($data['reverse_charge']) ? 1 : 0,
+            self::clampDiscountPercent($data['discount_percent'] ?? 0),
             (int) ($data['payment_due_days'] ?? 14),
             self::normalizeTaxDateMode($data['tax_date_mode'] ?? null),
             self::normalizeDraftOpenMode($data['draft_open_mode'] ?? null),
@@ -370,7 +373,7 @@ final class RecurringTemplateRepository
                 anchor_date = ?, end_date = ?,
                 next_run_date = ?,
                 invoice_type = ?, currency_id = ?, language = ?, payment_method = ?,
-                reverse_charge = ?, payment_due_days = ?, tax_date_mode = ?,
+                reverse_charge = ?, discount_percent = ?, payment_due_days = ?, tax_date_mode = ?,
                 draft_open_mode = ?, reminder_days_before = ?,
                 note_above_items = ?, note_below_items = ?,
                 increment_month_in_descriptions = ?, auto_issue = ?, auto_send_email = ?
@@ -390,6 +393,7 @@ final class RecurringTemplateRepository
             (string) ($data['language'] ?? 'cs'),
             (string) ($data['payment_method'] ?? 'bank_transfer'),
             !empty($data['reverse_charge']) ? 1 : 0,
+            self::clampDiscountPercent($data['discount_percent'] ?? 0),
             (int) ($data['payment_due_days'] ?? 14),
             self::normalizeTaxDateMode($data['tax_date_mode'] ?? null),
             self::normalizeDraftOpenMode($data['draft_open_mode'] ?? null),
@@ -401,6 +405,36 @@ final class RecurringTemplateRepository
             !empty($data['auto_send_email']) ? 1 : 0,
             $id,
         ]);
+    }
+
+    private static function clampDiscountPercent(mixed $value): float
+    {
+        $v = is_numeric($value) ? (float) $value : 0.0;
+        return round(max(0.0, min(100.0, $v)), 2);
+    }
+
+    /**
+     * Zaznamená poslední chybu (automatického) generování — zobrazí se jako banner
+     * na detailu šablony. Volá cron při selhání per-šablonu.
+     */
+    public function setLastError(int $id, string $message): void
+    {
+        $msg = mb_substr(trim($message), 0, 500);
+        $this->db->pdo()->prepare(
+            'UPDATE recurring_invoice_templates SET last_error = ?, last_error_at = NOW() WHERE id = ?'
+        )->execute([$msg, $id]);
+    }
+
+    /**
+     * Vynuluje poslední chybu po úspěšném generování (cron i ruční). WHERE guard
+     * zabrání zbytečnému zápisu u zdravých šablon při každém běhu cronu.
+     */
+    public function clearLastError(int $id): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE recurring_invoice_templates SET last_error = NULL, last_error_at = NULL
+              WHERE id = ? AND last_error IS NOT NULL'
+        )->execute([$id]);
     }
 
     private static function normalizeTaxDateMode(mixed $value): string
@@ -496,6 +530,9 @@ final class RecurringTemplateRepository
         }
         if (array_key_exists('total_with_vat', $row)) {
             $row['total_with_vat'] = (float) $row['total_with_vat'];
+        }
+        if (array_key_exists('discount_percent', $row)) {
+            $row['discount_percent'] = (float) $row['discount_percent'];
         }
         return $row;
     }

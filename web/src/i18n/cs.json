@@ -325,6 +325,7 @@
       "pause": "Pozastavit",
       "resume": "Obnovit",
       "run_now": "Vygenerovat teď",
+      "run_now_draft": "Vygenerovat koncept",
       "detail": "Detail",
       "edit": "Upravit",
       "delete": "Smazat"
@@ -338,6 +339,13 @@
     "run_now_submit": "Vygenerovat",
     "run_now_done": "Vygenerována faktura #{id}{varsymbol}",
     "run_now_with_send": "Vygenerována faktura {varsymbol}, odeslána na: {recipients}",
+    "run_now_draft_title": "Vygenerovat koncept faktury",
+    "run_now_draft_hint": "Vytvoří koncept pro zvolené datum — nevystaví ani neodešle. Upravíš a vystavíš ho ručně.",
+    "run_now_draft_submit": "Vytvořit koncept",
+    "run_now_draft_done": "Vytvořen koncept faktury #{id}.",
+    "run_now_draft_period_note": "Koncept se vytvoří pro období s plánovaným vystavením {date} — editovat ho můžeš celý měsíc.",
+    "last_error_title": "Poslední automatické generování selhalo",
+    "last_error_badge": "Generování selhalo",
     "delete_confirm": "Smazat šablonu \"{name}\"?\n\nDosud vygenerované faktury zůstanou — jen ztratí vazbu na šablonu.",
     "deleted": "Šablona smazaná.",
     "saved": "Šablona uložena.",
@@ -347,6 +355,10 @@
     "section_invoice_meta": "Faktura",
     "section_automation": "Automatizace",
     "generated_invoices": "Vygenerované faktury",
+    "amount": "Částka",
+    "amount_total": "Celkem",
+    "amount_czk_hint": "Součet více měn přepočtený na CZK dnešním kurzem ČNB.",
+    "actions_col": "Akce",
     "generated_count": "{n} faktur",
     "badge_from_template": "Pravidelná",
     "badge_from_template_title": "Vygenerováno ze šablony #{id}",
@@ -728,6 +740,10 @@
     "more_actions": "Další akce",
     "items": "Položky",
     "summary": "Sumace",
+    "discount": {
+      "label": "Sleva z celé faktury",
+      "applied": "Sleva"
+    },
     "note": "Poznámka",
     "activity": "Aktivita",
     "classification": {
@@ -1522,6 +1538,7 @@
       "invoice_reminder": "Upomínka faktury",
       "proforma_reminder": "Připomínka zálohové faktury",
       "invoice_approval": "Žádost o schválení výkazu",
+      "recurring_draft_reminder": "Připomínka konceptu (pravidelná fakturace)",
       "password_reset": "Reset hesla",
       "login_otp": "Ověřovací kód pro přihlášení"
     },

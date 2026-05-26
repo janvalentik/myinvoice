@@ -95,6 +95,7 @@ const form = ref<{
   note_above_items: string
   note_below_items: string
   advance_paid_amount: number
+  discount_percent: number
   payment_method: 'bank_transfer' | 'card' | 'cash' | 'other'
   exchange_rate: number | null
   varsymbol: string  // Ruční override čísla faktury (prázdný = generuje se při issue)
@@ -116,6 +117,7 @@ const form = ref<{
   note_above_items: '',
   note_below_items: '',
   advance_paid_amount: 0,
+  discount_percent: 0,
   payment_method: 'bank_transfer',
   exchange_rate: null,
   varsymbol: '',
@@ -283,8 +285,11 @@ onMounted(async () => {
       note_above_items: inv.note_above_items ?? '',
       note_below_items: inv.note_below_items ?? '',
       advance_paid_amount: inv.advance_paid_amount,
+      discount_percent: inv.discount_percent ?? 0,
       payment_method: inv.payment_method ?? 'bank_transfer',
-      items: inv.items.map(i => ({ ...i })),
+      // Slevové položky (item_kind='discount') jsou generované z discount_percent —
+      // do editovatelného seznamu nepatří (jinak by se editovaly / zdvojily při uložení).
+      items: inv.items.filter(i => i.item_kind !== 'discount').map(i => ({ ...i })),
       exchange_rate: inv.exchange_rate ?? null,
       varsymbol: inv.varsymbol ?? '',
       vat_classification_code: (inv as any).vat_classification_code ?? null,
@@ -464,8 +469,6 @@ function moveDown(index: number) {
 // Live výpočet sumace na frontendu (server přepočítá při uložení)
 const computed_totals = computed(() => {
   const breakdown = new Map<number, { rate: number; base: number; vat: number }>()
-  let totalBase = 0
-  let totalVat = 0
 
   for (const item of form.value.items) {
     const vatRate = (form.value.reverse_charge || !supplierIsVatPayer.value)
@@ -473,9 +476,6 @@ const computed_totals = computed(() => {
       : vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0
     const base = round2(item.quantity * item.unit_price_without_vat)
     const vat = round2(base * (vatRate / 100))
-
-    totalBase += base
-    totalVat += vat
 
     if (!breakdown.has(vatRate)) {
       breakdown.set(vatRate, { rate: vatRate, base: 0, vat: 0 })
@@ -485,10 +485,34 @@ const computed_totals = computed(() => {
     b.vat += vat
   }
 
+  // Sleva na úrovni dokladu — odečte se na každé sazbě zvlášť (zrcadlí backend
+  // materializaci záporné položky „Sleva X %" na každou sazbu). Server přepočítá
+  // autoritativně při uložení; tohle je jen live náhled.
+  const pct = Math.min(100, Math.max(0, form.value.discount_percent || 0))
+  let discountAmount = 0
+  if (pct > 0) {
+    for (const b of breakdown.values()) {
+      const disc = round2(b.base * (pct / 100))
+      if (disc === 0) continue
+      b.base = round2(b.base - disc)
+      b.vat = round2(b.vat - round2(disc * (b.rate / 100)))
+      discountAmount = round2(discountAmount + disc)
+    }
+  }
+
+  let totalBase = 0
+  let totalVat = 0
+  for (const b of breakdown.values()) {
+    totalBase = round2(totalBase + b.base)
+    totalVat = round2(totalVat + b.vat)
+  }
+
   return {
-    without_vat: round2(totalBase),
-    vat: round2(totalVat),
+    without_vat: totalBase,
+    vat: totalVat,
     with_vat: round2(totalBase + totalVat),
+    discount_percent: pct,
+    discount_amount: discountAmount,
     amount_to_pay: round2(totalBase + totalVat - form.value.advance_paid_amount),
     breakdown: Array.from(breakdown.values())
       .map(b => ({ rate: b.rate, base: round2(b.base), vat: round2(b.vat) }))
@@ -706,6 +730,7 @@ async function submit() {
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
       advance_paid_amount: form.value.advance_paid_amount,
+      discount_percent: form.value.discount_percent || 0,
       payment_method: form.value.payment_method,
       // Pošli kurz jen pokud uživatel ho má nastavený a měna není CZK — backend bere
       // explicit hodnotu jako manuální override (nepřepočítá z ČNB).
@@ -1149,7 +1174,19 @@ async function deleteDraft() {
 
         <div class="bg-white border border-neutral-200 rounded-lg p-5 shadow-sm">
           <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('invoice.summary') }}</h3>
+          <div class="flex items-center justify-between gap-3 mb-3 pb-3 border-b border-neutral-100">
+            <label for="discount_percent" class="text-sm text-neutral-700">{{ t('invoice.discount.label') }}</label>
+            <div class="relative w-28">
+              <input id="discount_percent" v-model.number="form.discount_percent" type="number" min="0" max="100" step="0.01"
+                class="w-full h-9 pl-2 pr-7 border border-neutral-200 rounded text-right font-mono text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+              <span class="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 text-sm pointer-events-none">%</span>
+            </div>
+          </div>
           <dl class="space-y-1.5 text-sm">
+            <div v-if="computed_totals.discount_amount > 0" class="flex justify-between text-warning-700 pb-1">
+              <dt>{{ t('invoice.discount.applied') }} {{ formatPercent(computed_totals.discount_percent) }}</dt>
+              <dd class="font-mono">−{{ formatMoney(computed_totals.discount_amount, form.currency) }}</dd>
+            </div>
             <template v-if="supplierIsVatPayer">
               <div v-for="b in computed_totals.breakdown" :key="b.rate" class="flex justify-between text-neutral-600">
                 <dt>{{ t('invoice.totals.base') }} {{ formatPercent(b.rate) }}</dt>

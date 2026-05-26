@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.0] — 2026-05-26
+
+Procentuální **sleva na celou fakturu** + oprava importu slev z iDokladu, rozšíření na **pravidelné fakturace** a robustnější generování konceptů.
+
+### Added
+
+- **Procentuální sleva z celkové částky faktury** ([#50](https://github.com/radekhulan/myinvoice/issues/50)) — u vydaných faktur lze zadat slevu v % na úrovni celého dokladu (pole „Sleva z celé faktury"). Sleva se při uložení materializuje jako **záporná položka „Sleva X %"** — účetně nejčistší varianta: rozpadne se **na každou sazbu DPH zvlášť** (správné DPH i u smíšených sazeb) a díky tomu se automaticky promítne do totals, rozpisu DPH i do výkazů (Kniha DPH / EPO DPHDP3 / Kontrolní hlášení). Sleva je vidět v editoru, detailu i v PDF. Přenáší se i při klonování a při vystavení finální faktury k proformě.
+- **Sleva i u pravidelných fakturací** — šablona drží `discount_percent`; vygenerovaná faktura ho zdědí a slevová položka se dopočítá stejně. Sleva je vidět ve formuláři i na detailu šablony.
+- **„Vygenerovat koncept"** u pravidelné fakturace — vedle „Vygenerovat teď" (které respektuje `auto_issue`) lze vytvořit koncept ručně i u šablony s automatickým vystavením. U režimu „koncept na začátku období" volá stejnou idempotentní cestu jako cron (neposouvá rozvrh).
+
+### Fixed
+
+- **Import slevy z iDokladu** ([#48](https://github.com/radekhulan/myinvoice/issues/48)) — faktury (vydané i přijaté) se slevou se importovaly za plnou, předslevovou částku, protože se pole slevy z iDoklad API vůbec nečetlo. Nově se mapuje sleva na úrovni dokladu (`DiscountType=OnDocument`) i položková sleva: u vydaných na `discount_percent`, u přijatých jako záporná položka „Sleva X %" po sazbách. Importovaná částka teď odpovídá iDokladu.
+- **Chybné DPH (0 %) u pravidelných fakturací** — generátor vkládal položky mimo standardní cestu a ukládal `vat_rate_snapshot = 0`, takže vygenerovaná faktura měla nulové DPH a prázdnou klasifikaci pro výkazy. Generátor teď používá kanonickou cestu (správná sazba z `vat_rates` + klasifikační kód).
+- **Rychlá editace výkazu** v seznamu faktur (tlačítko „Výkaz") u faktury se slevou — vynulovávala slevu a zamrazila slevovou položku. Modal teď slevu zachová.
+
+### Changed
+
+- **Tlačítko „Výkaz"** v seznamu faktur je nově dostupné i pro koncepty vygenerované z pravidelné fakturace (dřív jen když už výkaz existoval nebo to vyžadoval projekt).
+- **Ochrana proti vypršelé sazbě DPH** — při generování pravidelné faktury i při klonování se ověří, že přišpendlené sazby jsou platné k datu plnění. Po změně sazby (nový řádek `vat_rates` + `valid_to` na starém) se tak nevystaví doklad se starou sazbou; místo toho přijde jasná chyba.
+- **Banner o selhání generování** na detailu/v seznamu pravidelné fakturace — když cron fakturu nevygeneruje (např. kvůli vypršelé sazbě), uloží se poslední chyba a uživatel ji uvidí přímo u šablony (dřív jen v admin logu jako počet).
+
 ## [4.2.5] — 2026-05-25
 
 Oprava souhrnu v **Knize DPH**.

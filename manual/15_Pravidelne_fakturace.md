@@ -49,6 +49,9 @@ Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu
   U non-bank-transfer se v PDF i e-mailu nezobrazí QR kód ani bankovní
   spojení.
 - **Splatnost** — počet dnů od vystavení
+- **Sleva z celé faktury** — procentuální sleva (0–100 %), kterou zdědí každá
+  vygenerovaná faktura. Na faktuře se projeví jako záporná položka „Sleva X %"
+  (po sazbách DPH) — viz § 11.4.1.
 - **DUZP** *(plátci DPH)* — režim, kterým se počítá datum uskutečnění
   zdanitelného plnění z `issue_date`:
     - **Stejné jako datum vystavení** *(default)* — DUZP = vystavení.
@@ -61,9 +64,14 @@ Tady nastavíš metadata, která se zkopírují na každou vygenerovanou fakturu
 ### 15.2.3 Položky
 
 Položky šablony se 1:1 kopírují na každou vygenerovanou fakturu (popis, mn.,
-cena/j, sazba DPH). DPH sazba se v okamžiku generování přebíjí aktuální
-hodnotou z číselníku (`vat_rates`) — pokud stát mezitím změní sazby, šablona
-se sama přizpůsobí.
+cena/j, sazba DPH). Sazba se bere podle vybraného `vat_rate_id` ze šablony.
+
+> ⚠️ **Změna sazby DPH státem** — sazba je v šabloně přišpendlená na konkrétní
+> řádek číselníku. Když se sazba změní (např. 21 % → 22 %), vznikne v `vat_rates`
+> **nový řádek** a starý dostane konec platnosti. Šablona pak ukazuje na vypršelou
+> sazbu — generování se **zastaví s jasnou chybou** (viz banner v § 15.3) a ty
+> ve šabloně vybereš aktuální sazbu. Tím se nikdy tiše nevystaví doklad se starou
+> sazbou. (Totéž hlídá i klonování faktury.)
 
 ### 15.2.4 Sekce „Automatizace"
 
@@ -139,15 +147,25 @@ Přepínač **„Kdy vytvořit koncept"** má dvě hodnoty:
 - **Expired** — `next_run_date` překročil `end_date`; cron i UI ji odmítají
   spustit, dokud nezvýšíš `end_date`
 
-V seznamu šablon je u každé tlačítko **Pozastavit / Obnovit** a **Vygenerovat
-teď** (jednorázový manuál run — užitečné pro testování nastavení).
+V seznamu (a na detailu) šablony jsou tlačítka **Pozastavit / Obnovit**,
+**Vygenerovat teď** a **Vygenerovat koncept** (jednorázový manuál run —
+užitečné pro testování i pro ruční vytvoření dokladu mimo rozvrh).
 
-Klik na **Vygenerovat teď** otevře modal s **date pickerem** pro datum
-vystavení. Default je dnešní datum (ne `next_run_date` z šablony), aby
-opakovaný klik nevyrobil budoucně-datovanou fakturu. Pod inputem se zobrazí
-plánovaný cron termín pro orientaci; pokud zvolíš datum v budoucnu, modal
-upozorní žlutým warningem, že daňově by `issue_date` mělo odpovídat reálnému
-datu vystavení.
+- **Vygenerovat teď** — respektuje nastavení šablony: u `auto_issue=true`
+  fakturu rovnou vystaví (a případně odešle). Otevře modal s **date pickerem**
+  (default dnešní datum); u budoucího data upozorní žlutým warningem, že daňově
+  by `issue_date` mělo odpovídat reálnému datu vystavení.
+- **Vygenerovat koncept** — vytvoří **koncept** i u šablony s automatickým
+  vystavením (nevystaví, neodešle) — ručně ho pak zkontroluješ a vystavíš.
+  U režimu *Na začátku období* vytvoří přesně ten koncept, který by jinak
+  otevřel cron 1. dne (idempotentní, k plánovanému datu, neposouvá rozvrh) —
+  datum se proto nevybírá a varování o budoucím datu se nezobrazuje (budoucí
+  DUZP je tu záměr, koncept se edituje celý měsíc).
+
+> ⚠️ **Banner „Generování selhalo"** — když poslední automatické (cronové)
+> generování selže (typicky kvůli vypršelé sazbě DPH nebo nekladné částce),
+> uloží se poslední chyba a zobrazí se jako červený banner na detailu šablony
+> a odznak v seznamu. Po úspěšném (ručním i cronovém) vygenerování banner zmizí.
 
 ## 15.4 Cron
 

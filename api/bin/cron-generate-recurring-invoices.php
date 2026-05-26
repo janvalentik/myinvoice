@@ -157,8 +157,12 @@ foreach ($candidates as $t) {
                 $r['new_next_run_date'] ?? '?',
                 $r['template_status'] === 'expired' ? ', EXPIRED' : '');
         }
+        // Úspěch → vyčisti případnou starou chybu (banner na šabloně zmizí).
+        $repo->clearLastError($tplId);
     } catch (\Throwable $e) {
         $report['errors']++;
+        // Zaznamenej chybu na šablonu → uživatel ji uvidí jako banner na detailu/seznamu.
+        $repo->setLastError($tplId, $e->getMessage());
         fprintf(STDERR, "  ✗ #%d \"%s\" — %s\n", $tplId, (string) $t['name'], $e->getMessage());
     }
 }

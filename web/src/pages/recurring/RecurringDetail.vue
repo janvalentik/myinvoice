@@ -116,13 +116,18 @@ async function resumeAction() {
 
 const runNowModal = ref(false)
 const runNowDate = ref('')
+const runNowMode = ref<'issue' | 'draft'>('issue')
+// period_start koncept se vytvoří přes openDraft k plánovanému datu (next_run_date) —
+// datum se nevybírá a varování o budoucím datu nedává smysl.
+const isPeriodDraft = computed(() => runNowMode.value === 'draft' && tpl.value?.draft_open_mode === 'period_start')
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function openRunNow() {
+function openRunNow(mode: 'issue' | 'draft' = 'issue') {
   if (!tpl.value) return
+  runNowMode.value = mode
   runNowDate.value = todayIso()
   runNowModal.value = true
 }
@@ -134,11 +139,14 @@ function closeRunNow() {
 async function submitRunNow() {
   if (!tpl.value) return
   if (!runNowDate.value) return
+  const draft = runNowMode.value === 'draft'
   runNowModal.value = false
   busy.value = true
   try {
-    const r = await recurringApi.runNow(id.value, runNowDate.value)
-    if (r.sent_to.length > 0) {
+    const r = await recurringApi.runNow(id.value, runNowDate.value, draft)
+    if (draft) {
+      toast.success(t('recurring.run_now_draft_done', { id: r.invoice_id }))
+    } else if (r.sent_to.length > 0) {
       toast.success(t('recurring.run_now_with_send', { varsymbol: r.varsymbol ?? `#${r.invoice_id}`, recipients: r.sent_to.join(', ') }))
     } else {
       toast.success(t('recurring.run_now_done', { id: r.invoice_id, varsymbol: r.varsymbol ? ` (${r.varsymbol})` : '' }))
@@ -182,10 +190,15 @@ async function removeAction() {
           </h1>
         </div>
         <div class="flex flex-wrap gap-2">
-          <button v-if="tpl.status === 'active' && auth.canWrite" @click="openRunNow" :disabled="busy"
+          <button v-if="tpl.status === 'active' && auth.canWrite" @click="openRunNow('issue')" :disabled="busy"
             class="cursor-pointer inline-flex items-center gap-1.5 px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0 0 10 9.87v4.263a1 1 0 0 0 1.555.832l3.197-2.132a1 1 0 0 0 0-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
             {{ t('recurring.actions.run_now') }}
+          </button>
+          <button v-if="tpl.status === 'active' && auth.canWrite" @click="openRunNow('draft')" :disabled="busy"
+            class="cursor-pointer inline-flex items-center gap-1.5 px-3 h-9 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 font-medium rounded-md">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"/></svg>
+            {{ t('recurring.actions.run_now_draft') }}
           </button>
           <button v-if="tpl.status === 'active' && auth.canWrite" @click="pauseAction" :disabled="busy"
             class="cursor-pointer inline-flex items-center gap-1.5 px-3 h-9 text-sm border border-warning-500/40 rounded-md text-warning-700 hover:bg-warning-50">
@@ -208,6 +221,13 @@ async function removeAction() {
             {{ t('recurring.actions.delete') }}
           </button>
         </div>
+      </div>
+
+      <!-- Banner: poslední generování (typicky cronem) selhalo -->
+      <div v-if="tpl.last_error" class="rounded-lg border border-danger-200 bg-danger-50 px-4 py-3 text-sm text-danger-700">
+        <div class="font-semibold">⚠ {{ t('recurring.last_error_title') }}</div>
+        <div class="mt-0.5">{{ tpl.last_error }}</div>
+        <div v-if="tpl.last_error_at" class="mt-0.5 text-xs text-danger-600/80">{{ formatDate(tpl.last_error_at) }}</div>
       </div>
 
       <!-- Konfigurace -->
@@ -242,6 +262,7 @@ async function removeAction() {
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('recurring.language') }}</dt><dd>{{ tpl.language.toUpperCase() }}</dd></div>
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('payment_method.label') }}</dt><dd>{{ t('payment_method.' + tpl.payment_method) }}</dd></div>
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('recurring.payment_due_days') }}</dt><dd>{{ tpl.payment_due_days }}</dd></div>
+            <div v-if="tpl.discount_percent > 0" class="flex justify-between"><dt class="text-neutral-500">{{ t('invoice.discount.label') }}</dt><dd>{{ tpl.discount_percent }} %</dd></div>
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('recurring.tax_date_mode') }}</dt><dd>{{ t('recurring.tax_date_mode_' + (tpl.tax_date_mode ?? 'same_as_issue')) }}</dd></div>
           </dl>
         </div>
@@ -378,20 +399,27 @@ async function removeAction() {
          budoucí datum (issue_date = budoucnost je daňově problematické). -->
     <div v-if="runNowModal && tpl" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <h2 class="text-lg font-semibold mb-1">{{ t('recurring.run_now_title') }}</h2>
+        <h2 class="text-lg font-semibold mb-1">{{ runNowMode === 'draft' ? t('recurring.run_now_draft_title') : t('recurring.run_now_title') }}</h2>
         <p class="text-sm text-neutral-600 mb-4">{{ tpl.name }}</p>
+        <p v-if="runNowMode === 'draft'" class="text-xs text-neutral-500 mb-3 -mt-2">{{ t('recurring.run_now_draft_hint') }}</p>
 
-        <label class="block text-sm">
+        <label v-if="!isPeriodDraft" class="block text-sm">
           <span class="text-neutral-700 font-medium">{{ t('recurring.run_now_issue_date_label') }}</span>
           <input v-model="runNowDate" type="date"
             class="mt-1 w-full h-10 px-3 border border-neutral-300 rounded-md" />
         </label>
 
-        <p class="mt-2 text-xs text-neutral-500">
+        <p v-if="isPeriodDraft" class="text-sm text-neutral-700">
+          {{ t('recurring.run_now_draft_period_note', { date: formatDate(tpl.next_run_date) }) }}
+        </p>
+
+        <p v-else class="mt-2 text-xs text-neutral-500">
           {{ t('recurring.run_now_next_scheduled', { date: formatDate(tpl.next_run_date) }) }}
         </p>
 
-        <div v-if="runNowDate > todayIso()" class="mt-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
+        <!-- Varování o budoucím datu jen pro „Vygenerovat teď" (vystavení) — u konceptu
+             je budoucí issue_date záměr (edituje se celý měsíc), takže se nezobrazuje. -->
+        <div v-if="runNowDate > todayIso() && runNowMode !== 'draft'" class="mt-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
           {{ t('recurring.run_now_future_warning') }}
         </div>
 
@@ -402,7 +430,7 @@ async function removeAction() {
           </button>
           <button @click="submitRunNow" type="button" :disabled="!runNowDate || busy"
             class="cursor-pointer h-9 px-3 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">
-            {{ t('recurring.run_now_submit') }}
+            {{ runNowMode === 'draft' ? t('recurring.run_now_draft_submit') : t('recurring.run_now_submit') }}
           </button>
         </div>
       </div>

@@ -952,11 +952,11 @@ async function updateApprovalStatus() {
           </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-          <tr v-for="item in invoice.items" :key="item.id">
+          <tr v-for="item in invoice.items" :key="item.id" :class="item.item_kind === 'discount' ? 'text-warning-700' : ''">
             <td class="px-4 py-2.5 whitespace-pre-wrap">{{ item.description }}</td>
-            <td class="px-4 py-2.5 text-right font-mono">{{ item.quantity }}</td>
-            <td class="px-4 py-2.5 text-neutral-600">{{ item.unit }}</td>
-            <td class="px-4 py-2.5 text-right font-mono">{{ formatMoney(item.unit_price_without_vat, invoice.currency) }}</td>
+            <td class="px-4 py-2.5 text-right font-mono">{{ item.item_kind === 'discount' ? '' : item.quantity }}</td>
+            <td class="px-4 py-2.5 text-neutral-600">{{ item.item_kind === 'discount' ? '' : item.unit }}</td>
+            <td class="px-4 py-2.5 text-right font-mono">{{ item.item_kind === 'discount' ? '' : formatMoney(item.unit_price_without_vat, invoice.currency) }}</td>
             <td v-if="supplierIsVatPayer" class="px-4 py-2.5 text-center text-xs">{{ formatPercent(item.vat_rate_snapshot ?? 0) }}</td>
             <td v-if="supplierIsVatPayer" class="px-4 py-2.5 text-right font-mono">{{ formatMoney(item.total_without_vat ?? 0, invoice.currency) }}</td>
             <td class="px-4 py-2.5 text-right font-mono font-medium">{{ formatMoney(supplierIsVatPayer ? (item.total_with_vat ?? 0) : (item.total_without_vat ?? 0), invoice.currency) }}</td>
@@ -968,8 +968,8 @@ async function updateApprovalStatus() {
       <!-- Mobile: stack karet -->
       <div class="md:hidden divide-y divide-neutral-100">
         <div v-for="item in invoice.items" :key="`m-${item.id}`" class="p-3 space-y-1.5">
-          <div class="text-sm whitespace-pre-wrap text-neutral-900">{{ item.description }}</div>
-          <div class="flex items-baseline justify-between text-xs text-neutral-500">
+          <div class="text-sm whitespace-pre-wrap" :class="item.item_kind === 'discount' ? 'text-warning-700' : 'text-neutral-900'">{{ item.description }}</div>
+          <div v-if="item.item_kind !== 'discount'" class="flex items-baseline justify-between text-xs text-neutral-500">
             <span>
               <span class="font-mono text-neutral-700">{{ item.quantity }}</span>
               <span class="ml-1">{{ item.unit }}</span>

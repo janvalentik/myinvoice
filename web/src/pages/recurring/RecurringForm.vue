@@ -7,6 +7,7 @@ import { clientsApi, type Client, type ViesLookupResult } from '@/api/clients'
 import { projectsApi, type Project } from '@/api/projects'
 import { codebooksApi, type VatRate, type Currency, type Unit } from '@/api/codebooks'
 import { useToast } from '@/composables/useToast'
+import { formatMoney } from '@/composables/useFormat'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
 import ClientFormModal from '@/components/modals/ClientFormModal.vue'
 import ProjectFormModal from '@/components/modals/ProjectFormModal.vue'
@@ -56,6 +57,7 @@ const form = ref<{
   language: 'cs' | 'en'
   payment_method: 'bank_transfer' | 'card' | 'cash' | 'other'
   reverse_charge: boolean
+  discount_percent: number
   payment_due_days: number
   tax_date_mode: 'same_as_issue' | 'previous_month_last_day'
   draft_open_mode: 'at_issue' | 'period_start'
@@ -80,6 +82,7 @@ const form = ref<{
   language: 'cs',
   payment_method: 'bank_transfer',
   reverse_charge: false,
+  discount_percent: 0,
   payment_due_days: 14,
   tax_date_mode: 'same_as_issue',
   draft_open_mode: 'at_issue',
@@ -132,18 +135,56 @@ function round2(n: number): number {
 }
 
 const computedAmountToPay = computed(() => {
-  let totalBase = 0
-  let totalVat = 0
+  const buckets = new Map<number, { base: number; vat: number }>()
   for (const item of form.value.items) {
     const vatRate = form.value.reverse_charge
       ? 0
       : vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0
     const base = round2((Number(item.quantity) || 0) * (Number(item.unit_price_without_vat) || 0))
     const vat = round2(base * (vatRate / 100))
-    totalBase += base
-    totalVat += vat
+    if (!buckets.has(vatRate)) buckets.set(vatRate, { base: 0, vat: 0 })
+    const b = buckets.get(vatRate)!
+    b.base += base
+    b.vat += vat
+  }
+  // Sleva na úrovni dokladu — odečte se na každé sazbě (zrcadlí materializaci
+  // záporné položky „Sleva X %" v generátoru).
+  const pct = Math.min(100, Math.max(0, Number(form.value.discount_percent) || 0))
+  let totalBase = 0
+  let totalVat = 0
+  for (const b of buckets.values()) {
+    let base = b.base
+    let vat = b.vat
+    if (pct > 0) {
+      const disc = round2(base * (pct / 100))
+      const rate = base !== 0 ? (b.vat / b.base) * 100 : 0
+      base = round2(base - disc)
+      vat = round2(vat - round2(disc * (rate / 100)))
+    }
+    totalBase = round2(totalBase + base)
+    totalVat = round2(totalVat + vat)
   }
   return round2(totalBase + totalVat)
+})
+
+const currencyCode = computed(() =>
+  currencies.value.find(c => c.id === form.value.currency_id)?.code ?? 'CZK'
+)
+
+const computedDiscountAmount = computed(() => {
+  const pct = Math.min(100, Math.max(0, Number(form.value.discount_percent) || 0))
+  if (pct <= 0) return 0
+  let disc = 0
+  const buckets = new Map<number, number>()
+  for (const item of form.value.items) {
+    const vatRate = form.value.reverse_charge
+      ? 0
+      : vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0
+    const base = round2((Number(item.quantity) || 0) * (Number(item.unit_price_without_vat) || 0))
+    buckets.set(vatRate, round2((buckets.get(vatRate) ?? 0) + base))
+  }
+  for (const base of buckets.values()) disc = round2(disc + round2(base * (pct / 100)))
+  return disc
 })
 
 // Šablony nemají advance ani parent_invoice_id (vždy generují fresh invoice/proforma),
@@ -317,9 +358,11 @@ onMounted(async () => {
         form.value.language = inv.language
         form.value.payment_method = inv.payment_method ?? 'bank_transfer'
         form.value.reverse_charge = inv.reverse_charge
+        form.value.discount_percent = inv.discount_percent ?? 0
         form.value.note_above_items = inv.note_above_items ?? ''
         form.value.note_below_items = inv.note_below_items ?? ''
-        form.value.items = inv.items.map((it, i) => ({
+        // Slevová položka se do šablony nepřenáší — drží se jako discount_percent.
+        form.value.items = inv.items.filter(it => it.item_kind !== 'discount').map((it, i) => ({
           description: it.description,
           quantity: it.quantity,
           unit: it.unit,
@@ -349,6 +392,7 @@ onMounted(async () => {
         language: tpl.language,
         payment_method: tpl.payment_method,
         reverse_charge: tpl.reverse_charge,
+        discount_percent: tpl.discount_percent ?? 0,
         payment_due_days: tpl.payment_due_days,
         tax_date_mode: tpl.tax_date_mode ?? 'same_as_issue',
         draft_open_mode: tpl.draft_open_mode ?? 'at_issue',
@@ -415,6 +459,7 @@ async function submit() {
       language: form.value.language,
       payment_method: form.value.payment_method,
       reverse_charge: form.value.reverse_charge,
+      discount_percent: form.value.discount_percent || 0,
       payment_due_days: form.value.payment_due_days,
       tax_date_mode: form.value.tax_date_mode,
       draft_open_mode: form.value.draft_open_mode,
@@ -611,6 +656,14 @@ async function submit() {
             <input v-model.number="form.payment_due_days" type="number" min="0"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
           </div>
+          <div>
+            <label for="rec_discount_percent" class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.discount.label') }}</label>
+            <div class="relative">
+              <input id="rec_discount_percent" v-model.number="form.discount_percent" type="number" min="0" max="100" step="0.01"
+                class="w-full h-10 pl-3 pr-8 border border-neutral-300 rounded-md text-right font-mono" />
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none">%</span>
+            </div>
+          </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('recurring.tax_date_mode') }}</label>
             <select v-model="form.tax_date_mode"
@@ -712,6 +765,16 @@ async function submit() {
             </div>
           </div>
         </div>
+        <dl v-if="form.items.length > 0" class="mt-4 ml-auto max-w-xs space-y-1 text-sm">
+          <div v-if="computedDiscountAmount > 0" class="flex justify-between text-warning-700">
+            <dt>{{ t('invoice.discount.applied') }} {{ form.discount_percent }} %</dt>
+            <dd class="font-mono">−{{ formatMoney(computedDiscountAmount, currencyCode) }}</dd>
+          </div>
+          <div class="flex justify-between font-semibold border-t border-neutral-200 pt-1">
+            <dt>{{ t('invoice.totals.total') }}</dt>
+            <dd class="font-mono">{{ formatMoney(computedAmountToPay, currencyCode) }}</dd>
+          </div>
+        </dl>
         <div v-if="hasNonPositiveAmountToPay" class="mt-3 rounded-md border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-700">
           {{ t('invoice.amount_positive_required') }}
         </div>

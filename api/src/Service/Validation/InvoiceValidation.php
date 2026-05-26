@@ -62,6 +62,17 @@ final class InvoiceValidation
             $err['advance_paid_amount'][] = 'Záloha nesmí být záporná';
         }
 
+        if (array_key_exists('discount_percent', $data) && $data['discount_percent'] !== null && $data['discount_percent'] !== '') {
+            if (!is_numeric($data['discount_percent'])) {
+                $err['discount_percent'][] = 'Sleva musí být číslo';
+            } else {
+                $d = (float) $data['discount_percent'];
+                if ($d < 0 || $d > 100) {
+                    $err['discount_percent'][] = 'Sleva musí být mezi 0 a 100 %';
+                }
+            }
+        }
+
         if ($vatRates !== null) {
             $amountError = InvoiceAmountPolicy::validatePositiveAmountToPay($data, $vatRates);
             if ($amountError !== null) {

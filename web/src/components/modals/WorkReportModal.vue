@@ -135,6 +135,9 @@ async function save() {
     // 2. Sync položku v faktuře — najít existující se shodným popisem, nebo přidat novou.
     //    Update kompletního invoice payloadu přes PUT /api/invoices/{id}.
     const inv = await invoicesApi.get(props.invoiceId)
+    // Slevové položky (item_kind='discount') jsou generované z discount_percent —
+    // do payloadu nepatří (backend je stejně ignoruje), jinak by se zdvojily / zamrzly.
+    inv.items = inv.items.filter(it => it.item_kind !== 'discount')
     const desc = wrTitle.value.trim() || t('invoice.work_report')
     const unit = units.value.find(u => u.code === 'ks')?.code || 'ks'
     const existingIdx = inv.items.findIndex(it => (it.description || '').trim() === desc)
@@ -173,6 +176,7 @@ async function save() {
       payment_method: inv.payment_method,
       note_above_items: inv.note_above_items,
       note_below_items: inv.note_below_items,
+      discount_percent: inv.discount_percent ?? 0,
       items: inv.items.map((it, idx) => ({
         description: it.description,
         quantity: it.quantity,

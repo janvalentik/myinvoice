@@ -110,13 +110,26 @@ Automaticky se přepočítává:
 > `0 % (RC)` znamená reverse charge (přenesená daňová povinnost). Sazby mají
 > stejné procento, ale jiný legislativní význam — vybírej dle situace.
 
-### 11.4.1 Sleva
+### 11.4.1 Sleva z celé faktury
 
-Pole **Sleva** podporuje:
+Pole **Sleva z celé faktury** (v sumáři vpravo) je **procentuální sleva (0–100 %)** na
+úrovni celého dokladu — typicky „sleva 10 % z celé faktury".
 
-- `10 %` → procentuální sleva z mezisoučtu
-- `1500` → absolutní sleva v měně faktury
-- `1500 Kč` → totéž
+Jak to funguje:
+
+- Při uložení se sleva **materializuje jako záporná položka „Sleva X %"** přímo mezi
+  položkami faktury (vidíš ji v náhledu, detailu i v PDF).
+- Pokud má faktura **víc sazeb DPH** (např. 21 % + 12 %), rozpadne se na zápornou
+  položku **na každou sazbu zvlášť** — tím zůstává DPH po slevě účetně správně.
+  U běžné faktury s jednou sazbou je to jedna položka „Sleva X %".
+- Díky tomu, že je sleva reálná položka, se promítne do souhrnu, rozpisu DPH
+  i do všech DPH výkazů (Kniha DPH, přiznání DPH, Kontrolní hlášení).
+- Slevovou položku needituješ ručně — generuje se z pole „Sleva"; mění se jen změnou
+  procenta. Při klonování faktury a při vystavení daňového dokladu k proformě se sleva
+  přenáší.
+
+> 💡 **Sleva pevnou částkou** — pevnou slevu (např. −1 500 Kč) zadáš prostě jako běžnou
+> položku se zápornou cenou. Procentuální pole je pro slevu z celé faktury.
 
 ### 11.4.2 Faktura v cizí měně (EUR / USD / …) — přepočet do CZK
 

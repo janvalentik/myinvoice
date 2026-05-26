@@ -59,7 +59,7 @@ final class RecurringInvoiceGenerator
     /**
      * @return array{invoice_id:int, varsymbol:?string, issued:bool, sent_to:list<string>, new_next_run_date:?string, template_status:string}
      */
-    public function generate(int $templateId, ?string $forcedIssueDate = null, ?int $userId = null, string $ip = '', string $ua = 'cron'): array
+    public function generate(int $templateId, ?string $forcedIssueDate = null, ?int $userId = null, string $ip = '', string $ua = 'cron', bool $forceDraft = false): array
     {
         $template = $this->templates->find($templateId);
         if ($template === null) {
@@ -87,6 +87,7 @@ final class RecurringInvoiceGenerator
             'invoice_type' => (string) ($template['invoice_type'] ?? 'invoice'),
             'advance_paid_amount' => 0,
             'reverse_charge' => !empty($template['reverse_charge']),
+            'discount_percent' => (float) ($template['discount_percent'] ?? 0),
             'items' => $template['items'],
         ], $this->invoices->vatRateMap());
         if ($amountError !== null) {
@@ -97,8 +98,17 @@ final class RecurringInvoiceGenerator
         $this->calc->recompute($invoiceId);
         $this->rateApplier->applyToInvoice($invoiceId);
 
-        ['issued' => $issued, 'sent_to' => $sentTo, 'varsymbol' => $varsymbol] =
-            $this->performIssue($invoiceId, $template, $userId, $ip, $ua);
+        // forceDraft = ruční „Vygenerovat koncept" — vždy nech draft (i u auto_issue=true),
+        // uživatel ho pak vystaví/upraví ručně. Rozvrh posouváme stejně jako u běžné
+        // generace, aby cron tutéž periodu nevygeneroval podruhé.
+        if ($forceDraft) {
+            $issued = false;
+            $sentTo = [];
+            $varsymbol = null;
+        } else {
+            ['issued' => $issued, 'sent_to' => $sentTo, 'varsymbol' => $varsymbol] =
+                $this->performIssue($invoiceId, $template, $userId, $ip, $ua);
+        }
 
         ['next' => $newNext, 'status' => $newStatus] =
             $this->advanceTemplateSchedule($templateId, $template, $issueDate);
@@ -162,6 +172,7 @@ final class RecurringInvoiceGenerator
             'invoice_type' => (string) ($template['invoice_type'] ?? 'invoice'),
             'advance_paid_amount' => 0,
             'reverse_charge' => !empty($template['reverse_charge']),
+            'discount_percent' => (float) ($template['discount_percent'] ?? 0),
             'items' => $template['items'],
         ], $this->invoices->vatRateMap());
         if ($amountError !== null) {
@@ -227,6 +238,7 @@ final class RecurringInvoiceGenerator
                     'invoice_type' => (string) ($template['invoice_type'] ?? 'invoice'),
                     'advance_paid_amount' => 0,
                     'reverse_charge' => !empty($template['reverse_charge']),
+                    'discount_percent' => (float) ($template['discount_percent'] ?? 0),
                     'items' => $template['items'],
                 ], $this->invoices->vatRateMap());
                 if ($amountError !== null) {
@@ -332,15 +344,24 @@ final class RecurringInvoiceGenerator
             ? null
             : self::computeTaxDate($issueDate, (string) ($template['tax_date_mode'] ?? 'same_as_issue'));
 
+        // Safeguard: přišpendlené sazby šablony musí být platné k DUZP (u proformy k issue).
+        // Brání tichému vystavení se starou sazbou po její změně (nový řádek vat_rates).
+        VatRateValidityGuard::assertValidOn(
+            $pdo,
+            array_map(static fn ($it) => (int) $it['vat_rate_id'], $template['items']),
+            $taxDate ?? $issueDate,
+        );
+
         $pdo->beginTransaction();
         try {
+            $discountPercent = round(max(0.0, min(100.0, (float) ($template['discount_percent'] ?? 0))), 2);
             $stmt = $pdo->prepare(
                 'INSERT INTO invoices
                    (invoice_type, client_id, project_id, supplier_id,
                     issue_date, tax_date, due_date, currency_id, reverse_charge, language,
-                    note_above_items, note_below_items, payment_method,
+                    note_above_items, note_below_items, payment_method, discount_percent,
                     recurring_template_id, status, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
             );
             $stmt->execute([
                 $type,
@@ -356,6 +377,7 @@ final class RecurringInvoiceGenerator
                 $template['note_above_items'] ?? null,
                 $template['note_below_items'] ?? null,
                 (string) ($template['payment_method'] ?? 'bank_transfer'),
+                $discountPercent,
                 (int) $template['id'],
                 $userId,
             ]);
@@ -368,34 +390,26 @@ final class RecurringInvoiceGenerator
                 ? new \DateTimeImmutable($taxDate ?? $issueDate)
                 : null;
 
-            $itemStmt = $pdo->prepare(
-                'INSERT INTO invoice_items
-                   (invoice_id, description, quantity, unit, unit_price_without_vat,
-                    vat_rate_id, vat_rate_snapshot,
-                    total_without_vat, total_vat, total_with_vat, order_index)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)'
-            );
-
-            // VAT snapshot — pro účely insertu (recompute pak přepočítá z aktuální vat_rates.rate_percent;
-            // sem dáváme rozumný initial 0, calc to přebije). Bez tohoto INSERTu by hodily NOT NULL.
-            // Pozn.: BulkReissue ukládá `vat_rate_snapshot` z položky source faktury — my v šabloně
-            // snapshot nedržíme, takže necháme 0 a recompute si poradí.
+            // Položky vkládáme přes kanonickou InvoiceRepository::replaceItems — ta nastaví
+            // SPRÁVNÝ vat_rate_snapshot (z aktuální vat_rates), vat_classification_code
+            // i zmaterializuje slevovou položku z header discount_percent. Tím se recurring
+            // chová stejně jako běžná faktura (dřív se vkládal snapshot=0 → DPH vycházela 0
+            // a kódy byly NULL).
+            $items = [];
             foreach ($template['items'] as $item) {
                 $description = $syncTarget !== null
                     ? MonthSynchronizer::syncTo((string) $item['description'], $syncTarget)
                     : (string) $item['description'];
-
-                $itemStmt->execute([
-                    $newId,
-                    $description,
-                    (float) $item['quantity'],
-                    (string) $item['unit'],
-                    (float) $item['unit_price_without_vat'],
-                    (int) $item['vat_rate_id'],
-                    0,  // vat_rate_snapshot — recompute() ho přebije z vat_rates.rate_percent
-                    (int) $item['order_index'],
-                ]);
+                $items[] = [
+                    'description'            => $description,
+                    'quantity'               => (float) $item['quantity'],
+                    'unit'                   => (string) $item['unit'],
+                    'unit_price_without_vat' => (float) $item['unit_price_without_vat'],
+                    'vat_rate_id'            => (int) $item['vat_rate_id'],
+                    'order_index'            => (int) $item['order_index'],
+                ];
             }
+            $this->invoices->replaceItems($newId, $items);
 
             $pdo->commit();
             return $newId;
