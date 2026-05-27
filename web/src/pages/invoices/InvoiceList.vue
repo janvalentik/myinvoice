@@ -344,7 +344,7 @@ const DEFAULT_YEAR = new Date().getFullYear()
 onMounted(async () => {
   loadFiltersFromQuery(route.query)
   // Načti seznam klientů + měn pro select (paralelně s prvním load)
-  clientsApi.list({ archived: false, per_page: 200 }).then(r => { clients.value = r.data }).catch(() => {})
+  clientsApi.list({ archived: false, per_page: 200, role: 'customers' }).then(r => { clients.value = r.data }).catch(() => {})
   codebooksApi.currencies().then(r => {
     const seen = new Set<string>()
     currencies.value = r.filter(c => c.is_active && !seen.has(c.code) && seen.add(c.code))

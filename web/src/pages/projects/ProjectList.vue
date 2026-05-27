@@ -53,7 +53,7 @@ async function load(reset = true) {
 }
 
 async function loadClients() {
-  const r = await clientsApi.list({ archived: false, per_page: 200 })
+  const r = await clientsApi.list({ archived: false, per_page: 200, role: 'customers' })
   clients.value = r.data
 }
 

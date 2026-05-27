@@ -17,6 +17,8 @@ import { apiErrorMessage } from '@/api/errors'
 import { useYearOptions } from '@/composables/useYearOptions'
 import TableSkeleton from '@/components/ui/TableSkeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import SearchableSelect from '@/components/ui/SearchableSelect.vue'
+import { clientsApi, type Client } from '@/api/clients'
 
 const { t, locale } = useI18n()
 const auth = useAuthStore()
@@ -46,6 +48,8 @@ const overdueOnly = ref(false)
 const unpaidOnly = ref(false)
 const needsReviewOnly = ref(false)
 const currencyFilter = ref('')
+const vendorFilter = ref<number | ''>('')
+const vendors = ref<Client[]>([])
 
 // Hromadné akce
 const selectedIds = ref<number[]>([])
@@ -62,6 +66,9 @@ const DEFAULT_YEAR = new Date().getFullYear()
 onMounted(() => {
   loadFiltersFromQuery(route.query)
   load()
+  // Dodavatelé pro filtr (jen dodavatelé — přijaté faktury chodí od nich).
+  clientsApi.list({ archived: false, per_page: 200, role: 'vendors' })
+    .then(r => { vendors.value = r.data }).catch(() => {})
 })
 
 function loadFiltersFromQuery(q: typeof route.query) {
@@ -77,6 +84,7 @@ function loadFiltersFromQuery(q: typeof route.query) {
   dateFrom.value     = typeof q.from === 'string' ? q.from : ''
   dateTo.value       = typeof q.to === 'string' ? q.to : ''
   currencyFilter.value = typeof q.currency === 'string' ? q.currency : ''
+  vendorFilter.value = typeof q.vendor === 'string' && q.vendor !== '' ? Number(q.vendor) : ''
   search.value       = typeof q.q === 'string' ? q.q : ''
 }
 
@@ -93,6 +101,7 @@ function syncFiltersToUrl() {
   if (dateFrom.value) q.from = dateFrom.value
   if (dateTo.value) q.to = dateTo.value
   if (currencyFilter.value) q.currency = currencyFilter.value
+  if (vendorFilter.value !== '') q.vendor = String(vendorFilter.value)
   if (overdueOnly.value) q.overdue = '1'
   if (unpaidOnly.value) q.unpaid = '1'
   if (needsReviewOnly.value) q.needs_review = '1'
@@ -101,7 +110,7 @@ function syncFiltersToUrl() {
 }
 
 watch([statusFilter, kindFilter, yearFilter, monthFilter, dateFrom, dateTo,
-       overdueOnly, unpaidOnly, needsReviewOnly, currencyFilter], () => {
+       overdueOnly, unpaidOnly, needsReviewOnly, currencyFilter, vendorFilter], () => {
   syncFiltersToUrl()
   load()
 })
@@ -126,6 +135,7 @@ watch(() => route.query, (newQ) => {
     unpaidOnly.value = false
     needsReviewOnly.value = false
     currencyFilter.value = ''
+    vendorFilter.value = ''
     search.value = ''
     // Uvolnit po flush (watch effects)
     setTimeout(() => { suppressUrlSync = false }, 0)
@@ -177,6 +187,7 @@ async function load(reset = true) {
       date_from:     dateFrom.value     || undefined,
       date_to:       dateTo.value       || undefined,
       currency:      currencyFilter.value || undefined,
+      vendor_id:     vendorFilter.value   || undefined,
       unpaid_only:   unpaidOnly.value   || undefined,
       overdue:       overdueOnly.value  || undefined,
       needs_review:  needsReviewOnly.value || undefined,
@@ -392,6 +403,14 @@ async function bulkDelete() {
           <option value="credit_note">{{ t('purchase_invoice.document_kind.credit_note') }}</option>
           <option value="advance">{{ t('purchase_invoice.document_kind.advance') }}</option>
         </select>
+        <div class="min-w-48 flex-1 max-w-xs">
+          <SearchableSelect
+            :model-value="vendorFilter === '' ? null : vendorFilter"
+            @update:model-value="(v) => vendorFilter = v === null ? '' : Number(v)"
+            :options="vendors.map(c => ({ value: c.id, label: c.company_name, secondary: c.ic ?? undefined }))"
+            :placeholder="t('purchase_invoice.filters.all_vendors')"
+          />
+        </div>
         <select v-model="yearFilter" :disabled="!!dateFrom || !!dateTo"
           class="h-9 px-3 border border-neutral-300 rounded-md bg-white text-sm disabled:opacity-50">
           <option value="">{{ t('invoice.all_years') }}</option>
