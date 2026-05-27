@@ -269,6 +269,57 @@ final class KhDphTaxScenariosTest extends TestCase
     }
 
     /**
+     * Daňově korektní zařazení do období když se DUZP a datum vystavení rozcházejí
+     * přes hranici měsíce (DUZP 06/2099, vystaveno 07/2099):
+     *
+     *   - VYSTAVENÁ → patří do června (daň na výstupu vzniká k DUZP),
+     *   - PŘIJATÁ   → patří do července (odpočet nelze uplatnit dřív, než plátce drží
+     *                 daňový doklad — § 73 ZDPH; zpětný DUZP nepřesune doklad do června).
+     */
+    public function testStraddlingMonthAssignsIssuedByDuzpAndReceivedByLater(): void
+    {
+        $custDic = $this->client('Odběratel přelom', $this->czId, 'CZ66666664', customer: true);
+        $vendDic = $this->client('Dodavatel přelom', $this->czId, 'CZ77777771', vendor: true);
+
+        $juneTax = sprintf('%04d-06-25', self::YEAR);  // DUZP červen
+        $julyIss = sprintf('%04d-07-05', self::YEAR);  // vystaveno červenec
+
+        // VF: DUZP 25.6., vystavená 5.7. → základ 7000
+        $this->sale('2099069001', $custDic, '1', false, $julyIss, $juneTax, [[7000, 1470, 21]]);
+        // PF: DUZP 25.6., vystavená 5.7. → základ 5000
+        $this->purchase('P-2099-901', $vendDic, '40', false, 'invoice', $julyIss, $juneTax, [[5000, 1050, 21]]);
+
+        $sectionsFor = function (int $month): array {
+            $book = $this->book->build($this->supplierId, self::YEAR, $month);
+            $sec = [];
+            foreach ($book['sections'] as $s) $sec[$s['key']] = $s;
+            return $sec;
+        };
+
+        // ── ČERVEN: jen vystavená (DUZP), přijatá tu NESMÍ být ──
+        $june = $sectionsFor(6);
+        $this->assertArrayHasKey('36.001', $june, 'VF s DUZP 06 patří do června');
+        $this->assertEqualsWithDelta(7000, $june['36.001']['subtotal_base'], 0.01);
+        $this->assertArrayNotHasKey('15.040', $june,
+            'PF vystavená až 07 NESMÍ být v červnu (odpočet nelze uplatnit před doručením dokladu)');
+
+        // ── ČERVENEC: jen přijatá (pozdější datum), vystavená je už v červnu ──
+        $july = $sectionsFor(7);
+        $this->assertArrayHasKey('15.040', $july, 'PF vystavená 07 patří do července');
+        $this->assertEqualsWithDelta(5000, $july['15.040']['subtotal_base'], 0.01);
+        $this->assertArrayNotHasKey('36.001', $july, 'VF se řadí dle DUZP (červen), ne dle vystavení');
+
+        // ── Totéž musí platit i pro oficiální DPHDP3 (sdílí VatLedgerService) ──
+        $dphJune = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, 6, 'monthly')['xml']))->DPHDP3;
+        $this->assertSame('7000', (string) $dphJune->Veta1['obrat23'], 'DPHDP3/06 ř.1: VF dle DUZP');
+        $this->assertNotSame('5000', (string) $dphJune->Veta4['pln23'], 'DPHDP3/06 ř.40: PF tu být NESMÍ');
+
+        $dphJuly = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, 7, 'monthly')['xml']))->DPHDP3;
+        $this->assertSame('5000', (string) $dphJuly->Veta4['pln23'], 'DPHDP3/07 ř.40: PF dle pozdějšího data');
+        $this->assertNotSame('7000', (string) $dphJuly->Veta1['obrat23'], 'DPHDP3/07 ř.1: VF tu být NESMÍ');
+    }
+
+    /**
      * Regrese: faktura s vat_deduction='none' (bez nároku na odpočet — reprezentace
      * apod.) NESMÍ vstoupit do Knihy DPH, DPHDP3 (ř.40) ani KH. Plný nárok ano.
      */

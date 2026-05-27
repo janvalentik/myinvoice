@@ -10,7 +10,11 @@ use MyInvoice\Infrastructure\Database\Connection;
  * Kanonický producent VAT řádků — JEDNO místo se sdílenou logikou pro všechny
  * tři daňové reporty (DPH přiznání, kontrolní hlášení, Kniha DPH):
  *
- *   - filtr období: COALESCE(tax_date, issue_date) v rozsahu
+ *   - filtr období (daňově korektní zařazení do měsíce):
+ *       * vystavené → COALESCE(tax_date, issue_date) = DUZP (daň na výstupu k DUZP),
+ *       * přijaté → GREATEST(DUZP, vystavení) — nárok na odpočet nejdřív, když plátce
+ *         drží daňový doklad (§ 73 ZDPH); zpětné DUZP tak padne do měsíce vystavení.
+ *     (Zobrazený sloupec tax_date dál nese skutečné DUZP, mění se jen příslušnost k období.)
  *   - filtr stavu: bez 'cancelled'; 'draft' jen pokud $includeDrafts (Kniha ano,
  *     DPH/KH ne); u vystavených navíc bez 'proforma'
  *   - resolve klasifikačního kódu: řádek → hlavička → auto-default dle sazby + RC + směru
@@ -167,8 +171,23 @@ final class VatLedgerService
              WHERE pi.supplier_id = ?
                AND {$statusFilter}
                AND pi.vat_deduction <> 'none'
-               AND COALESCE(pi.tax_date, pi.issue_date) BETWEEN ? AND ?
-          ORDER BY COALESCE(pi.tax_date, pi.issue_date), pi.id, pii.id
+               -- Období odpočtu = pozdější z (DUZP, vystavení). Nárok na odpočet nelze
+               -- uplatnit dřív, než plátce drží daňový doklad (§ 73 odst. 2 ZDPH), takže
+               -- faktura se zpětným DUZP, ale vystavená v pozdějším měsíci, spadá do
+               -- měsíce vystavení. (Zobrazený sloupec tax_date dál ukazuje skutečné DUZP.)
+               -- CASE místo GREATEST kvůli přenositelnosti (SQLite v testech GREATEST nemá).
+               AND CASE
+                       WHEN pi.tax_date IS NULL THEN pi.issue_date
+                       WHEN pi.issue_date IS NULL THEN pi.tax_date
+                       WHEN pi.tax_date >= pi.issue_date THEN pi.tax_date
+                       ELSE pi.issue_date
+                   END BETWEEN ? AND ?
+          ORDER BY CASE
+                       WHEN pi.tax_date IS NULL THEN pi.issue_date
+                       WHEN pi.issue_date IS NULL THEN pi.tax_date
+                       WHEN pi.tax_date >= pi.issue_date THEN pi.tax_date
+                       ELSE pi.issue_date
+                   END, pi.id, pii.id
         ");
         $stmt->execute([$supplierId, $start, $end]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);

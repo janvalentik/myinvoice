@@ -65,9 +65,10 @@ final class DphPriznaniAction
      *   { year, month, period, vat_output, vat_input, tax_due,
      *     sale_count, sale_draft_count, purchase_count, purchase_draft_count }
      *
-     * Pravidla:
-     * - Období vymezeno `COALESCE(tax_date, issue_date) BETWEEN start AND end`
-     *   (drafty často DUZP zatím nemají — `tax_date` může být NULL).
+     * Pravidla (zařazení do období řeší VatLedgerService — viz tam):
+     * - vystavené dle DUZP `COALESCE(tax_date, issue_date)`, přijaté dle pozdějšího
+     *   z (DUZP, vystavení) `GREATEST(...)` — odpočet nelze uplatnit dřív, než plátce
+     *   drží daňový doklad (§ 73 ZDPH). Drafty často DUZP nemají (`tax_date` NULL).
      * - sale (vydané): invoice_type IN (invoice, credit_note), status NOT IN
      *   (cancelled), tedy bere finalizované doklady i koncepty pro zvolené
      *   období.
