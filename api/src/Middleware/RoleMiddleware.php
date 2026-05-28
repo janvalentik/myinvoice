@@ -66,6 +66,9 @@ final class RoleMiddleware implements MiddlewareInterface
         '* #^/api/work-reports(/|$)#',
         '* #^/api/bank-statements(/|$)#',
         '* #^/api/bank-transactions(/|$)#',
+        // Dokumenty — účetní smí zakládat/upravovat/mazat (do koše) + spravovat složky
+        '* #^/api/documents(/|$)#',
+        '* #^/api/document-folders(/|$)#',
         // Codebooks read-only přes API (admin endpointy mají zvláštní cestu /api/admin/codebooks)
         'GET #^/api/codebooks(/|$)#',
         // ZIP export může i účetní (read of mass PDF)

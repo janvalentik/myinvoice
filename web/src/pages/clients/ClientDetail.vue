@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -760,5 +761,6 @@ async function deleteClient() {
         </div>
       </div>
     </div>
+    <LinkedDocumentsPanel v-if="client" class="mt-4 block" entity-type="client" :entity-id="client.id" />
   </div>
 </template>

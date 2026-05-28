@@ -112,8 +112,15 @@ $wipe = [
     'purchase_invoices',
     'purchase_invoice_counters',     // per-tenant counter PF-YYYYMM-NNNN (migrace 0026)
     'expense_categories',            // per-tenant kategorie nákladů (migrace 0035)
+    // Dokumenty (sekce Dokumenty — plán 11)
+    'document_links',                // polymorfní vazby dokument↔entita
+    'document_tag_map',
+    'document_tags',
+    'document_dms_messages',         // ISDS metadata ZFO
+    'documents',
+    'document_folders',
     // Import jobs + AI extractions (fáze 2a/2b/2c)
-    'import_jobs',                   // iDoklad/Fakturoid background jobs
+    'import_jobs',                   // iDoklad/Fakturoid/dokumenty background jobs
     'import_job_logs',               // (pokud existuje — log za jobs)
     'ai_extractions',                // AI extract history (jen pokud table existuje)
     // CRM aggregate cache
@@ -187,6 +194,7 @@ $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
 $dirs = [
     \MyInvoice\Infrastructure\Config\RuntimePaths::storage('invoices'),
     \MyInvoice\Infrastructure\Config\RuntimePaths::storage('purchase-invoices'),  // archive PDF dodavatelů (fáze 1)
+    \MyInvoice\Infrastructure\Config\RuntimePaths::storage('documents'),          // sekce Dokumenty (soubory, náhledy, joby)
     \MyInvoice\Infrastructure\Config\RuntimePaths::storage('cache/mpdf'),
     \MyInvoice\Infrastructure\Config\RuntimePaths::storage('cache/twig'),
 ];

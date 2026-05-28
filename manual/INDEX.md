@@ -59,6 +59,7 @@ nasazuje). Zbytek je psaný pro běžného uživatele — bez programátorského
 23. [CRM dashboard (revenue/costs/profit/aging/DSO)](23_CRM.md) — **nové ve v4.0.0**
 24. [Výkazy DPH (DPHDP3 + KH + SH)](24_Vykazy_DPH.md) — **nové ve v4.0.0**
 25. [Daň z příjmů (DPFO / DPPO)](25_Dan_z_prijmu.md) — **nové ve v4.0.0** (MVP foundation)
+26. [Dokumenty (úložiště souborů, ZFO, párování)](26_Dokumenty.md) — **nové**
 
 ### Reference
 

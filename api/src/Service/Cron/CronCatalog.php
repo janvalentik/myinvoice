@@ -58,6 +58,15 @@ final class CronCatalog
                 'critical' => false,
             ],
             [
+                'script' => 'cron-backup-documents',
+                'recommended' => 'daily_0235',
+                'linux_cron' => '35 2 * * *',
+                'windows_schtasks' => '/sc daily /st 02:35',
+                'max_age_hours' => 36,
+                'weekdays_only' => false,
+                'critical' => false,
+            ],
+            [
                 'script' => 'cron-bank-scan',
                 'recommended' => 'every_30_min',
                 'linux_cron' => '*/30 * * * *',

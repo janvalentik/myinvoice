@@ -91,6 +91,16 @@ alternativa s důrazem na:
 
 ![CRM dashboard — KPI, monthly trend, aging, DSO, concentration risk](manual/img/23_crm.webp)
 
+### 📁 Dokumenty — **nové**
+- **Úložiště souborů** (PDF, DOC/XLS, XML, obrázky, ZIP…) se **stromem složek**, tagy a fulltextem
+- **Nahrávání celých adresářů** (drag & drop nebo výběr složky) — struktura podsložek se zrekonstruuje
+- **ZIP dvojí režim** — rozbalit a kategorizovat (vč. podsložek), nebo nechat jako jeden archiv
+- **ZFO datové zprávy** — automatické rozbalení: metadata zprávy (ID, odesílatel/příjemce, předmět, datumy) + přílohy jako samostatné dokumenty + napárování P7S podpisů
+- **Fulltext v obsahu** — PDF (textová vrstva), Office a XML se indexují (MariaDB FULLTEXT)
+- **Oboustranné párování** — dokument navážeš na vydanou/přijatou fakturu, klienta nebo zakázku; našeptávač hledá podle čísla dokladu, firmy, e-mailu, IČ/DIČ i projektu
+- **Inline náhled** PDF/obrázků + thumbnaily, **hromadné akce** (přesun/smazat/tag/ZIP), **koš** s obnovou a vysypáním
+- **Vlastní záloha** (`cron-backup-documents`) oddělená od PDF backupu; bezpečný upload (MIME dle obsahu, anti zip-bomb, Zip Slip, XXE)
+
 ### 💳 Platby
 - **QR platby** přímo v PDF: SPAYD pro CZK, SEPA EPC pro EUR
 - **Import GPC** výpisů (ABO formát, KB / FIO / ČSOB / RB / ČS) s SHA256 dedupe

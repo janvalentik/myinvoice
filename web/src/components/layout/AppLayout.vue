@@ -76,6 +76,7 @@ const ICONS = {
   api_tokens: 'M15 7a2 2 0 0 1 2 2m4 0a6 6 0 0 1-7.743 5.743L11 17H9v2H7v2H4a1 1 0 0 1-1-1v-2.586a1 1 0 0 1 .293-.707l5.964-5.964A6 6 0 1 1 21 9z',
   help:       'M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827V14m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   ai:         'M13 10V3L4 14h7v7l9-11h-7z',
+  documents:  'M7 21h10a2 2 0 0 0 2-2V9.414a1 1 0 0 0-.293-.707l-5.414-5.414A1 1 0 0 0 12.586 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2zM9 13h6m-6 4h6',
   // Daně sekce — různé ikony pro každý report
   tax_dph:    'M3 10h18M3 14h18M5 21V3a1 1 0 011-1h12a1 1 0 011 1v18M9 7h6M9 11h6M9 15h6',
   tax_kh:     'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
@@ -124,6 +125,13 @@ const navSections = computed<NavSection[]>(() => {
         { to: '/stats',          label: t('nav.stats'),          icon: ICONS.stats },
         { to: '/purchase-stats', label: t('nav.purchase_stats'), icon: ICONS.purchase },
         { to: '/bank',           label: t('nav.bank'),           icon: ICONS.bank },
+      ],
+    },
+    {
+      title: t('nav.section_documents'),
+      accent: 'neutral',
+      items: [
+        { to: '/documents', label: t('nav.documents'), icon: ICONS.documents },
       ],
     },
     {

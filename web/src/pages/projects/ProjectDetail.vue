@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -334,5 +335,6 @@ async function deleteProject() {
         </button>
       </div>
     </div>
+    <LinkedDocumentsPanel v-if="project" class="mt-4 block" entity-type="project" :entity-id="project.id" />
   </div>
 </template>

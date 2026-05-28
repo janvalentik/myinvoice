@@ -121,6 +121,12 @@ use MyInvoice\Action\Auth\Tokens\CreateTokenAction;
 use MyInvoice\Action\Auth\Tokens\ListTokensAction;
 use MyInvoice\Action\Auth\Tokens\RevokeTokenAction;
 use MyInvoice\Action\Auth\TotpAction;
+use MyInvoice\Action\Document\FoldersAction;
+use MyInvoice\Action\Document\DocumentsAction;
+use MyInvoice\Action\Document\UploadDocumentAction;
+use MyInvoice\Action\Document\DocumentFileAction;
+use MyInvoice\Action\Document\LinkSearchAction;
+use MyInvoice\Action\Document\DocumentJobsAction;
 use MyInvoice\Action\System\HealthAction;
 use MyInvoice\Action\System\OpenApiAction;
 use MyInvoice\Action\System\VersionAction;
@@ -451,6 +457,44 @@ final class Routes
         $app->post ('/api/bank-transactions/{id:[0-9]+}/unmatch', [BankStatementAction::class, 'unmatch']);
         $app->post ('/api/bank-transactions/{id:[0-9]+}/ignore',  [BankStatementAction::class, 'ignore']);
         $app->post ('/api/bank-transactions/{id:[0-9]+}/create-purchase-invoice', [BankStatementAction::class, 'createPurchaseInvoice']);
+
+        // Dokumenty (sekce Dokumenty — plán source/11)
+        // Specifické cesty PŘED {id:[0-9]+}, aby je fast-route nepohltil.
+        $app->get   ('/api/document-folders',                     [FoldersAction::class, 'list']);
+        $app->post  ('/api/document-folders',                     [FoldersAction::class, 'create']);
+        $app->patch ('/api/document-folders/{id:[0-9]+}',         [FoldersAction::class, 'rename']);
+        $app->post  ('/api/document-folders/{id:[0-9]+}/move',    [FoldersAction::class, 'move']);
+        $app->post  ('/api/document-folders/{id:[0-9]+}/restore', [FoldersAction::class, 'restore']);
+        $app->delete('/api/document-folders/{id:[0-9]+}',         [FoldersAction::class, 'delete']);
+
+        $app->get   ('/api/documents/search',         [DocumentsAction::class, 'search']);
+        $app->get   ('/api/documents/link-search',    LinkSearchAction::class);
+        // Background joby (rozbalení ZIP importu / ZIP export)
+        $app->post  ('/api/documents/zip-import',     [DocumentJobsAction::class, 'zipImport']);
+        $app->post  ('/api/documents/export',         [DocumentJobsAction::class, 'export']);
+        $app->get   ('/api/documents/jobs',           [DocumentJobsAction::class, 'list']);
+        $app->get   ('/api/documents/jobs/{id:[0-9]+}',          [DocumentJobsAction::class, 'status']);
+        $app->get   ('/api/documents/jobs/{id:[0-9]+}/download', [DocumentJobsAction::class, 'download']);
+        $app->post  ('/api/documents/jobs/{id:[0-9]+}/cancel',   [DocumentJobsAction::class, 'cancel']);
+        $app->delete('/api/documents/jobs/{id:[0-9]+}',          [DocumentJobsAction::class, 'delete']);
+        $app->get   ('/api/documents/tags',           [DocumentsAction::class, 'listTags']);
+        $app->get   ('/api/documents/trash',          [DocumentsAction::class, 'trash']);
+        $app->post  ('/api/documents/trash/empty',    [DocumentsAction::class, 'emptyTrash']);
+        $app->post  ('/api/documents/bulk',           [DocumentsAction::class, 'bulk']);
+        $app->get   ('/api/documents/bulk-download',  [DocumentFileAction::class, 'bulkDownload']);
+        $app->get   ('/api/documents/by-entity/{type:[a-z_]+}/{id:[0-9]+}', [DocumentsAction::class, 'byEntity']);
+        $app->get   ('/api/documents',                [DocumentsAction::class, 'list']);
+        $app->post  ('/api/documents',                UploadDocumentAction::class);
+        $app->get   ('/api/documents/{id:[0-9]+}',            [DocumentsAction::class, 'get']);
+        $app->patch ('/api/documents/{id:[0-9]+}',            [DocumentsAction::class, 'update']);
+        $app->post  ('/api/documents/{id:[0-9]+}/move',       [DocumentsAction::class, 'move']);
+        $app->post  ('/api/documents/{id:[0-9]+}/restore',    [DocumentsAction::class, 'restore']);
+        $app->post  ('/api/documents/{id:[0-9]+}/links',      [DocumentsAction::class, 'addLink']);
+        $app->delete('/api/documents/{id:[0-9]+}/links',      [DocumentsAction::class, 'removeLink']);
+        $app->delete('/api/documents/{id:[0-9]+}',            [DocumentsAction::class, 'delete']);
+        $app->get   ('/api/documents/{id:[0-9]+}/download',   [DocumentFileAction::class, 'download']);
+        $app->get   ('/api/documents/{id:[0-9]+}/preview',    [DocumentFileAction::class, 'preview']);
+        $app->get   ('/api/documents/{id:[0-9]+}/thumb',      [DocumentFileAction::class, 'thumb']);
 
         // 404 fallback pro /api/*
         $app->any('/api/{path:.*}', function ($req, $res) {

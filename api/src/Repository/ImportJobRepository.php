@@ -82,6 +82,15 @@ final class ImportJobRepository
         return $row === false ? null : $this->cast($row);
     }
 
+    /** Worker kontext — načte job napříč tenanty (supplier_id je v řádku). */
+    public function findById(int $id): ?array
+    {
+        $stmt = $this->db->pdo()->prepare('SELECT * FROM import_jobs WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row === false ? null : $this->cast($row);
+    }
+
     /**
      * List jobs pro tenant.
      *

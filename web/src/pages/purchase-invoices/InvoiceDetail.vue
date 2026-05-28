@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -721,5 +722,7 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
         </table>
       </div>
     </div>
+
+    <LinkedDocumentsPanel v-if="invoice" class="mt-4 block" entity-type="purchase_invoice" :entity-id="invoice.id" />
   </div>
 </template>

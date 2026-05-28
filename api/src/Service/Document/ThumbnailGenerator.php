@@ -1,0 +1,105 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Service\Document;
+
+/**
+ * Generuje náhledy (thumbnaily) pro PDF (1. strana) a rastrové obrázky.
+ * Best-effort: Imagick (pokud dostupný) zvládá PDF i obrázky, jinak GD jen
+ * rastrové obrázky. Když nic — status 'unsupported'. Chyba → 'failed'.
+ *
+ * Náhled: storage/documents/sup-{id}/_thumbs/{sha8}.jpg (max strana 480 px).
+ */
+final class ThumbnailGenerator
+{
+    private const MAX_DIM = 480;
+
+    /**
+     * @return array{status:'generated'|'unsupported'|'failed', path:?string}
+     */
+    public function generate(string $absPath, string $docType, string $sha256, int $supplierId): array
+    {
+        if ($docType !== 'pdf' && $docType !== 'image') {
+            return ['status' => 'unsupported', 'path' => null];
+        }
+
+        $dir = DocumentStorage::thumbsDir($supplierId);
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            return ['status' => 'failed', 'path' => null];
+        }
+        $name = substr($sha256, 0, 8) . '.jpg';
+        $out = $dir . '/' . $name;
+
+        try {
+            if (class_exists(\Imagick::class)) {
+                if ($this->viaImagick($absPath, $docType, $out)) {
+                    return ['status' => 'generated', 'path' => $name];
+                }
+            }
+            if ($docType === 'image' && function_exists('imagecreatetruecolor')) {
+                if ($this->viaGd($absPath, $out)) {
+                    return ['status' => 'generated', 'path' => $name];
+                }
+            }
+        } catch (\Throwable) {
+            if (is_file($out)) @unlink($out);
+            return ['status' => 'failed', 'path' => null];
+        }
+        return ['status' => 'unsupported', 'path' => null];
+    }
+
+    private function viaImagick(string $src, string $docType, string $out): bool
+    {
+        $im = new \Imagick();
+        if ($docType === 'pdf') {
+            $im->setResolution(120, 120);
+            $im->readImage($src . '[0]'); // jen první strana
+            $im->setImageBackgroundColor('white');
+            $im = $im->flattenImages();
+        } else {
+            $im->readImage($src);
+            if ($im->getNumberImages() > 1) {
+                $im->setIteratorIndex(0);
+                $im = $im->getImage();
+            }
+        }
+        $im->setImageColorspace(\Imagick::COLORSPACE_SRGB);
+        $im->thumbnailImage(self::MAX_DIM, self::MAX_DIM, true);
+        $im->setImageFormat('jpeg');
+        $im->setImageCompressionQuality(82);
+        $ok = $im->writeImage($out);
+        $im->clear();
+        $im->destroy();
+        return $ok && is_file($out);
+    }
+
+    private function viaGd(string $src, string $out): bool
+    {
+        $info = @getimagesize($src);
+        if ($info === false) return false;
+        [$w, $h] = $info;
+        if ($w < 1 || $h < 1 || (int) ($w * $h) > 40_000_000) return false; // pixel-bomb guard
+
+        $img = match ($info[2]) {
+            IMAGETYPE_JPEG => @imagecreatefromjpeg($src),
+            IMAGETYPE_PNG  => @imagecreatefrompng($src),
+            IMAGETYPE_GIF  => @imagecreatefromgif($src),
+            IMAGETYPE_WEBP => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($src) : false,
+            IMAGETYPE_BMP  => function_exists('imagecreatefrombmp') ? @imagecreatefrombmp($src) : false,
+            default        => false,
+        };
+        if (!$img) return false;
+
+        $scale = min(self::MAX_DIM / $w, self::MAX_DIM / $h, 1.0);
+        $nw = max(1, (int) round($w * $scale));
+        $nh = max(1, (int) round($h * $scale));
+        $dst = imagecreatetruecolor($nw, $nh);
+        imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+        imagecopyresampled($dst, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        $ok = imagejpeg($dst, $out, 82);
+        imagedestroy($img);
+        imagedestroy($dst);
+        return $ok && is_file($out);
+    }
+}

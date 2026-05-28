@@ -91,6 +91,8 @@ tags:
     description: Konfigurace dodavatele a per-supplier overrides codebooku (read-only přes API)
   - name: Codebooks
     description: Číselníky (země, měny, DPH sazby, jednotky)
+  - name: Documents
+    description: Dokumenty — úložiště souborů, složky, ZFO datové zprávy, fulltext, párování s entitami
 
 paths:
   /api/v1/health:
@@ -2859,6 +2861,187 @@ paths:
         '200': { description: 'ok + elapsed_ms' }
         '403': { description: Pouze admin }
 
+  # ─────────────────────────────── Dokumenty ───────────────────────────────
+  /api/v1/documents:
+    get:
+      tags: [Documents]
+      summary: Seznam dokumentů a podsložek v dané složce
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: folder_id, in: query, schema: { type: integer, nullable: true }, description: 'NULL/prázdné = kořen' }
+        - { name: doc_type, in: query, schema: { type: string, enum: [pdf, docx, xlsx, xml, zfo, p7s, zip, image, other] } }
+      responses:
+        '200':
+          description: Výpis složky
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  breadcrumb: { type: array, items: { $ref: '#/components/schemas/DocumentBreadcrumb' } }
+                  folders: { type: array, items: { $ref: '#/components/schemas/DocumentFolder' } }
+                  documents: { type: array, items: { $ref: '#/components/schemas/Document' } }
+                  max_file_bytes: { type: integer }
+    post:
+      tags: [Documents]
+      summary: Nahrání souborů (multipart). ZFO se automaticky rozbalí; ZIP dle zip_mode.
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                'file[]': { type: array, items: { type: string, format: binary } }
+                folder_id: { type: integer, nullable: true }
+                zip_mode: { type: string, enum: [explode, keep], default: keep }
+                'relpaths[]': { type: array, items: { type: string }, description: 'Relativní cesty složek pro upload adresáře' }
+      responses:
+        '200':
+          description: Souhrn nahrání
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: { type: integer }
+                  skipped: { type: array, items: { type: object } }
+                  errors: { type: array, items: { type: object } }
+  /api/v1/documents/search:
+    get:
+      tags: [Documents]
+      summary: Fulltextové vyhledávání v názvech, popisech a obsahu (MariaDB FULLTEXT)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+      responses:
+        '200':
+          description: Výsledky
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents: { type: array, items: { $ref: '#/components/schemas/Document' } }
+                  query: { type: string }
+  /api/v1/documents/link-search:
+    get:
+      tags: [Documents]
+      summary: Našeptávač pro párování — hledá faktury, přijaté faktury, klienty a projekty
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+        - { name: types, in: query, schema: { type: string }, description: 'CSV filtr: invoice,purchase_invoice,client,project' }
+      responses:
+        '200':
+          description: Kandidáti pro vazbu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results: { type: array, items: { $ref: '#/components/schemas/DocumentLinkCandidate' } }
+                  query: { type: string }
+  /api/v1/documents/{id}:
+    get:
+      tags: [Documents]
+      summary: Detail dokumentu (vč. tagů, vazeb, příloh a ZFO metadat)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Dokument, content: { application/json: { schema: { $ref: '#/components/schemas/DocumentDetail' } } } }
+        '404': { description: Nenalezeno }
+    patch:
+      tags: [Documents]
+      summary: Editace metadat (název, popis, tagy)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string, nullable: true }
+                tags: { type: array, items: { type: string } }
+      responses:
+        '200': { description: Aktualizovaný dokument, content: { application/json: { schema: { $ref: '#/components/schemas/DocumentDetail' } } } }
+    delete:
+      tags: [Documents]
+      summary: Přesun do koše (soft-delete)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: ok }
+  /api/v1/documents/{id}/download:
+    get:
+      tags: [Documents]
+      summary: Stažení souboru (Content-Disposition attachment)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Binární obsah souboru, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+  /api/v1/documents/{id}/links:
+    post:
+      tags: [Documents]
+      summary: Připojit dokument k entitě (faktura / přijatá faktura / klient / projekt)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_type, entity_id]
+              properties:
+                entity_type: { type: string, enum: [client, invoice, purchase_invoice, project] }
+                entity_id: { type: integer }
+      responses:
+        '200': { description: Aktuální vazby, content: { application/json: { schema: { type: object, properties: { links: { type: array, items: { $ref: '#/components/schemas/DocumentLink' } } } } } } }
+  /api/v1/documents/by-entity/{type}/{id}:
+    get:
+      tags: [Documents]
+      summary: Dokumenty navázané na entitu (oboustranné párování)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: type, in: path, required: true, schema: { type: string, enum: [client, invoice, purchase_invoice, project] } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Navázané dokumenty, content: { application/json: { schema: { type: object, properties: { documents: { type: array, items: { $ref: '#/components/schemas/Document' } } } } } } }
+  /api/v1/document-folders:
+    get:
+      tags: [Documents]
+      summary: Strom složek (bez parametru celý plochý seznam, s parent_id přímé potomky)
+      parameters:
+        - { $ref: '#/components/parameters/SupplierIdHeader' }
+        - { name: parent_id, in: query, schema: { type: integer, nullable: true } }
+      responses:
+        '200': { description: Složky, content: { application/json: { schema: { type: object, properties: { folders: { type: array, items: { $ref: '#/components/schemas/DocumentFolder' } } } } } } }
+    post:
+      tags: [Documents]
+      summary: Vytvoření složky
+      parameters: [{ $ref: '#/components/parameters/SupplierIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                parent_id: { type: integer, nullable: true }
+      responses:
+        '200': { description: ok }
+
 components:
   securitySchemes:
     BearerAuth:
@@ -2910,6 +3093,76 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    DocumentBreadcrumb:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+    DocumentFolder:
+      type: object
+      properties:
+        id: { type: integer }
+        parent_id: { type: integer, nullable: true }
+        name: { type: string }
+        created_at: { type: string }
+        subfolder_count: { type: integer }
+        file_count: { type: integer }
+    Document:
+      type: object
+      properties:
+        id: { type: integer }
+        folder_id: { type: integer, nullable: true }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        original_name: { type: string }
+        sha256: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer }
+        doc_type: { type: string, enum: [pdf, docx, xlsx, xml, zfo, p7s, zip, image, other] }
+        source: { type: string, enum: [manual, zfo_extract, zip_extract] }
+        parent_document_id: { type: integer, nullable: true }
+        signature_for_id: { type: integer, nullable: true }
+        text_status: { type: string, enum: [none, extracted, unsupported, failed] }
+        thumb_status: { type: string, enum: [none, generated, unsupported, failed] }
+        has_thumb: { type: boolean }
+        created_at: { type: string }
+        deleted_at: { type: string, nullable: true }
+    DocumentLink:
+      type: object
+      properties:
+        entity_type: { type: string, enum: [client, invoice, purchase_invoice, project] }
+        entity_id: { type: integer }
+        label: { type: string }
+    DocumentLinkCandidate:
+      type: object
+      properties:
+        entity_type: { type: string, enum: [client, invoice, purchase_invoice, project] }
+        entity_id: { type: integer }
+        label: { type: string }
+        sublabel: { type: string }
+        meta: { type: string }
+    DocumentDmsMessage:
+      type: object
+      description: Metadata datové zprávy (ZFO) z ISDS
+      properties:
+        dm_id: { type: string, nullable: true }
+        direction: { type: string, enum: [sent, received, unknown] }
+        sender_box_id: { type: string, nullable: true }
+        sender_name: { type: string, nullable: true }
+        recipient_box_id: { type: string, nullable: true }
+        recipient_name: { type: string, nullable: true }
+        annotation: { type: string, nullable: true, description: Předmět zprávy }
+        delivery_time: { type: string, nullable: true }
+        acceptance_time: { type: string, nullable: true }
+    DocumentDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Document' }
+        - type: object
+          properties:
+            tags: { type: array, items: { type: string } }
+            links: { type: array, items: { $ref: '#/components/schemas/DocumentLink' } }
+            attachments: { type: array, items: { $ref: '#/components/schemas/Document' } }
+            dms_message: { $ref: '#/components/schemas/DocumentDmsMessage' }
     Error:
       type: object
       required: [error]

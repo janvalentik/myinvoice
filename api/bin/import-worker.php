@@ -27,6 +27,7 @@ use MyInvoice\Repository\ImportJobRepository;
 use MyInvoice\Service\Import\FakturoidImportService;
 use MyInvoice\Service\Import\IdokladImportService;
 use MyInvoice\Service\Export\MonthlyExportService;
+use MyInvoice\Service\Document\DocumentJobService;
 
 // Parse args
 $jobId = null;
@@ -73,6 +74,8 @@ try {
         $container->get(FakturoidImportService::class)->run($jobId);
     } elseif ($source === 'monthly_export') {
         $container->get(MonthlyExportService::class)->run($jobId);
+    } elseif ($source === 'document_zip_import' || $source === 'document_zip_export') {
+        $container->get(DocumentJobService::class)->run($jobId);
     } else {
         $jobs->appendLog($jobId, "Source '{$source}' není zatím podporován workerem.");
         $jobs->markFailed($jobId, "Source '{$source}' není podporován.");
