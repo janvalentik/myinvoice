@@ -80,6 +80,10 @@ final class DocumentJobsAction
             'folder_id' => $folderId,
             'zip_name'  => $name,
         ], $userId ?? 0);
+        if ($this->jobSourceMissing($jobId, $sid, 'document_zip_import')) {
+            @unlink($zipPath);
+            return $this->migrationError($response);
+        }
         $this->spawnWorker($jobId);
         $this->logger->log('document.zip_import_started', $userId, 'document', null,
             ['job_id' => $jobId, 'zip' => $name], $this->clientIp($request), $request->getHeaderLine('User-Agent'), $sid);
@@ -99,6 +103,9 @@ final class DocumentJobsAction
         if ($ids === []) return Json::error($response, 'no_ids', 'Nebyly vybrány žádné dokumenty.', 400);
 
         $jobId = $this->jobs->create($sid, 'document_zip_export', ['ids' => $ids], $userId ?? 0);
+        if ($this->jobSourceMissing($jobId, $sid, 'document_zip_export')) {
+            return $this->migrationError($response);
+        }
         $this->spawnWorker($jobId);
         $this->logger->log('document.zip_export_started', $userId, 'document', null,
             ['job_id' => $jobId, 'count' => count($ids)], $this->clientIp($request), $request->getHeaderLine('User-Agent'), $sid);
@@ -136,6 +143,9 @@ final class DocumentJobsAction
             $params['single_name'] = mb_substr(trim((string) ($body['name'] ?? 'soubor')), 0, 255) ?: 'soubor';
         }
         $jobId = $this->jobs->create($sid, $source, $params, $userId ?? 0);
+        if ($this->jobSourceMissing($jobId, $sid, $source)) {
+            return $this->migrationError($response);
+        }
 
         $staging = $this->stagingDir($sid, $jobId);
         if (!is_dir($staging) && !@mkdir($staging, 0755, true) && !is_dir($staging)) {
@@ -305,6 +315,27 @@ final class DocumentJobsAction
         }
         $this->jobs->delete((int) $job['id'], $sid);
         return Json::ok($response, ['ok' => true]);
+    }
+
+    /**
+     * Obrana proti chybějící DB migraci: pokud `import_jobs.source` ENUM neobsahuje
+     * danou hodnotu, MySQL ji v ne-striktním režimu tiše uloží jako '' (místo chyby).
+     * Ověří, že se source skutečně uložil; jinak job smaže a vrátí true (= problém).
+     */
+    private function jobSourceMissing(int $jobId, int $sid, string $source): bool
+    {
+        $j = $this->jobs->find($jobId, $sid);
+        if ($j !== null && ($j['source'] ?? '') === $source) {
+            return false;
+        }
+        $this->jobs->delete($jobId, $sid);
+        return true;
+    }
+
+    private function migrationError(Response $response): Response
+    {
+        return Json::error($response, 'migration_required',
+            'Chybí databázová migrace pro tento typ úlohy — spusťte `php api/bin/migrate.php`.', 500);
     }
 
     private function spawnWorker(int $jobId): void

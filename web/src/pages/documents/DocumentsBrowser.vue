@@ -361,8 +361,9 @@ async function uploadFiles(files: { file: File; path: string }[]) {
       await loadListing()
     }
     if (usedJob) { toast.success(t('documents.upload_job_started')); await loadJobs() }
-  } catch {
-    toast.error(t('documents.upload_failed'))
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+    toast.error(msg || t('documents.upload_failed'))
   } finally {
     uploading.value = false
   }
