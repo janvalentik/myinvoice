@@ -171,6 +171,9 @@ final class Routes
         $app->post('/api/clients/lookup-ares', AresLookupAction::class);
         $app->post('/api/clients/lookup-vies', ViesLookupAction::class);
 
+        // Globální vyhledávač pro sidebar (klienti/dodavatelé + vydané/přijaté faktury)
+        $app->get('/api/search', \MyInvoice\Action\Search\GlobalSearchAction::class);
+
         // Codebooks
         $app->get('/api/codebooks/countries',  [CodebookAction::class, 'countries']);
         $app->get('/api/codebooks/currencies', [CodebookAction::class, 'currencies']);

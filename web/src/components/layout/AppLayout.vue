@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSupplierStore } from '@/stores/supplier'
 import { updateApi, type PublicVersion } from '@/api/update'
 import SupplierSwitcher from './SupplierSwitcher.vue'
+import GlobalSearch from './GlobalSearch.vue'
 
 const { t, locale } = useI18n()
 function setLocale(l: 'cs' | 'en') {
@@ -169,6 +170,11 @@ const navSections = computed<NavSection[]>(() => {
 
   return sections
 })
+
+/** Ploché položky menu pro globální search (našeptávač skáče přímo na body menu). */
+const flatNavItems = computed(() =>
+  navSections.value.flatMap(s => s.items.map(it => ({ to: it.to, label: it.label, icon: it.icon, external: it.external })))
+)
 
 function isActive(to: string): boolean {
   if (to === '/') return route.path === '/'
@@ -354,6 +360,9 @@ onMounted(async () => {
         ]"
       >
         <nav class="flex-1 overflow-y-auto px-2.5 py-3">
+          <!-- Globální vyhledávač (před Přehled) — našeptává menu + hledá klienty/faktury -->
+          <GlobalSearch :menu-items="flatNavItems" @navigated="mobileOpen = false" />
+
           <template v-for="(section, si) in navSections" :key="si">
             <!-- Section title — soft pill background v barvě sekce -->
             <div v-if="section.title" :class="si === 0 ? 'pt-1 pb-1.5' : 'pt-4 pb-1.5'">

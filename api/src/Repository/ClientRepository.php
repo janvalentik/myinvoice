@@ -26,6 +26,35 @@ final class ClientRepository
         return $row !== false ? $this->cast($row) : null;
     }
 
+    /**
+     * Rychlé hledání pro globální search box — název / e-mail / IČ / DIČ.
+     * Jen aktivní (nearchivovaní) klienti tenanta, malý limit (dropdown).
+     *
+     * @return list<array{id:int, company_name:string, main_email:?string, is_customer:bool, is_vendor:bool}>
+     */
+    public function searchQuick(string $q, int $supplierId, int $limit = 6): array
+    {
+        $q = trim($q);
+        if ($q === '') return [];
+        $esc = addcslashes($q, '%_\\');
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT id, company_name, main_email, is_customer, is_vendor
+               FROM clients
+              WHERE supplier_id = ? AND archived_at IS NULL
+                AND (company_name LIKE ? OR main_email LIKE ? OR ic LIKE ? OR dic LIKE ?)
+              ORDER BY company_name
+              LIMIT " . (int) $limit
+        );
+        $stmt->execute([$supplierId, '%' . $esc . '%', '%' . $esc . '%', $esc . '%', $esc . '%']);
+        return array_map(static fn (array $r) => [
+            'id'           => (int) $r['id'],
+            'company_name' => (string) $r['company_name'],
+            'main_email'   => $r['main_email'] !== null ? (string) $r['main_email'] : null,
+            'is_customer'  => (bool) $r['is_customer'],
+            'is_vendor'    => (bool) $r['is_vendor'],
+        ], $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+    }
+
     public function list(array $filters = [], int $page = 1, int $perPage = 20, string $sort = 'name'): array
     {
         $where = ['1=1'];

@@ -143,6 +143,43 @@ final class InvoiceRepository
      * Pokud je $perPage > 0, vrací jen daný řez řádků (LIMIT/OFFSET); meta obsahuje
      * total/page/per_page/pages. Pro export CSV / sumy přes celý dataset volat s $perPage = 0.
      */
+    /**
+     * Rychlé hledání vystavených faktur podle čísla dokladu (varsymbol) pro globální
+     * search box. Malý limit (dropdown).
+     *
+     * @return list<array{id:int, varsymbol:?string, invoice_type:string, status:string,
+     *                    issue_date:?string, total_with_vat:float, currency:string, company_name:string}>
+     */
+    public function searchQuick(string $q, int $supplierId, int $limit = 6): array
+    {
+        $q = trim($q);
+        if ($q === '') return [];
+        $esc = addcslashes($q, '%_\\');
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT i.id, i.varsymbol, i.invoice_type, i.status, i.issue_date,
+                    i.total_with_vat, COALESCE(cur.code, 'CZK') AS currency,
+                    c.company_name
+               FROM invoices i
+               JOIN clients c ON c.id = i.client_id
+          LEFT JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND i.varsymbol LIKE ?
+              ORDER BY i.issue_date DESC, i.id DESC
+              LIMIT " . (int) $limit
+        );
+        $stmt->execute([$supplierId, '%' . $esc . '%']);
+        return array_map(static fn (array $r) => [
+            'id'             => (int) $r['id'],
+            'varsymbol'      => $r['varsymbol'] !== null ? (string) $r['varsymbol'] : null,
+            'invoice_type'   => (string) $r['invoice_type'],
+            'status'         => (string) $r['status'],
+            'issue_date'     => $r['issue_date'] !== null ? (string) $r['issue_date'] : null,
+            'total_with_vat' => (float) $r['total_with_vat'],
+            'currency'       => (string) $r['currency'],
+            'company_name'   => (string) $r['company_name'],
+        ], $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+    }
+
     public function listGroupedByMonth(array $filters = [], int $page = 1, int $perPage = 0): array
     {
         $where = ['1=1'];

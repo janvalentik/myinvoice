@@ -1,5 +1,13 @@
 {
   "app": { "title": "MyInvoice.cz", "subtitle": "Fakturační systém" },
+  "search": {
+    "placeholder": "Hledat… (menu, klienti, faktury)",
+    "no_results": "Nic nenalezeno",
+    "group_menu": "Menu",
+    "group_clients": "Klienti / dodavatelé",
+    "group_invoices": "Vydané faktury",
+    "group_purchase": "Přijaté faktury"
+  },
   "nav": {
     "dashboard": "Přehled", "invoices": "Vydané faktury", "clients": "Klienti",
     "projects": "Zakázky", "stats": "Tržby", "purchase_stats": "Náklady", "bank": "Banka", "system": "Systém", "section_taxes": "Daně",

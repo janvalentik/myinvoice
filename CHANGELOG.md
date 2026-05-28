@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.3.12] — 2026-05-28
+
+Globální vyhledávání v postranním panelu.
+
+### Added
+
+- **Vyhledávací pole v sidebaru** (nad „Přehled") — našeptává **položky menu** (klientsky, skočí přímo na danou stránku) a od dvou znaků hledá v **klientech/dodavatelích** (název + e-mail) a ve **vydaných i přijatých fakturách** (číslo dokladu). Výsledky jsou seskupené (Menu / Klienti / Vydané / Přijaté), ovladatelné klávesnicí (↑/↓, Enter, Esc) a kliknutím otevřou detail. Hledání je scoped na aktuálního dodavatele (multi-tenant). (endpoint `GET /api/search`)
+
 ## [4.3.11] — 2026-05-28
 
 Propojení přijatých záloh s vyúčtovací fakturou (proti dvojímu započtení nákladu) a dotažení daňového auditu výkazů DPH.

@@ -1,5 +1,13 @@
 {
   "app": { "title": "MyInvoice.cz", "subtitle": "Invoicing system" },
+  "search": {
+    "placeholder": "Search… (menu, clients, invoices)",
+    "no_results": "Nothing found",
+    "group_menu": "Menu",
+    "group_clients": "Clients / vendors",
+    "group_invoices": "Issued invoices",
+    "group_purchase": "Received invoices"
+  },
   "nav": {
     "dashboard": "Dashboard", "invoices": "Issued invoices", "clients": "Clients",
     "projects": "Projects", "stats": "Sales", "purchase_stats": "Costs", "bank": "Bank", "system": "System", "section_taxes": "Taxes",
