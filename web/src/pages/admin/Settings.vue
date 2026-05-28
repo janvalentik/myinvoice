@@ -307,7 +307,8 @@ async function removeCurrency(c: CurrencyAccount) {
           </div>
           <div>
             <label class="flex items-center gap-2 text-sm mt-7">
-              <input v-model="supplier.is_vat_payer" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              <input v-model="supplier.is_vat_payer" type="checkbox" class="rounded border-neutral-300 text-primary-600"
+                @change="supplier.is_vat_payer && ((supplier as any).flat_tax_band = 'none')" />
               {{ t('settings.is_vat_payer') }}
             </label>
           </div>
