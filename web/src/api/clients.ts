@@ -144,7 +144,7 @@ export interface ClientListResponse {
 export type ClientRoleFilter = 'all' | 'customers' | 'vendors'
 
 export const clientsApi = {
-  list: (params?: { q?: string; page?: number; per_page?: number; archived?: boolean; role?: ClientRoleFilter; sort?: 'name' | 'revenue' | 'last_activity' }) =>
+  list: (params?: { q?: string; page?: number; per_page?: number; archived?: boolean; role?: ClientRoleFilter; sort?: 'name' | 'revenue' | 'last_activity'; expense_category_id?: number | null }) =>
     api
       .get<ClientListResponse>('/clients', {
         params: {
@@ -153,6 +153,7 @@ export const clientsApi = {
           per_page: params?.per_page,
           sort: params?.sort,
           role: params?.role && params.role !== 'all' ? params.role : undefined,
+          expense_category_id: params?.expense_category_id || undefined,
           ...(params?.archived ? { 'filter[archived]': 1 } : {}),
         },
       })

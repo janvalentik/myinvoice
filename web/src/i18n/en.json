@@ -1030,6 +1030,7 @@
     "default_expense_category_none": "no default category",
     "default_expense_category_hint": "Pre-filled on new received invoices from this vendor. On save it is also applied to all their existing invoices that have no category set.",
     "default_expense_category_backfilled": "Default category applied to {count} received invoices without a category.",
+    "filter_category_all": "All categories",
     "create_first": "Create first",
     "company_name": "Company",
     "first_name": "First name",

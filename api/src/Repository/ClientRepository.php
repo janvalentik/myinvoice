@@ -88,11 +88,19 @@ final class ClientRepository
             $params[] = $q . '%';
             $params[] = $q . '%';
         }
-        $whereSql = implode(' AND ', $where);
+        // Vendor-only filtr na výchozí kategorii nákladu. Aplikuje se na výpis + total,
+        // NE na role_counts — tab badge má ukazovat plné součty rolí (jako u role filtru).
+        $listWhere = $where;
+        $listParams = $params;
+        if (!empty($filters['expense_category_id'])) {
+            $listWhere[] = 'c.default_expense_category_id = ?';
+            $listParams[] = (int) $filters['expense_category_id'];
+        }
+        $whereSql = implode(' AND ', $listWhere);
 
         // Count
         $stmt = $this->db->pdo()->prepare("SELECT COUNT(*) FROM clients c WHERE $whereSql");
-        $stmt->execute($params);
+        $stmt->execute($listParams);
         $total = (int) $stmt->fetchColumn();
 
         // Role counts pro tab badge (bez stránkování, bez role-filtru, ale se zbylými filtry
@@ -178,7 +186,7 @@ final class ClientRepository
         // supplier_id pro pi_agg subquery (purchase costs) — bind PŘED whereSql params,
         // protože subquery v FROM clauseu je evaluated jako první v SQL parser order.
         $stmt->bindValue($idx++, (int) ($filters['supplier_id'] ?? 0), PDO::PARAM_INT);
-        foreach ($params as $v) {
+        foreach ($listParams as $v) {
             $stmt->bindValue($idx++, $v);
         }
         $stmt->bindValue($idx++, $perPage, PDO::PARAM_INT);

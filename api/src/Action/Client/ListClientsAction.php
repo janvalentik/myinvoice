@@ -26,10 +26,11 @@ final class ListClientsAction
             $role = 'all';
         }
         $filters = [
-            'q'           => isset($q['q']) ? trim((string) $q['q']) : '',
-            'archived'    => !empty($q['filter']['archived']),
-            'role'        => $role,
-            'supplier_id' => (int) $request->getAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0),
+            'q'                   => isset($q['q']) ? trim((string) $q['q']) : '',
+            'archived'            => !empty($q['filter']['archived']),
+            'role'                => $role,
+            'expense_category_id' => isset($q['expense_category_id']) ? (int) $q['expense_category_id'] : 0,
+            'supplier_id'         => (int) $request->getAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, 0),
         ];
         $page = max(1, (int) ($q['page'] ?? 1));
         $default = (int) $this->config->get('pagination.clients_per_page', 50);

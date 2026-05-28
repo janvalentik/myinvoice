@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { clientsApi, type Client } from '@/api/clients'
+import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategories'
 import { formatMoney, formatDate } from '@/composables/useFormat'
 import TableSkeleton from '@/components/ui/TableSkeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -23,6 +24,9 @@ const loadingMore = ref(false)
 const search = ref('')
 const showArchived = ref(false)
 const sort = ref<'name' | 'revenue' | 'last_activity'>('name')
+// Filtr na výchozí kategorii nákladu dodavatele — jen ve vendor view.
+const expenseCategories = ref<ExpenseCategory[]>([])
+const categoryFilter = ref<number | null>(null)
 const route = useRoute()
 // Filter from ?role=vendors|all|customers (default customers).
 // Watch query.role pro proklik mezi sidebar položkami Klienti ↔ Dodavatelé
@@ -59,6 +63,8 @@ async function load(reset = true) {
       archived: showArchived.value,
       sort: sort.value,
       role: roleFilter.value,
+      // Kategorie filtruje jen u dodavatelů (jinde nemá smysl).
+      expense_category_id: roleFilter.value === 'vendors' ? categoryFilter.value : null,
       page: page.value,
     })
     if (reset) {
@@ -77,10 +83,14 @@ async function load(reset = true) {
   }
 }
 
-onMounted(() => load(true))
+onMounted(async () => {
+  load(true)
+  expenseCategories.value = await expenseCategoriesApi.list(false).catch(() => [])
+})
 watch(showArchived, () => load(true))
 watch(sort, () => load(true))
 watch(roleFilter, () => load(true))
+watch(categoryFilter, () => load(true))
 watch(search, () => {
   if (searchTimeout) clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => load(true), 300)
@@ -137,6 +147,12 @@ function openClient(c: Client) {
           <input v-model="showArchived" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
           {{ t('client.show_archived') }}
         </label>
+        <select v-if="roleFilter === 'vendors'" v-model.number="categoryFilter"
+          class="h-9 px-3 border border-neutral-300 rounded-md text-sm bg-white"
+          :title="t('client.default_expense_category')">
+          <option :value="null">{{ t('client.filter_category_all') }}</option>
+          <option v-for="c in expenseCategories" :key="c.id" :value="c.id">{{ c.label }} ({{ c.code }})</option>
+        </select>
         <select v-model="sort" class="h-9 px-3 border border-neutral-300 rounded-md text-sm bg-white"
           :title="t('common.sort_by')">
           <option value="name">{{ t('common.sort_name') }}</option>

@@ -1030,6 +1030,7 @@
     "default_expense_category_none": "bez výchozí kategorie",
     "default_expense_category_hint": "Předvyplní se u nových přijatých faktur tohoto dodavatele. Po uložení se navíc doplní do všech jeho stávajících faktur, které kategorii nemají vyplněnou.",
     "default_expense_category_backfilled": "Výchozí kategorie doplněna do {count} přijatých faktur bez kategorie.",
+    "filter_category_all": "Všechny kategorie",
     "create_first": "Vytvořit prvního",
     "company_name": "Firma",
     "first_name": "Jméno",
