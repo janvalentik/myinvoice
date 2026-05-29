@@ -939,7 +939,11 @@
       "upload_done": "Nahráno: {n}",
       "upload_failed": "Nahrání přílohy selhalo.",
       "delete_failed": "Smazání přílohy selhalo.",
-      "confirm_delete": "Opravdu smazat přílohu „{name}“?"
+      "confirm_delete": "Opravdu smazat přílohu „{name}“?",
+      "pending_hint": "Přibalí se k PDF při odeslání klientovi. Nahrají se po vytvoření faktury. Max 10 MiB/soubor, 20 MiB celkem.",
+      "post_save_failed": "Faktura byla vytvořena, ale přílohy se nepodařilo nahrát — přidej je prosím v detailu faktury.",
+      "too_large": "Soubor „{name}“ překračuje limit 10 MiB.",
+      "total_too_large": "Celková velikost příloh překračuje 20 MiB."
     },
     "bulk_reissue": "Vystavit znovu ({n})",
     "bulk_send": "Odeslat klientovi ({n})",

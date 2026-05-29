@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
-import { invoicesApi, type Invoice, type InvoicePayload, type InvoiceItem, type WorkReportItem } from '@/api/invoices'
+import { invoicesApi, type Invoice, type InvoicePayload, type InvoiceItem, type WorkReportItem, type InvoiceAttachment } from '@/api/invoices'
 import { useHotkey } from '@/composables/useHotkey'
 import { useToast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
@@ -347,6 +347,7 @@ onMounted(async () => {
     }
     // Načti existující work_report (pokud existuje)
     await loadWorkReport()
+    await loadAttachments()
     if (editedStatus.value === 'draft') await loadVarsymbolPreview()
   } else {
     // New invoice — pre-select from query
@@ -772,6 +773,80 @@ function checkWorkReportSync(): string | null {
   return null
 }
 
+// ── Přílohy faktury ────────────────────────────────────────────────────
+// Nová faktura: upload potřebuje id, které vznikne až po create → soubory
+//   držíme v prohlížeči (pendingAttachments) a nahrajeme je v submit() po create.
+// Editace: id už existuje → načteme existující a přidání/mazání řešíme hned (jako detail).
+// Limity musí sedět s api UploadAttachmentAction.
+const ATTACH_MAX_FILE = 10 * 1024 * 1024   // 10 MiB / soubor
+const ATTACH_MAX_TOTAL = 20 * 1024 * 1024  // 20 MiB celkem
+const pendingAttachments = ref<File[]>([])          // staging u nové faktury
+const attachments = ref<InvoiceAttachment[]>([])     // existující (edit mód)
+const attachmentsBusy = ref(false)
+const attachmentDragOver = ref(false)
+const attachmentsAllowed = computed(() =>
+  ['invoice', 'proforma', 'credit_note'].includes(form.value.invoice_type))
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} kB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+async function loadAttachments() {
+  if (!invoiceId.value) return
+  try { attachments.value = await invoicesApi.listAttachments(invoiceId.value) } catch { /* ignore */ }
+}
+// Editace: id existuje → nahraj rovnou (server validuje mime/velikost).
+async function uploadNow(files: File[]) {
+  if (!invoiceId.value || files.length === 0) return
+  attachmentsBusy.value = true
+  try {
+    const r = await invoicesApi.uploadAttachments(invoiceId.value, files)
+    attachments.value = r.items
+    toast.success(t('invoice.attachments.upload_done', { n: r.created.length }))
+  } catch (e: any) {
+    toast.error(apiErrorMessage(e, t('invoice.attachments.upload_failed')))
+  } finally {
+    attachmentsBusy.value = false
+  }
+}
+// Nová faktura: ulož do prohlížeče (klientská kontrola limitů), nahraje se po create.
+function stagePending(files: File[]) {
+  let total = pendingAttachments.value.reduce((s, f) => s + f.size, 0)
+  for (const f of files) {
+    if (f.size > ATTACH_MAX_FILE) { toast.warning(t('invoice.attachments.too_large', { name: f.name })); continue }
+    if (total + f.size > ATTACH_MAX_TOTAL) { toast.warning(t('invoice.attachments.total_too_large')); break }
+    pendingAttachments.value.push(f)
+    total += f.size
+  }
+}
+function addAttachmentFiles(files: File[]) {
+  if (files.length === 0) return
+  if (isEdit.value) void uploadNow(files)
+  else stagePending(files)
+}
+function removePendingAttachment(i: number) { pendingAttachments.value.splice(i, 1) }
+async function deleteAttachment(att: InvoiceAttachment) {
+  if (!invoiceId.value) return
+  if (!window.confirm(t('invoice.attachments.confirm_delete', { name: att.original_name }))) return
+  try {
+    await invoicesApi.deleteAttachment(invoiceId.value, att.id)
+    attachments.value = attachments.value.filter(a => a.id !== att.id)
+  } catch (e: any) {
+    toast.error(apiErrorMessage(e, t('invoice.attachments.delete_failed')))
+  }
+}
+function onAttachmentInputChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files) addAttachmentFiles(Array.from(input.files))
+  input.value = ''
+}
+function onAttachmentDrop(e: DragEvent) {
+  e.preventDefault()
+  attachmentDragOver.value = false
+  if (e.dataTransfer?.files) addAttachmentFiles(Array.from(e.dataTransfer.files))
+}
+
 async function submit() {
   // Tiše vyhoď prázdné řádky (bez popisu i bez ceny) — uživatel přidal řádek a nezapsal ho.
   // Zároveň smaž z form.value.items, ať checkWorkReportSync vidí stejnou množinu jako payload.
@@ -865,6 +940,16 @@ async function submit() {
         // Faktura je uložená, výkaz ne — nepokračuj v redirectu, ať uživatel nepřijde o data ve formuláři
         error.value = apiErrorMessage(e, t('invoice.wr_save_failed'))
         return
+      }
+    }
+    // Přílohy nasbírané u nové faktury (držené v prohlížeči) — nahraj teď, když známe id.
+    // Selhání uploadu nesmí shodit už vytvořenou fakturu → jen upozorni, pokračuj na detail.
+    if (pendingAttachments.value.length > 0) {
+      try {
+        await invoicesApi.uploadAttachments(saved.id, pendingAttachments.value)
+        pendingAttachments.value = []
+      } catch (e: any) {
+        toast.warning(apiErrorMessage(e, t('invoice.attachments.post_save_failed')))
       }
     }
     router.push(`/invoices/${saved.id}`)
@@ -1463,6 +1548,66 @@ async function deleteDraft() {
           <p class="text-xs text-neutral-500">
             {{ t('invoice.wr_hint', { title: wrTitle, hours: wrTotalHours.toFixed(2), rate: wrItems[0]?.rate || 0, currency: form.currency }) }}
           </p>
+        </div>
+      </div>
+
+      <!-- Přílohy — u nové faktury držené v prohlížeči (nahrají se po vytvoření),
+           u existující faktury rovnou nahrávané / mazané -->
+      <div v-if="attachmentsAllowed"
+           class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+        <header class="px-5 py-3 border-b border-neutral-200 flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.attachments.title') }}</h3>
+            <p class="text-xs text-neutral-500 mt-0.5">{{ isEdit ? t('invoice.attachments.hint') : t('invoice.attachments.pending_hint') }}</p>
+          </div>
+          <span class="text-xs text-neutral-400">{{ attachments.length + pendingAttachments.length }}</span>
+        </header>
+
+        <!-- Existující přílohy (editace) -->
+        <ul v-if="attachments.length > 0" class="divide-y divide-neutral-100">
+          <li v-for="a in attachments" :key="a.id" class="px-5 py-2.5 text-sm flex items-center gap-3">
+            <svg class="w-4 h-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 1 0 2.828 2.828l6.414-6.414a4 4 0 1 0-5.656-5.656L5.05 11.05a6 6 0 1 0 8.486 8.486L20 13"/>
+            </svg>
+            <span class="text-neutral-700 text-xs flex-1 truncate" :title="a.original_name">{{ a.original_name }}</span>
+            <span class="text-neutral-400 text-xs whitespace-nowrap">{{ formatBytes(a.size_bytes) }}</span>
+            <a :href="invoicesApi.attachmentUrl(invoiceId!, a.id, false)" target="_blank"
+               class="text-xs text-primary-600 hover:text-primary-700 font-medium">{{ t('common.view') }}</a>
+            <a :href="invoicesApi.attachmentUrl(invoiceId!, a.id, true)"
+               class="text-xs text-primary-600 hover:text-primary-700 font-medium">{{ t('common.download') }}</a>
+            <button @click="deleteAttachment(a)" type="button"
+                    class="text-xs text-danger-500 hover:text-danger-600 cursor-pointer">{{ t('common.delete') }}</button>
+          </li>
+        </ul>
+
+        <!-- Nové soubory (čekají na vytvoření faktury) -->
+        <ul v-if="pendingAttachments.length > 0" class="divide-y divide-neutral-100">
+          <li v-for="(f, i) in pendingAttachments" :key="`p-${f.name}-${i}`" class="px-5 py-2.5 text-sm flex items-center gap-3">
+            <svg class="w-4 h-4 text-neutral-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 1 0 2.828 2.828l6.414-6.414a4 4 0 1 0-5.656-5.656L5.05 11.05a6 6 0 1 0 8.486 8.486L20 13"/>
+            </svg>
+            <span class="text-neutral-700 text-xs flex-1 truncate" :title="f.name">{{ f.name }}</span>
+            <span class="text-neutral-400 text-xs whitespace-nowrap">{{ formatBytes(f.size) }}</span>
+            <button @click="removePendingAttachment(i)" type="button"
+                    class="text-xs text-danger-500 hover:text-danger-600 cursor-pointer">{{ t('common.delete') }}</button>
+          </li>
+        </ul>
+
+        <div class="px-5 py-3"
+             :class="attachmentDragOver ? 'bg-primary-50' : 'bg-neutral-50/50'"
+             @dragover.prevent="attachmentDragOver = true"
+             @dragleave.prevent="attachmentDragOver = false"
+             @drop="onAttachmentDrop">
+          <label class="flex flex-col md:flex-row items-stretch md:items-center gap-2 md:gap-3 cursor-pointer">
+            <input type="file" multiple class="hidden" @change="onAttachmentInputChange" />
+            <span class="inline-flex items-center justify-center px-3 h-9 text-sm border border-primary-300 rounded-md text-primary-600 hover:bg-primary-50">
+              <svg class="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+              </svg>
+              {{ attachmentsBusy ? t('invoice.attachments.uploading') : t('invoice.attachments.add') }}
+            </span>
+            <span class="text-xs text-neutral-500">{{ t('invoice.attachments.drop_here') }}</span>
+          </label>
         </div>
       </div>
 

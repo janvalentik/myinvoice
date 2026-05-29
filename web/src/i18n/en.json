@@ -939,7 +939,11 @@
       "upload_done": "Uploaded: {n}",
       "upload_failed": "Failed to upload attachment.",
       "delete_failed": "Failed to delete attachment.",
-      "confirm_delete": "Really delete attachment \"{name}\"?"
+      "confirm_delete": "Really delete attachment \"{name}\"?",
+      "pending_hint": "Attached to the PDF when sent to the client. Uploaded after the invoice is created. Max 10 MiB/file, 20 MiB total.",
+      "post_save_failed": "Invoice created, but attachments could not be uploaded — please add them in the invoice detail.",
+      "too_large": "File \"{name}\" exceeds the 10 MiB limit.",
+      "total_too_large": "Total attachment size exceeds 20 MiB."
     },
     "bulk_reissue": "Reissue ({n})",
     "bulk_send": "Send to clients ({n})",
