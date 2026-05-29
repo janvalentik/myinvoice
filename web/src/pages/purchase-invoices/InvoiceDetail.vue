@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { purchaseInvoicesApi, type PurchaseInvoice, type PurchaseInvoiceStatus, type PurchaseInvoiceBrief } from '@/api/purchaseInvoices'
@@ -108,6 +108,9 @@ const activity = ref<Array<{
 const id = computed(() => Number(route.params.id))
 
 onMounted(load)
+// Detail se recykluje při navigaci /purchase-invoices/:id → :id (např. proklik na zálohu/vyúčtování),
+// onMounted se znovu nespustí → bez tohoto watch by se obsah nepřenačetl (vypadalo to jako „self / nic se neděje").
+watch(id, load)
 
 async function load() {
   loading.value = true
@@ -501,7 +504,7 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
             <div class="flex justify-between font-semibold border-t border-neutral-100 pt-2"><dt>{{ t('purchase_invoice.totals.with_vat_rounded') }}</dt><dd class="font-mono">{{ formatMoney(invoice.total_with_vat + invoice.rounding, invoice.currency) }}</dd></div>
           </template>
           <div v-if="invoice.advance_paid_amount > 0" class="flex justify-between text-neutral-500"><dt>{{ t('purchase_invoice.totals.advance_paid') }}</dt><dd class="font-mono">−{{ formatMoney(invoice.advance_paid_amount, invoice.currency) }}</dd></div>
-          <div class="flex justify-between font-semibold text-lg border-t border-neutral-200 pt-2"><dt>{{ t('purchase_invoice.totals.to_pay') }}</dt><dd class="font-mono">{{ formatMoney((invoice.amount_to_pay || invoice.total_with_vat) + (invoice.rounding || 0), invoice.currency) }}</dd></div>
+          <div class="flex justify-between font-semibold text-lg border-t border-neutral-200 pt-2"><dt>{{ t('purchase_invoice.totals.to_pay') }}</dt><dd class="font-mono">{{ formatMoney((invoice.amount_to_pay ?? invoice.total_with_vat) + (invoice.rounding || 0), invoice.currency) }}</dd></div>
           <!-- CZK přepočet (jen pokud faktura není CZK + má exchange_rate) -->
           <template v-if="invoice.currency !== 'CZK' && invoice.exchange_rate">
             <div class="border-t border-neutral-200 pt-3 mt-3">

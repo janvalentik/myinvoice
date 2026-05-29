@@ -500,7 +500,7 @@ async function bulkDelete() {
                   <th class="text-center px-4 py-2 font-medium">{{ t('purchase_invoice.fields.document_kind') }}</th>
                   <th class="text-center px-4 py-2 font-medium">{{ t('purchase_invoice.fields.tax_date') }}</th>
                   <th class="text-center px-4 py-2 font-medium">{{ t('purchase_invoice.fields.due_date') }}</th>
-                  <th class="text-right px-4 py-2 font-medium">{{ t('purchase_invoice.totals.to_pay') }}</th>
+                  <th class="text-right px-4 py-2 font-medium">{{ t('purchase_invoice.totals.with_vat') }}</th>
                   <th class="text-center px-4 py-2 font-medium">{{ t('purchase_invoice.status.draft') }}</th>
                 </tr>
               </thead>
@@ -552,7 +552,7 @@ async function bulkDelete() {
                     </span>
                   </td>
                   <td class="px-4 py-2.5 text-right font-mono">
-                    {{ formatMoney(inv.amount_to_pay ?? inv.total_with_vat, inv.currency) }}
+                    {{ formatMoney(inv.total_with_vat, inv.currency) }}
                   </td>
                   <td class="px-4 py-2.5 text-center">
                     <span class="text-xs px-2 py-0.5 rounded" :class="statusBadgeClass(inv.status)">
@@ -597,7 +597,7 @@ async function bulkDelete() {
                     <span class="truncate">{{ inv.vendor_company_name }}</span>
                   </div>
                   <div class="font-mono text-sm whitespace-nowrap">
-                    {{ formatMoney(inv.amount_to_pay ?? inv.total_with_vat, inv.currency) }}
+                    {{ formatMoney(inv.total_with_vat, inv.currency) }}
                   </div>
                 </div>
                 <div class="flex items-baseline justify-between gap-2 mt-1 text-xs text-neutral-500">

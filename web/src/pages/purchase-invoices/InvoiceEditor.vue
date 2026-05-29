@@ -886,6 +886,19 @@ function fieldErr(key: string): string | null {
               <td class="pr-4 pt-1.5">{{ t('purchase_invoice.totals.with_vat_rounded') }}:</td>
               <td class="text-right font-mono pt-1.5">{{ formatMoney(totals.with_vat + form.rounding, currencyCode) }}</td>
             </tr>
+            <!-- Uhrazená záloha — ručně editovatelná (propojení zálohy v detailu ji nastaví automaticky).
+                 amount_to_pay je v DB generated column (total_with_vat − advance_paid_amount), přepočítá se po uložení. -->
+            <tr class="border-t border-neutral-200">
+              <td class="pr-4 py-1 text-neutral-600">{{ t('purchase_invoice.totals.advance_paid') }}:</td>
+              <td class="text-right">
+                <input v-model.number="form.advance_paid_amount" type="number" step="0.01" min="0"
+                  class="w-28 h-7 px-2 text-right border border-neutral-300 rounded text-sm font-mono" />
+              </td>
+            </tr>
+            <tr v-if="form.advance_paid_amount > 0" class="font-semibold border-t border-neutral-100">
+              <td class="pr-4 pt-1.5">{{ t('purchase_invoice.totals.to_pay') }}:</td>
+              <td class="text-right font-mono pt-1.5">{{ formatMoney(totals.with_vat + (form.rounding || 0) - (form.advance_paid_amount || 0), currencyCode) }}</td>
+            </tr>
           </table>
         </div>
       </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { invoicesApi, type Invoice, type WorkReport, type ApprovalStatus, type InvoiceAttachment } from '@/api/invoices'
@@ -147,6 +147,9 @@ function formatBytes(n: number): string {
 }
 
 onMounted(load)
+// Detail se recykluje při navigaci /invoices/:id → :id (proklik na související doklad,
+// dobropis/parent) → onMounted se znovu nespustí, proto přenačtení řídí watch.
+watch(() => route.params.id, load)
 
 function actionLabel(a: string): string {
   const map: Record<string, string> = {
