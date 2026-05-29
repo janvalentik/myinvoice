@@ -24,7 +24,40 @@ const loading = ref(false)
 const submitting = ref(false)
 const error = ref('')
 
-const clients = ref<Client[]>([])
+const clients = ref<Client[]>([])  // akumulovaná cache (výsledky hledání + vybraný)
+// Server-side našeptávač klientů (zákazníků) — SearchableSelect remote.
+const clientOptions = ref<{ value: number; label: string; secondary?: string }[]>([])
+const clientsLoading = ref(false)
+const selectedClientOption = ref<{ value: number; label: string; secondary?: string } | null>(null)
+function clientToOption(c: Client) {
+  return { value: c.id, label: c.company_name, secondary: c.ic ?? undefined }
+}
+function mergeClients(list: Client[]) {
+  const byId = new Map(clients.value.map(c => [c.id, c]))
+  for (const c of list) byId.set(c.id, c)
+  clients.value = Array.from(byId.values())
+}
+async function onClientSearch(q: string) {
+  clientsLoading.value = true
+  try {
+    const res = await clientsApi.list({ q: q || undefined, role: 'customers', archived: false, per_page: 50 })
+    mergeClients(res.data)
+    clientOptions.value = res.data.map(clientToOption)
+  } catch { /* ignore */ } finally {
+    clientsLoading.value = false
+  }
+}
+async function ensureClientLoaded(id: number, fallbackName?: string | null) {
+  const existing = clients.value.find(c => c.id === id)
+  if (existing) { selectedClientOption.value = clientToOption(existing); return }
+  try {
+    const full = await clientsApi.get(id)
+    mergeClients([full])
+    selectedClientOption.value = clientToOption(full)
+  } catch {
+    selectedClientOption.value = { value: id, label: fallbackName ?? `#${id}` }
+  }
+}
 const projects = ref<Project[]>([])
 const currencies = ref<Currency[]>([])
 const vatRates = ref<VatRate[]>([])
@@ -229,6 +262,9 @@ async function verifyClientVies(clientId: number) {
 
 watch(() => form.value.client_id, async (newId) => {
   if (newId) {
+    // Pokrývá všechny cesty (edit / ?client_id / from_invoice / výběr / inline-create):
+    // dotáhne klienta do cache + nastaví label, aby ho našel i find() níže a VIES.
+    await ensureClientLoaded(newId)
     await loadProjectsForClient(newId)
     const c = clients.value.find(x => x.id === newId)
     if (c) {
@@ -242,6 +278,7 @@ watch(() => form.value.client_id, async (newId) => {
     }
     await verifyClientVies(newId)
   } else {
+    selectedClientOption.value = null
     projects.value = []
     viesResult.value = null
   }
@@ -263,10 +300,11 @@ const clientModalOpen = ref(false)
 const projectModalOpen = ref(false)
 
 async function onClientCreatedInModal(client: Client) {
-  clients.value = [client, ...clients.value.filter(c => c.id !== client.id)]
+  mergeClients([client])
+  selectedClientOption.value = clientToOption(client)
   form.value.client_id = client.id
   clientModalOpen.value = false
-  // watch na client_id zavolá loadProjectsForClient + nastaví name
+  // watch na client_id zavolá ensureClientLoaded (najde v cache) + loadProjects + name
 }
 
 async function onProjectCreatedInModal(project: Project) {
@@ -308,13 +346,12 @@ watch(() => form.value.draft_open_mode, (m) => {
 onMounted(async () => {
   loading.value = true
   try {
-    const [cl, cur, vat, un] = await Promise.all([
-      clientsApi.list({ archived: false }),
+    // Klienti se hledají server-side (onClientSearch); cache se plní výsledky + vybraným.
+    const [cur, vat, un] = await Promise.all([
       codebooksApi.currencies(),
       codebooksApi.vatRates(),
       codebooksApi.units(),
     ])
-    clients.value = cl.data
     currencies.value = cur
     vatRates.value = vat
     units.value = un
@@ -517,7 +554,11 @@ async function submit() {
                 <SearchableSelect
                   :model-value="form.client_id"
                   @update:model-value="(v) => { form.client_id = v }"
-                  :options="clients.filter(c => c.is_customer !== false).map(c => ({ value: c.id, label: c.company_name }))"
+                  remote
+                  :loading="clientsLoading"
+                  :options="clientOptions"
+                  :selected-option="selectedClientOption"
+                  @search="onClientSearch"
                   :placeholder="t('recurring.client')"
                 />
               </div>

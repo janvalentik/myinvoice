@@ -11,16 +11,28 @@ const props = withDefaults(defineProps<{
   noResultsLabel?: string
   clearable?: boolean
   disabled?: boolean
+  /** Server-side režim: options dodává rodič podle @search (žádný client-side filtr). */
+  remote?: boolean
+  /** Indikátor načítání ve výsledcích (jen remote). */
+  loading?: boolean
+  loadingLabel?: string
+  /** Vybraná položka pro zobrazení labelu, i když není v options (edit / po hledání). */
+  selectedOption?: Option | null
 }>(), {
   placeholder: '',
   emptyLabel: '',
   noResultsLabel: 'Žádné výsledky',
   clearable: true,
   disabled: false,
+  remote: false,
+  loading: false,
+  loadingLabel: 'Hledám…',
+  selectedOption: null,
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: T | null]
+  'search': [query: string]
 }>()
 
 const root = ref<HTMLDivElement | null>(null)
@@ -30,15 +42,17 @@ const open = ref(false)
 const query = ref('')
 const highlightIdx = ref(0)
 
-const selected = computed(() =>
-  props.modelValue !== null && props.modelValue !== undefined
-    ? props.options.find(o => o.value === props.modelValue) ?? null
-    : null
-)
+// Vybraná položka: v remote režimu může být mimo aktuální options (edit / po hledání),
+// proto preferujeme selectedOption dodaný rodičem.
+const selected = computed(() => {
+  if (props.modelValue === null || props.modelValue === undefined) return null
+  if (props.selectedOption && props.selectedOption.value === props.modelValue) return props.selectedOption
+  return props.options.find(o => o.value === props.modelValue) ?? null
+})
 
-// when query je prázdný (nebo přesně shoduje s vybraným labelem), ukazujeme všechny;
-// jinak filtrujeme case-insensitively (substring match v label i secondary)
+// remote: options už přišly z backendu (rodič filtruje přes @search) → nefiltrovat client-side.
 const filtered = computed(() => {
+  if (props.remote) return props.options
   const q = query.value.trim().toLowerCase()
   if (!q || (selected.value && q === selected.value.label.toLowerCase())) {
     return props.options
@@ -62,6 +76,12 @@ watch(open, (o) => {
   }
 })
 
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+function emitSearchDebounced(q: string) {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => emit('search', q), 250)
+}
+
 function selectOption(o: Option) {
   emit('update:modelValue', o.value)
   query.value = o.label
@@ -72,16 +92,24 @@ function clear() {
   emit('update:modelValue', null)
   query.value = ''
   open.value = false
+  if (props.remote) emit('search', '')
   input.value?.focus()
 }
 
 function onFocus() {
-  if (!props.disabled) open.value = true
+  if (props.disabled) return
+  open.value = true
+  if (props.remote) {
+    // Při otevření s vybranou položkou (query == label) ukaž první stránku, jinak hledej dle textu.
+    const q = query.value.trim()
+    emit('search', (selected.value && q.toLowerCase() === selected.value.label.toLowerCase()) ? '' : q)
+  }
 }
 
 function onInput() {
   open.value = true
   highlightIdx.value = 0
+  if (props.remote) emitSearchDebounced(query.value.trim())
 }
 
 function onKey(e: KeyboardEvent) {
@@ -129,6 +157,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   document.removeEventListener('mousedown', onClickOutside)
+  if (searchTimer) clearTimeout(searchTimer)
 })
 </script>
 
@@ -170,7 +199,10 @@ onUnmounted(() => {
       role="listbox"
       class="absolute z-50 left-0 right-0 mt-1 bg-surface border border-neutral-200 rounded-md shadow-lg max-h-72 overflow-y-auto"
     >
-      <div v-if="filtered.length === 0" class="px-3 py-2 text-sm text-neutral-400">
+      <div v-if="remote && loading" class="px-3 py-2 text-sm text-neutral-400">
+        {{ loadingLabel }}
+      </div>
+      <div v-else-if="filtered.length === 0" class="px-3 py-2 text-sm text-neutral-400">
         {{ noResultsLabel }}
       </div>
       <button

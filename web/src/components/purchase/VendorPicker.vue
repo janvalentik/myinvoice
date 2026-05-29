@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { clientsApi, type Client } from '@/api/clients'
 import SearchableSelect from '@/components/ui/SearchableSelect.vue'
+
+type Opt = { value: number; label: string; secondary?: string }
 
 const props = defineProps<{
   modelValue: number | null
@@ -16,36 +18,62 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const clients = ref<Client[]>([])
+const cache = ref<Client[]>([])    // akumulovaná cache (výsledky hledání + vybraný)
+const options = ref<Opt[]>([])      // aktuální výsledky hledání (server-side)
 const loading = ref(false)
+const selectedOption = ref<Opt | null>(null)
 
-onMounted(load)
+function toOpt(c: Client): Opt {
+  return { value: c.id, label: c.company_name, secondary: c.ic ? `IČO ${c.ic}` : (c.dic || undefined) }
+}
+function merge(list: Client[]) {
+  const byId = new Map(cache.value.map(c => [c.id, c]))
+  for (const c of list) byId.set(c.id, c)
+  cache.value = Array.from(byId.values())
+}
 
-async function load() {
+// Našeptávač dodavatelů — hledá v DB (role=vendors), ne jen v prvních N.
+async function onSearch(q: string) {
   loading.value = true
   try {
-    const res = await clientsApi.list({ per_page: 200 })
-    // Filtr na frontendu: pouze klienti označení jako vendor.
-    // Backendový filtr přidáme později (clients?role=vendor) — v fázi 1 takhle.
-    clients.value = (res.data || []).filter((c: any) => c.is_vendor || c.is_vendor === undefined)
-  } finally {
+    const res = await clientsApi.list({ q: q || undefined, role: 'vendors', archived: false, per_page: 50 })
+    merge(res.data)
+    options.value = res.data.map(toOpt)
+  } catch { /* ignore */ } finally {
     loading.value = false
   }
 }
 
-const options = computed(() => clients.value.map(c => ({
-  value: c.id,
-  label: c.company_name,
-  secondary: c.ic ? `IČO ${c.ic}` : (c.dic || ''),
-})))
-
-function onChange(id: number | string | null) {
-  emit('update:modelValue', id === null ? null : Number(id))
-  emit('selected', id === null ? null : (clients.value.find(c => c.id === Number(id)) ?? null))
+// Edit / externí nastavení modelValue: dotáhni dodavatele podle id kvůli zobrazení labelu.
+async function ensureLoaded(id: number | null) {
+  if (id === null) { selectedOption.value = null; return }
+  const existing = cache.value.find(c => c.id === id)
+  if (existing) { selectedOption.value = toOpt(existing); return }
+  try {
+    const full = await clientsApi.get(id)
+    merge([full])
+    selectedOption.value = toOpt(full)
+  } catch {
+    selectedOption.value = { value: id, label: `#${id}` }
+  }
 }
 
-// Re-load po vytvoření nového klienta (parent emit signal přes ref změny)
-defineExpose({ reload: load })
+function onChange(id: number | string | null) {
+  const numId = id === null ? null : Number(id)
+  emit('update:modelValue', numId)
+  const vendor = numId === null ? null : (cache.value.find(c => c.id === numId) ?? null)
+  selectedOption.value = vendor ? toOpt(vendor) : null
+  emit('selected', vendor)
+}
+
+onMounted(() => { ensureLoaded(props.modelValue) })
+watch(() => props.modelValue, (v) => {
+  if (v !== (selectedOption.value?.value ?? null)) ensureLoaded(v)
+})
+
+// Parent po vytvoření nového vendoru nastaví modelValue a zavolá reload.
+async function reload() { await ensureLoaded(props.modelValue) }
+defineExpose({ reload })
 </script>
 
 <template>
@@ -55,7 +83,11 @@ defineExpose({ reload: load })
       <div class="flex-1">
         <SearchableSelect
           :model-value="modelValue"
+          remote
+          :loading="loading"
           :options="options"
+          :selected-option="selectedOption"
+          @search="onSearch"
           :placeholder="t('vendor.search_placeholder')"
           @update:model-value="onChange"
         />

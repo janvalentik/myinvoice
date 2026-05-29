@@ -56,7 +56,41 @@ const varsymbolLabelKey = computed(() => {
   return 'invoice.varsymbol_label'
 })
 
-const clients = ref<Client[]>([])
+const clients = ref<Client[]>([])  // akumulovaná cache (výsledky hledání + vybraný) — čtou z ní defaults/VIES
+// Server-side našeptávač klientů (zákazníků) — SearchableSelect v remote režimu.
+const clientOptions = ref<{ value: number; label: string; secondary?: string }[]>([])
+const clientsLoading = ref(false)
+const selectedClientOption = ref<{ value: number; label: string; secondary?: string } | null>(null)
+function clientToOption(c: Client) {
+  return { value: c.id, label: c.company_name, secondary: c.ic ?? undefined }
+}
+function mergeClients(list: Client[]) {
+  const byId = new Map(clients.value.map(c => [c.id, c]))
+  for (const c of list) byId.set(c.id, c)
+  clients.value = Array.from(byId.values())
+}
+async function onClientSearch(q: string) {
+  clientsLoading.value = true
+  try {
+    const res = await clientsApi.list({ q: q || undefined, role: 'customers', archived: false, per_page: 50 })
+    mergeClients(res.data)
+    clientOptions.value = res.data.map(clientToOption)
+  } catch { /* ignore */ } finally {
+    clientsLoading.value = false
+  }
+}
+// Edit / pre-select: dotáhni klienta podle id (do cache + label), fallback na denorm jméno z faktury.
+async function ensureClientLoaded(id: number, fallbackName?: string | null, fallbackIc?: string | null) {
+  const existing = clients.value.find(c => c.id === id)
+  if (existing) { selectedClientOption.value = clientToOption(existing); return }
+  try {
+    const full = await clientsApi.get(id)
+    mergeClients([full])
+    selectedClientOption.value = clientToOption(full)
+  } catch {
+    selectedClientOption.value = { value: id, label: fallbackName ?? `#${id}`, secondary: fallbackIc ?? undefined }
+  }
+}
 const projects = ref<Project[]>([])
 const vatRates = ref<VatRate[]>([])
 const vatClassifications = ref<VatClassification[]>([])
@@ -303,9 +337,7 @@ onMounted(async () => {
     }
   }
 
-  // Load clients (for dropdown)
-  const cl = await clientsApi.list({ archived: false })
-  clients.value = cl.data
+  // Klienti se hledají server-side (onClientSearch); cache `clients` se plní výsledky + vybraným.
 
   if (isEdit.value && invoiceId.value) {
     const inv = await invoicesApi.get(invoiceId.value)
@@ -342,6 +374,7 @@ onMounted(async () => {
       ? { rate: inv.exchange_rate, date: (inv.exchange_rate_date ?? inv.issue_date).slice(0, 10), currency: inv.currency }
       : null
     if (inv.client_id) {
+      await ensureClientLoaded(inv.client_id, (inv as any).client_company_name, (inv as any).client_ic)
       await loadProjects(inv.client_id)
       await verifyClientVies(inv.client_id)
     }
@@ -353,6 +386,7 @@ onMounted(async () => {
     // New invoice — pre-select from query
     if (route.query.client_id) {
       form.value.client_id = Number(route.query.client_id)
+      await ensureClientLoaded(form.value.client_id!)
       await loadProjects(form.value.client_id!)
       await applyClientDefaults(form.value.client_id!)
     }
@@ -387,9 +421,9 @@ const clientModalOpen = ref(false)
 const projectModalOpen = ref(false)
 
 async function onClientCreatedInModal(client: Client) {
-  // Vlož na začátek pole (typicky čerstvě přidaný klient bývá vybraný),
-  // setni v editoru a spusť defaults/projects/VIES.
-  clients.value = [client, ...clients.value.filter(c => c.id !== client.id)]
+  // Čerstvě přidaný klient → do cache + rovnou vybrat (defaults/projects/VIES v onClientChange).
+  mergeClients([client])
+  selectedClientOption.value = clientToOption(client)
   form.value.client_id = client.id
   clientModalOpen.value = false
   await onClientChange()
@@ -405,6 +439,8 @@ async function onProjectCreatedInModal(project: Project) {
 async function onClientChange() {
   form.value.project_id = null
   if (form.value.client_id) {
+    const c = clients.value.find(cc => cc.id === form.value.client_id)
+    if (c) selectedClientOption.value = clientToOption(c)
     await loadProjects(form.value.client_id)
     await applyClientDefaults(form.value.client_id)
     await verifyClientVies(form.value.client_id)
@@ -413,6 +449,7 @@ async function onClientChange() {
       await applyProjectDefaults(form.value.project_id)
     }
   } else {
+    selectedClientOption.value = null
     viesResult.value = null
   }
 }
@@ -1029,7 +1066,11 @@ async function deleteDraft() {
                   <SearchableSelect
                     :model-value="form.client_id"
                     @update:model-value="(v) => { form.client_id = v; onClientChange() }"
-                    :options="clients.filter(c => c.is_customer !== false).map(c => ({ value: c.id, label: c.company_name, secondary: c.ic ?? undefined }))"
+                    remote
+                    :loading="clientsLoading"
+                    :options="clientOptions"
+                    :selected-option="selectedClientOption"
+                    @search="onClientSearch"
                     :placeholder="t('invoice.select_client')"
                     :clearable="false"
                   />

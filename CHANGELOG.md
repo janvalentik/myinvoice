@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Výběr klienta / dodavatele ve fakturách** — našeptávač nově hledá **server-side přímo v databázi** (název / IČO / DIČ) místo filtrování jen prvních 50 načtených. Týká se nové i editované vydané faktury, přijaté faktury (dodavatelé) a pravidelné fakturace. Řeší případ, kdy klient za první stránkou nešel ve faktuře vybrat, a škáluje nad 200 klientů.
+
 ## [4.5.2] — 2026-05-29
 
 Opravy u přijatých faktur uhrazených zálohou a přenačtení detailu faktury při prokliku.
