@@ -45,9 +45,10 @@ final class InvoiceMathTest extends TestCase
         self::assertSame(60.00,   $r['vat_breakdown'][1]['vat']);
     }
 
-    public function testReverseChargeForcesZeroVatRegardlessOfItem(): void
+    public function testReverseChargeKeepsNominalRateButZeroesVat(): void
     {
-        // Reverse charge: 21% v položce ignorováno, efektivní = 0
+        // Reverse charge (přenesená daň. povinnost): nominální sazby (21/12 %) ZŮSTÁVAJÍ
+        // pro zobrazení i breakdown, ale daň = 0 (odvede ji zákazník).
         $r = InvoiceMath::compute([
             ['quantity' => 1, 'unit_price_without_vat' => 1000.00, 'vat_rate_snapshot' => 21],
             ['quantity' => 1, 'unit_price_without_vat' => 500.00,  'vat_rate_snapshot' => 12],
@@ -55,9 +56,14 @@ final class InvoiceMathTest extends TestCase
         self::assertSame(1500.00, $r['totals']['without_vat']);
         self::assertSame(0.00,    $r['totals']['vat']);
         self::assertSame(1500.00, $r['totals']['with_vat']);
-        // Všechny položky se sloučí pod sazbu 0 %
-        self::assertCount(1, $r['vat_breakdown']);
-        self::assertSame(0.0, $r['vat_breakdown'][0]['rate']);
+        // Sazby zůstávají (seřazeno DESC), daň u každé 0
+        self::assertCount(2, $r['vat_breakdown']);
+        self::assertSame(21.0,    $r['vat_breakdown'][0]['rate']);
+        self::assertSame(1000.00, $r['vat_breakdown'][0]['base']);
+        self::assertSame(0.00,    $r['vat_breakdown'][0]['vat']);
+        self::assertSame(12.0,   $r['vat_breakdown'][1]['rate']);
+        self::assertSame(500.00, $r['vat_breakdown'][1]['base']);
+        self::assertSame(0.00,   $r['vat_breakdown'][1]['vat']);
     }
 
     public function testEmptyItemsReturnsZeros(): void

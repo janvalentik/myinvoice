@@ -201,27 +201,17 @@ function supplierDueDate(issueDate: string): string {
   return computeDueDate(issueDate, value, unit)
 }
 
-function defaultVatRateId(reverseCharge = false): number {
+// RC (přenesená daň. povinnost) je teď jen hlavičkový příznak `reverse_charge` — položky si
+// drží nominální sazbu (21 %), daň vynuluje backend (InvoiceMath). Default sazby RC neřeší,
+// proto se položky při zaškrtnutí RC už nepřepisují na 0% „CZ-RC".
+function defaultVatRateId(): number {
   // Neplátce DPH → vždy 0% Osvobozeno (rate_percent=0, !is_reverse_charge).
   if (!supplierIsVatPayer.value) {
     const zero = vatRates.value.find(v => Number(v.rate_percent) === 0 && !v.is_reverse_charge)
     if (zero) return zero.id
   }
-  if (reverseCharge) {
-    const rc = vatRates.value.find(v => v.is_reverse_charge)
-    if (rc) return rc.id
-  }
   const def = vatRates.value.find(v => v.is_default)
   return def?.id ?? vatRates.value[0]?.id ?? 0
-}
-
-// Když se přepne RC (z klienta nebo ručním checkboxem) nebo je dodavatel neplátce,
-// sjednoť vat_rate_id všech položek s novým defaultem — display by jinak ukazoval
-// 21 % zatímco totals už počítají 0 %.
-function syncItemsVatRateToReverseCharge() {
-  const target = defaultVatRateId(form.value.reverse_charge)
-  if (!target) return
-  for (const it of form.value.items) it.vat_rate_id = target
 }
 
 function vatRateLabel(r: VatRate): string {
@@ -229,6 +219,11 @@ function vatRateLabel(r: VatRate): string {
   if (r.is_reverse_charge) return t('invoice.vat_rate_label.reverse_charge')
   return t('invoice.vat_rate_label.exempt')
 }
+
+// Řádkový výběr už nenabízí „Reverse charge" (0% CZ-RC) — RC se řeší hlavičkovým checkboxem,
+// který nechá nominální sazbu (21 %) a vynuluje daň. Volba RC na řádku by jinak dala 0 %
+// bez automatické poznámky „Daň odvede zákazník".
+const selectableVatRates = computed(() => vatRates.value.filter(r => !r.is_reverse_charge))
 
 function blankItem(): InvoiceItem {
   // Dobropis = záporné množství (sleva/refundace), default -1
@@ -244,16 +239,10 @@ function blankItem(): InvoiceItem {
     quantity: qty,
     unit: defaultItemUnit(),
     unit_price_without_vat: rate,
-    vat_rate_id: defaultVatRateId(form.value.reverse_charge),
+    vat_rate_id: defaultVatRateId(),
     order_index: form.value.items.length,
   }
 }
-
-// Ruční toggle RC checkboxu → resync vat_rate_id u položek s aktuálním defaultem.
-// Loaded guard chrání edit-mode init před přepsáním uložených sazeb.
-watch(() => form.value.reverse_charge, (newVal, oldVal) => {
-  if (loaded.value && newVal !== oldVal) syncItemsVatRateToReverseCharge()
-})
 
 // Náhled čísla faktury — backend zná aktuální counter pro per-supplier templ.
 // Volá se při mount + při změně typu / data; cancellation nemá číslo.
@@ -461,10 +450,8 @@ async function applyClientDefaults(clientId: number) {
   form.value.currency = c.currency_default
   form.value.language = c.language
   // Neplátce DPH nikdy nevystavuje RC fakturu — ignorujeme klientský flag.
-  const newRc = supplierIsVatPayer.value ? c.reverse_charge : false
-  const rcChanged = form.value.reverse_charge !== newRc
-  form.value.reverse_charge = newRc
-  if (rcChanged) syncItemsVatRateToReverseCharge()
+  // RC jen přepne hlavičkový příznak; sazby položek (nominální) se nemění.
+  form.value.reverse_charge = supplierIsVatPayer.value ? c.reverse_charge : false
   // Klient s vlastní hodnotou → jeho jednotka (bez vlastní = dny, ne supplier),
   // jinak plně dědí supplier default (hodnotu i jednotku).
   if (typeof c.payment_due_default === 'number') {
@@ -716,7 +703,7 @@ function openWorkReport() {
 function pushWrToInvoiceItem() {
   if (wrItemsValid.value.length === 0) return
   const totalAmount = wrTotalAmount.value
-  const defaultVatId = defaultVatRateId(form.value.reverse_charge)
+  const defaultVatId = defaultVatRateId()
   const description = wrTitle.value || t('invoice.work_report')
   // Cíleně "ks" (kus) — výkaz se přenáší jako 1 × celková suma.
   // Když uživatel "ks" v číselníku nemá, fallback na literál (přidá free-text).
@@ -1263,7 +1250,7 @@ async function deleteDraft() {
               </td>
               <td v-if="supplierIsVatPayer" class="px-3 py-2">
                 <select v-model.number="item.vat_rate_id" class="w-full h-9 px-1 border border-neutral-200 rounded text-sm bg-surface">
-                  <option v-for="r in vatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
+                  <option v-for="r in selectableVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
                 </select>
               </td>
               <td class="px-3 py-2">
@@ -1326,7 +1313,7 @@ async function deleteDraft() {
               <div v-if="supplierIsVatPayer">
                 <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.totals.vat') }}</label>
                 <select v-model.number="item.vat_rate_id" class="w-full h-10 px-2 border border-neutral-200 rounded text-sm bg-surface">
-                  <option v-for="r in vatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
+                  <option v-for="r in selectableVatRates" :key="r.id" :value="r.id">{{ vatRateLabel(r) }}</option>
                 </select>
               </div>
             </div>

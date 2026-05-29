@@ -12,7 +12,8 @@ namespace MyInvoice\Service\Invoice;
  *  - Per item: total_without_vat = round(quantity * unit_price, 2)
  *              total_vat         = round(total_without_vat * (rate / 100), 2)
  *              total_with_vat    = total_without_vat + total_vat
- *  - Reverse charge: efektivní rate = 0 pro všechny položky
+ *  - Reverse charge (přenesená daňová povinnost): nominální sazba (21 %) ZŮSTÁVÁ pro
+ *    zobrazení i breakdown, ale daň = 0 (dodavatel ji nevybírá, odvede ji zákazník).
  *  - Faktura: SUM jednotlivých položek
  */
 final class InvoiceMath
@@ -35,10 +36,11 @@ final class InvoiceMath
         foreach ($items as $item) {
             $qty   = (float) $item['quantity'];
             $price = (float) $item['unit_price_without_vat'];
-            $rate  = $reverseCharge ? 0.0 : (float) $item['vat_rate_snapshot'];
+            // Nominální sazba zůstává (zobrazení + breakdown bucket); u RC se nuluje jen DAŇ.
+            $rate  = (float) $item['vat_rate_snapshot'];
 
             $base = round($qty * $price, 2);
-            $vat  = round($base * ($rate / 100.0), 2);
+            $vat  = $reverseCharge ? 0.0 : round($base * ($rate / 100.0), 2);
             $with = round($base + $vat, 2);
 
             $perItem[] = ['base' => $base, 'vat' => $vat, 'with' => $with, 'rate' => $rate];
