@@ -383,7 +383,7 @@ final class SummaryAction
                FROM purchase_invoices pi
           LEFT JOIN currencies cur ON cur.id = pi.currency_id
               WHERE pi.supplier_id = ?
-                AND pi.status NOT IN ('draft', 'cancelled')
+                AND pi.status NOT IN ('draft', 'cancelled')" . $this->advanceCostExclude() . "
                 AND YEAR(pi.issue_date) = ?"
         );
         $stmt->execute([$sid, $year]);
@@ -433,6 +433,20 @@ final class SummaryAction
      *
      * @return list<array{ym:string, total:float}>
      */
+    /**
+     * SQL predikát (cash sémantika, daňová evidence — shoda s PurchaseSummaryAction):
+     * zálohovou fakturu (advance) vyřaď z nákladů, pokud NENÍ zaplacená (cash ještě
+     * neodešel) NEBO je spárovaná s vyúčtovací fakturou (ta nese plný náklad →
+     * proti dvojímu započtení).
+     */
+    private function advanceCostExclude(): string
+    {
+        return " AND NOT (COALESCE(pi.document_kind, '') = 'advance'"
+             . " AND (pi.status <> 'paid'"
+             . " OR EXISTS (SELECT 1 FROM purchase_invoices adv_s"
+             . " WHERE adv_s.advance_purchase_invoice_id = pi.id)))";
+    }
+
     private function purchaseCostsByMonth(\PDO $pdo, int $sid): array
     {
         $sql = "SELECT DATE_FORMAT(pi.issue_date, '%Y-%m') AS ym,
@@ -440,7 +454,7 @@ final class SummaryAction
                   FROM purchase_invoices pi
              LEFT JOIN currencies cur ON cur.id = pi.currency_id
                  WHERE pi.supplier_id = ?
-                   AND pi.status NOT IN ('draft', 'cancelled')
+                   AND pi.status NOT IN ('draft', 'cancelled')" . $this->advanceCostExclude() . "
                    AND pi.issue_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01')
                  GROUP BY ym";
         $stmt = $pdo->prepare($sql);

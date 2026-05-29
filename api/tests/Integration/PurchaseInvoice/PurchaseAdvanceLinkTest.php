@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace MyInvoice\Tests\Integration\PurchaseInvoice;
 
+use MyInvoice\Action\Client\GetClientAction;
 use MyInvoice\Bootstrap;
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Middleware\SupplierScopeMiddleware;
 use MyInvoice\Repository\PurchaseInvoiceRepository;
 use MyInvoice\Service\Report\IncomeTaxBuilder;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Slim\Psr7\Factory\ServerRequestFactory;
+use Slim\Psr7\Response as Psr7Response;
 
 /**
  * Propojení přijaté zálohy (advance) s finální fakturou + dopad na náklady.
@@ -36,6 +40,7 @@ final class PurchaseAdvanceLinkTest extends TestCase
     private Connection $db;
     private PurchaseInvoiceRepository $repo;
     private IncomeTaxBuilder $incomeTax;
+    private GetClientAction $getClientAction;
 
     private int $supplierId = 0;
     private int $currencyId = 0;
@@ -59,6 +64,7 @@ final class PurchaseAdvanceLinkTest extends TestCase
             $this->db        = $container->get(Connection::class);
             $this->repo      = $container->get(PurchaseInvoiceRepository::class);
             $this->incomeTax = $container->get(IncomeTaxBuilder::class);
+            $this->getClientAction = $container->get(GetClientAction::class);
         } catch (\Throwable $e) {
             $this->markTestSkipped('DI nedostupné: ' . $e->getMessage());
         }
@@ -204,7 +210,48 @@ final class PurchaseAdvanceLinkTest extends TestCase
             'daň z příjmů: jen řádná faktura, zálohy (zaplacená i nezaplacená) vyloučené');
     }
 
+    /**
+     * Detail klienta (GetClientAction) — agregace nákladů `costs_by_year` NESMÍ
+     * dvojitě započítat spárované/zaplacené zálohy (to byl bug v sumacích i grafech
+     * u dodavatele). Accrual sémantika shodná s CRM (migrace 0065):
+     *   - řádná faktura (received)               → náklad
+     *   - spárovaná záloha                       → vyloučena (nese ji finální faktura)
+     *   - zaplacená nespárovaná záloha           → vyloučena (prepayment)
+     *   - nezaplacená nespárovaná záloha         → započítána (očekávaný náklad)
+     */
+    public function testClientDetailCostsExcludePairedAndPaidAdvance(): void
+    {
+        $vendor = $this->vendor('Dodavatel H', 'CZ10000008');
+        $final  = $this->purchase($vendor, 'invoice', 'CD-FAK',     'received', 20000.0, $this->d(10));
+        $paired = $this->purchase($vendor, 'advance', 'CD-ZAL-P',   'received',  5000.0, $this->d(9));
+        $this->repo->linkAdvance($final, $paired, $this->supplierId);                       // → vyloučena
+        $this->purchase($vendor, 'advance', 'CD-ZAL-PAID', 'paid',     7000.0, $this->d(8)); // → vyloučena
+        $this->purchase($vendor, 'advance', 'CD-ZAL-OPEN', 'received', 3000.0, $this->d(7)); // → započítána
+
+        $detail = $this->clientDetail($vendor);
+        $czk = array_values(array_filter(
+            $detail['costs_by_year'] ?? [],
+            static fn ($r) => (int) $r['year'] === self::YEAR && $r['currency'] === 'CZK'
+        ));
+        self::assertCount(1, $czk, 'jeden CZK řádek nákladů pro rok 2099');
+        self::assertEqualsWithDelta(23000.0, (float) $czk[0]['total'], 0.01,
+            'náklady = řádná faktura 20000 + nezaplacená nespárovaná záloha 3000; '
+            . 'spárovaná (5000) a zaplacená (7000) záloha musí být vyloučené');
+        self::assertSame(2, (int) $czk[0]['count'], 'do počtu jdou jen 2 doklady (faktura + otevřená záloha)');
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /** Zavolá GetClientAction a vrátí dekódované tělo (Json::ok zapisuje data napřímo). */
+    private function clientDetail(int $clientId): array
+    {
+        $req = (new ServerRequestFactory())
+            ->createServerRequest('GET', '/api/clients/' . $clientId)
+            ->withAttribute(SupplierScopeMiddleware::ATTR_CURRENT_ID, $this->supplierId);
+        $resp = ($this->getClientAction)($req, new Psr7Response(), ['id' => (string) $clientId]);
+        $resp->getBody()->rewind();
+        return json_decode((string) $resp->getBody(), true, 512, JSON_THROW_ON_ERROR);
+    }
 
     private function d(int $day): string
     {

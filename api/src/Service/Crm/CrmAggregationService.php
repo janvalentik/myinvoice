@@ -594,6 +594,11 @@ final class CrmAggregationService
              WHERE pi.supplier_id = ?
                AND pi.issue_date >= ?
                AND pi.status NOT IN ('draft', 'cancelled')
+               -- Spárovaná/zaplacená záloha (advance) nese náklad finální faktura → vyřadit (jako topVendors)
+               AND NOT (COALESCE(pi.document_kind, '') = 'advance'
+                        AND (pi.status = 'paid'
+                             OR EXISTS (SELECT 1 FROM purchase_invoices adv_s
+                                         WHERE adv_s.advance_purchase_invoice_id = pi.id)))
           GROUP BY pi.expense_category_id, ec.code, ec.label
           ORDER BY total DESC
         ";
