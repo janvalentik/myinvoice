@@ -170,6 +170,7 @@ async function saveSupplier() {
       commercial_register: supplier.value.commercial_register,
       default_payment_due_days: supplier.value.default_payment_due_days,
       default_payment_due_unit: supplier.value.default_payment_due_unit,
+      default_prices_include_vat: supplier.value.default_prices_include_vat,
       default_hourly_rate: supplier.value.default_hourly_rate,
       auto_send_reminders: supplier.value.auto_send_reminders,
       payment_thanks_enabled: supplier.value.payment_thanks_enabled,
@@ -530,6 +531,13 @@ async function removeCurrency(c: CurrencyAccount) {
               </div>
             </div>
             <p v-if="dueSelectValue === 'month'" class="text-xs text-neutral-500 mt-1">{{ t('settings.default_due_month_hint') }}</p>
+          </div>
+          <div v-if="supplier.is_vat_payer" class="md:col-span-2">
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="supplier.default_prices_include_vat" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              <span class="font-medium">{{ t('settings.default_prices_include_vat') }}</span>
+            </label>
+            <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('settings.default_prices_include_vat_hint') }}</p>
           </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('settings.default_hourly_rate') }} ({{ supplier.default_currency }})</label>

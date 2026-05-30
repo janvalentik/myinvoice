@@ -32,13 +32,14 @@ final class PurchaseInvoiceCalculator
     {
         $pdo = $this->db->pdo();
 
-        $stmt = $pdo->prepare('SELECT reverse_charge FROM purchase_invoices WHERE id = ?');
+        $stmt = $pdo->prepare('SELECT reverse_charge, prices_include_vat FROM purchase_invoices WHERE id = ?');
         $stmt->execute([$purchaseInvoiceId]);
         $header = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($header === false) {
             throw new \RuntimeException("Purchase invoice {$purchaseInvoiceId} not found");
         }
-        $reverseCharge = (bool) $header['reverse_charge'];
+        $reverseCharge    = (bool) $header['reverse_charge'];
+        $pricesIncludeVat = (bool) $header['prices_include_vat'];
 
         $stmt = $pdo->prepare(
             'SELECT id, quantity, unit_price_without_vat, vat_rate_snapshot
@@ -49,7 +50,7 @@ final class PurchaseInvoiceCalculator
         $stmt->execute([$purchaseInvoiceId]);
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $computed = InvoiceMath::compute($items, $reverseCharge);
+        $computed = InvoiceMath::compute($items, $reverseCharge, $pricesIncludeVat);
 
         // Persist per-item totals
         $updateItem = $pdo->prepare(

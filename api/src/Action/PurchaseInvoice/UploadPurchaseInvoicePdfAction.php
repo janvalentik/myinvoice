@@ -39,6 +39,7 @@ final class UploadPurchaseInvoicePdfAction
         private readonly Config $config,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly \MyInvoice\Service\Import\ImageToPdfConverter $imageToPdf,
     ) {}
 
     public function __invoke(Request $request, Response $response, array $args): Response
@@ -100,6 +101,25 @@ final class UploadPurchaseInvoicePdfAction
             $file->moveTo($tmpPath);
         } catch (\Throwable $e) {
             return Json::error($response, 'move_failed', 'Nepodařilo se přesunout soubor.', 500);
+        }
+
+        // Obrázek (fotka z telefonu, issue #75) → konvertuj na PDF a pokračuj
+        // standardní cestou (magic/MIME checky pak projdou, ukládá se .pdf).
+        $convertedFromImage = false;
+        $head = (string) @file_get_contents($tmpPath, false, null, 0, 16);
+        if (!str_starts_with($head, self::PDF_MAGIC)) {
+            $raw = (string) @file_get_contents($tmpPath);
+            $imgMime = $this->imageToPdf->detectImageMime($raw);
+            if ($imgMime !== null) {
+                try {
+                    $pdfBytes = $this->imageToPdf->convert($raw, $imgMime);
+                    @file_put_contents($tmpPath, $pdfBytes);
+                    $convertedFromImage = true;
+                } catch (\Throwable $e) {
+                    @unlink($tmpPath);
+                    return Json::error($response, 'image_convert_failed', $e->getMessage(), 400);
+                }
+            }
         }
 
         // Magic bytes — musí začínat %PDF-
@@ -169,6 +189,11 @@ final class UploadPurchaseInvoicePdfAction
         // mezi instalacemi (pokud uživatel přesune storage, hodnota dál ukazuje na správný file).
         $relativePath = 'supplier-' . $supplierId . '/' . $diskName;
         $originalName = $this->sanitizeFilename((string) $file->getClientFilename());
+        // Obsah je teď PDF → sjednoť i příponu názvu (jinak by se „uctenka.jpg"
+        // stáhla jako .jpg, ač je uvnitř PDF).
+        if ($convertedFromImage) {
+            $originalName = (string) preg_replace('/\.[^.]+$/', '', $originalName) . '.pdf';
+        }
 
         $this->repo->setPdfMetadata($id, $supplierId, $relativePath, $sha256, $size, $originalName);
 

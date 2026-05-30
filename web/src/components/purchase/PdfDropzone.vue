@@ -64,8 +64,11 @@ function handleFile(file: File) {
       t('purchase_invoice.pdf.upload_error', { error: `> ${Math.round(props.maxSizeBytes / 1024 / 1024)} MiB` }))
     return
   }
-  // Akceptujeme application/pdf NEBO empty (některé browsery type=""); server validuje magic bytes.
-  if (file.type && file.type !== 'application/pdf') {
+  // Akceptujeme PDF, obrázky (fotka z telefonu → server konvertuje na PDF), NEBO
+  // empty type (některé browsery type=""). Server validuje magic bytes znovu.
+  const accepted = !file.type || file.type === 'application/pdf' || file.type.startsWith('image/') ||
+    /\.(pdf|jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(file.name)
+  if (!accepted) {
     emit('error', 'invalid_pdf', t('purchase_invoice.pdf.invalid_pdf'))
     return
   }
@@ -96,7 +99,7 @@ const cls = computed(() => {
     <input
       ref="fileInput"
       type="file"
-      accept="application/pdf,.pdf"
+      accept="application/pdf,.pdf,image/*"
       class="hidden"
       @change="onFileInput"
       :disabled="uploading"

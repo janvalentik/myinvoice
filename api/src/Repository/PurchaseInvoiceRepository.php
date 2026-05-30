@@ -400,13 +400,13 @@ final class PurchaseInvoiceRepository
             (supplier_id, vendor_id, varsymbol, vendor_invoice_number, document_kind,
              issue_date, tax_date, due_date, received_at,
              currency_id, exchange_rate, exchange_rate_date, exchange_rate_source,
-             reverse_charge, language, note_above_items, note_below_items,
+             reverse_charge, prices_include_vat, language, note_above_items, note_below_items,
              vendor_snapshot, own_snapshot,
              advance_paid_amount,
              payment_currency_id, payment_exchange_rate,
              paid_amount_payment_ccy, paid_amount_invoice_ccy, exchange_diff_base,
              status, vat_classification_code, vat_deduction, vat_deduction_percent, tax_deductible, is_fixed_asset, expense_category_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -424,6 +424,7 @@ final class PurchaseInvoiceRepository
             empty($data['exchange_rate_date']) ? null : (string) $data['exchange_rate_date'],
             (string) ($data['exchange_rate_source'] ?? 'cnb'),
             !empty($data['reverse_charge']) ? 1 : 0,
+            !empty($data['prices_include_vat']) ? 1 : 0,
             (string) ($data['language'] ?? 'cs'),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
@@ -482,7 +483,7 @@ final class PurchaseInvoiceRepository
                 vendor_id = ?, vendor_invoice_number = ?, document_kind = ?,
                 issue_date = ?, tax_date = ?, due_date = ?, received_at = ?,
                 currency_id = ?, exchange_rate = ?, exchange_rate_date = ?, exchange_rate_source = ?,
-                reverse_charge = ?, language = ?,
+                reverse_charge = ?, prices_include_vat = ?, language = ?,
                 note_above_items = ?, note_below_items = ?,
                 advance_paid_amount = ?,
                 payment_currency_id = ?, payment_exchange_rate = ?,
@@ -504,6 +505,7 @@ final class PurchaseInvoiceRepository
             empty($data['exchange_rate_date']) ? null : (string) $data['exchange_rate_date'],
             (string) ($data['exchange_rate_source'] ?? 'cnb'),
             !empty($data['reverse_charge']) ? 1 : 0,
+            !empty($data['prices_include_vat']) ? 1 : 0,
             (string) ($data['language'] ?? 'cs'),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
@@ -1141,6 +1143,7 @@ final class PurchaseInvoiceRepository
             if (isset($row[$f]) && $row[$f] !== null) $row[$f] = (int) $row[$f];
         }
         $row['reverse_charge'] = isset($row['reverse_charge']) ? (bool) $row['reverse_charge'] : false;
+        $row['prices_include_vat'] = isset($row['prices_include_vat']) ? (bool) $row['prices_include_vat'] : false;
         $row['is_fixed_asset'] = isset($row['is_fixed_asset']) ? (bool) $row['is_fixed_asset'] : false;
         $row['tax_deductible'] = !array_key_exists('tax_deductible', $row) || (bool) $row['tax_deductible'];
         $vatDeduction = (string) ($row['vat_deduction'] ?? '');

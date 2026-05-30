@@ -24,6 +24,8 @@ export interface Supplier {
   default_vat_rate_id: number
   default_payment_due_days: number
   default_payment_due_unit: 'days' | 'month'
+  /** Výchozí režim cen u nových faktur (false = bez DPH, true = ceny s DPH). */
+  default_prices_include_vat: boolean
   default_hourly_rate: number
   auto_send_reminders: boolean
   auto_generate_recurring: boolean

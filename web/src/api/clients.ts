@@ -17,6 +17,8 @@ export interface Client {
   currency_default_id: number
   currency_default: string
   reverse_charge: boolean
+  /** Plátce DPH (ARES/VIES). U dodavatele řídí nárok na odpočet — neplátce ⇒ vat_deduction='none'. */
+  is_vat_payer?: boolean
   is_customer?: boolean
   is_vendor?: boolean
   auto_send_reminders: boolean
@@ -67,6 +69,15 @@ export interface ProjectSummary {
   hourly_rate: number
   payment_due_days: number
   project_number?: string | null
+}
+
+export interface VatStatusResult {
+  id: number
+  is_vat_payer: boolean
+  /** Zdroj výsledku: 'ares' (CZ dle IČO), 'vies' (zahr. dle DIČ), 'unknown' (nezjištěno → uložený příznak). */
+  source: 'ares' | 'vies' | 'unknown'
+  ic: string | null
+  dic: string | null
 }
 
 export interface AresLookupResult {
@@ -137,6 +148,7 @@ export interface ClientPayload {
   language: 'cs' | 'en'
   currency_default_id: number
   reverse_charge: boolean
+  is_vat_payer?: boolean
   is_customer?: boolean
   is_vendor?: boolean
   auto_send_reminders: boolean
@@ -187,6 +199,10 @@ export const clientsApi = {
       .then((r) => r.data),
 
   get: (id: number) => api.get<Client>(`/clients/${id}`).then((r) => r.data),
+
+  /** Online ověření plátcovství DPH dodavatele (ARES dle IČO / VIES dle DIČ); uloží na klienta. */
+  getVatStatus: (id: number) =>
+    api.get<VatStatusResult>(`/clients/${id}/vat-status`).then((r) => r.data),
 
   create: (payload: ClientPayload) => api.post<Client>('/clients', payload).then((r) => r.data),
   update: (id: number, payload: ClientPayload) =>

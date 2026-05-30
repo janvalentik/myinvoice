@@ -598,6 +598,13 @@ const taxModel = ref<TaxConstantsData | null>(null)
 const taxIsOverride = ref(false)
 const taxIsNew = ref(false)   // nově přidaný, ještě neuložený rok
 const taxSaving = ref(false)
+
+/** Nejvyšší přidatelný rok = aktuální kalendářní rok + 1 (jeden rok dopředu, ne dál). */
+const maxAddableTaxYear = computed(() => new Date().getFullYear() + 1)
+const canAddTaxYear = computed(() =>
+  taxYears.value.length > 0 &&
+  Math.max(...taxYears.value.map(y => y.year)) < maxAddableTaxYear.value,
+)
 const taxRates = [30, 40, 60, 80] as const
 const taxBands = ['band1', 'band2', 'band3'] as const
 
@@ -616,23 +623,32 @@ function selectTaxYear(year: number) {
   taxModel.value = JSON.parse(JSON.stringify(row.data)) // hluboká kopie pro editaci
 }
 
-/** Přidá další rok (nejnovější + 1) předvyplněný hodnotami nejnovějšího roku; uloží se až tlačítkem Uložit. */
-function addTaxYear() {
+/** Přidá další rok (nejnovější + 1) předvyplněný hodnotami nejnovějšího roku a rovnou ho uloží do DB,
+ *  aby přežil reload. Hodnoty lze následně upravit a uložit znovu.
+ *  Strop: lze přidat maximálně aktuální kalendářní rok + 1 (jeden rok dopředu). */
+async function addTaxYear() {
   if (!taxYears.value.length) return
   const maxYear = Math.max(...taxYears.value.map(y => y.year))
   const newYear = maxYear + 1
-  if (newYear > 2100) return
+  if (newYear > maxAddableTaxYear.value) return
   if (taxYears.value.some(y => y.year === newYear)) { selectTaxYear(newYear); return }
   const base = taxYears.value.find(y => y.year === maxYear)
   if (!base) return
   const cloned = JSON.parse(JSON.stringify(base.data))
   cloned.year = newYear
-  taxYears.value.unshift({ year: newYear, is_override: false, data: cloned })
-  taxYear.value = newYear
-  taxIsOverride.value = false
-  taxIsNew.value = true
-  taxModel.value = cloned
-  toast.success(t('codebooks.tax_year_added', { year: newYear }))
+  taxSaving.value = true
+  try {
+    const saved = await taxConstantsApi.save(newYear, cloned)
+    taxYears.value.unshift(saved)
+    taxYears.value.sort((a, b) => b.year - a.year)
+    taxYear.value = newYear
+    taxIsOverride.value = saved.is_override
+    taxIsNew.value = false
+    taxModel.value = JSON.parse(JSON.stringify(saved.data))
+    toast.success(t('codebooks.tax_year_added', { year: newYear }))
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
+  } finally { taxSaving.value = false }
 }
 async function saveTaxConstants() {
   if (!taxModel.value) return
@@ -1269,7 +1285,9 @@ watch(tab, (newTab) => {
           <option v-for="y in taxYears" :key="y.year" :value="y.year">{{ y.year }}</option>
         </select>
         <button v-if="auth.user?.role === 'admin'" @click="addTaxYear" type="button"
-          class="cursor-pointer h-9 px-3 text-sm border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50 inline-flex items-center gap-1">
+          :disabled="!canAddTaxYear"
+          :title="canAddTaxYear ? '' : t('codebooks.tax_add_year_max', { year: maxAddableTaxYear })"
+          class="cursor-pointer h-9 px-3 text-sm border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
           {{ t('codebooks.tax_add_year') }}
         </button>

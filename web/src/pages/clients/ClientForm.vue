@@ -97,6 +97,7 @@ const form = ref<ClientPayload>({
   language: 'cs',
   currency_default_id: 0,
   reverse_charge: false,
+  is_vat_payer: true,
   // Default: customer. Override z ?role=vendor query (klik 'Nový dodavatel' v list).
   is_customer: route.query.role !== 'vendor',
   is_vendor: route.query.role === 'vendor',
@@ -130,6 +131,27 @@ const viesLoading = ref(false)
 const viesResult = ref<import('@/api/clients').ViesLookupResult | null>(null)
 const duplicateIc = ref<{ id: number; name: string } | null>(null)
 const duplicateDic = ref<{ id: number; name: string } | null>(null)
+
+// Detaily plátce DPH (registr plátců DPH / CRPDPH) — bankovní účty + nespolehlivost, na vyžádání.
+const vatInfoOpen = ref(false)
+const vatInfoLoading = ref(false)
+const vatInfo = ref<import('@/api/clients').BankLookupResult | null>(null)
+const vatInfoError = ref('')
+
+async function loadVatPayerDetails() {
+  const dic = (form.value.dic || '').replace(/\D/g, '')
+  if (!dic) return
+  vatInfoOpen.value = true
+  vatInfoLoading.value = true
+  vatInfoError.value = ''
+  try {
+    vatInfo.value = await clientsApi.lookupBank(dic)
+  } catch (e: any) {
+    vatInfoError.value = e?.response?.data?.error?.message || t('client.vat_payer_details_failed')
+  } finally {
+    vatInfoLoading.value = false
+  }
+}
 
 onMounted(async () => {
   const [c, cur, ec, rc] = await Promise.all([
@@ -172,6 +194,7 @@ function sanitize(c: Client): Partial<ClientPayload> {
     language: c.language,
     currency_default_id: c.currency_default_id,
     reverse_charge: c.reverse_charge,
+    is_vat_payer: c.is_vat_payer ?? true,
     is_customer: c.is_customer !== false,
     is_vendor:   c.is_vendor   === true,
     auto_send_reminders: c.auto_send_reminders ?? true,
@@ -205,6 +228,7 @@ async function loadFromAres() {
     form.value.city = d.city
     form.value.zip = d.zip
     form.value.country_iso2 = d.country_iso2 || 'CZ'
+    form.value.is_vat_payer = d.is_vat_payer  // ARES: stav registrace DPH (autoritativní pro CZ)
     checkDuplicateIc()
     checkDuplicateDic()
   } catch (e: any) {
@@ -243,6 +267,8 @@ async function checkVies() {
   try {
     const result = await clientsApi.lookupVies(form.value.dic)
     viesResult.value = result
+    // VIES: platné DIČ = registrovaný plátce DPH (autoritativní pro zahraniční EU).
+    if (result.source !== 'error') form.value.is_vat_payer = result.valid
     if (result.valid) {
       if (result.name && !form.value.company_name) {
         form.value.company_name = result.name
@@ -347,6 +373,49 @@ async function submit() {
           <div v-if="viesResult" class="mt-2 text-xs">
             <span v-if="viesResult.valid" class="text-primary-700">✓ {{ t('client.dic_valid', { dic: t('client.dic'), name: viesResult.name }) }}</span>
             <span v-else class="text-danger-500">✗ {{ t('client.dic_invalid', { dic: t('client.dic') }) }}</span>
+          </div>
+
+          <!-- Plátcovství DPH (z ARES/VIES, editovatelné) + detaily z registru plátců DPH -->
+          <div class="mt-3 flex flex-wrap items-center gap-4 pt-3 border-t border-neutral-100">
+            <label class="inline-flex items-center gap-2 text-sm">
+              <input v-model="form.is_vat_payer" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              <span :class="!form.is_vat_payer ? 'text-warning-700 font-medium' : ''">{{ t('client.vat_payer_label') }}</span>
+            </label>
+            <button v-if="form.dic" type="button" @click="loadVatPayerDetails" :disabled="vatInfoLoading"
+              class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 rounded-md text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1.5 disabled:opacity-50">
+              <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+              {{ vatInfoLoading ? t('common.loading') : t('client.vat_payer_details') }}
+            </button>
+          </div>
+
+          <!-- Detaily plátce DPH (na vyžádání z registru plátců DPH / MFČR) -->
+          <div v-if="vatInfoOpen" class="mt-3 bg-neutral-50 border border-neutral-200 rounded-lg p-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-500">{{ t('client.vat_payer_details') }}</h4>
+              <button type="button" @click="vatInfoOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-700 text-sm leading-none">✕</button>
+            </div>
+            <div v-if="vatInfoLoading" class="text-sm text-neutral-500">{{ t('common.loading') }}</div>
+            <div v-else-if="vatInfoError" class="text-sm text-danger-500">{{ vatInfoError }}</div>
+            <template v-else-if="vatInfo">
+              <div v-if="vatInfo.source === 'error'" class="text-sm text-warning-600">{{ t('client.vat_payer_unavailable') }}</div>
+              <div v-else-if="!vatInfo.found" class="text-sm text-neutral-600">{{ t('client.vat_payer_not_registered') }}</div>
+              <div v-else class="space-y-2 text-sm">
+                <div class="flex items-center gap-2">
+                  <span class="text-neutral-500">{{ t('client.vat_payer_reliability') }}:</span>
+                  <span v-if="vatInfo.unreliable === true" class="px-2 py-0.5 rounded bg-danger-50 text-danger-600 font-medium">{{ t('client.vat_payer_unreliable') }}</span>
+                  <span v-else-if="vatInfo.unreliable === false" class="px-2 py-0.5 rounded bg-success-50 text-success-600 font-medium">{{ t('client.vat_payer_reliable') }}</span>
+                  <span v-else class="px-2 py-0.5 rounded bg-neutral-100 text-neutral-600">{{ t('client.vat_payer_unknown') }}</span>
+                </div>
+                <div>
+                  <div class="text-neutral-500 mb-1">{{ t('client.vat_payer_accounts') }}:</div>
+                  <ul v-if="vatInfo.accounts.length" class="space-y-0.5">
+                    <li v-for="(a, i) in vatInfo.accounts" :key="i" class="font-mono text-neutral-900">{{ a.display }}</li>
+                  </ul>
+                  <div v-else class="text-neutral-500">{{ t('client.vat_payer_no_accounts') }}</div>
+                </div>
+                <p class="text-xs text-neutral-400">{{ t('client.vat_payer_source') }}</p>
+              </div>
+            </template>
           </div>
         </div>
 

@@ -58,6 +58,8 @@ export interface Invoice {
   currency_id: number
   currency: string
   reverse_charge: boolean
+  /** Ceny položek zadané včetně DPH (brutto) — DPH se počítá shora koeficientem. */
+  prices_include_vat: boolean
   language: 'cs' | 'en'
   note_above_items: string | null
   note_below_items: string | null
@@ -204,6 +206,7 @@ export interface InvoicePayload {
   due_date?: string
   currency_id?: number
   reverse_charge?: boolean
+  prices_include_vat?: boolean
   language?: 'cs' | 'en'
   note_above_items?: string | null
   note_below_items?: string | null

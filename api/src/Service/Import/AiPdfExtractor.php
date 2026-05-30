@@ -43,6 +43,7 @@ final class AiPdfExtractor
         private readonly IsdocToPurchaseInvoiceMapper $isdocMapper,
         private readonly Config $config,
         private readonly \MyInvoice\Service\Currency\CnbExchangeRateClient $cnb,
+        private readonly ImageToPdfConverter $imageToPdf,
         ?LoggerInterface $logger = null,
     ) {
         $this->logger = $logger ?? new NullLogger();
@@ -57,6 +58,24 @@ final class AiPdfExtractor
      */
     public function extractAndCreate(int $supplierId, int $userId, string $pdfBytes, ?string $modelOverride = null, ?string $originalFilename = null): array
     {
+        // Obrázek (fotka z telefonu, issue #75) → normalizuj na PDF; downstream
+        // (ISDOC, AI, archivace, preview) pak pracuje výhradně s PDF.
+        if (!str_starts_with($pdfBytes, '%PDF')) {
+            $imgMime = $this->imageToPdf->detectImageMime($pdfBytes);
+            if ($imgMime !== null) {
+                try {
+                    $pdfBytes = $this->imageToPdf->convert($pdfBytes, $imgMime);
+                    // Obsah je teď PDF → sjednoť i příponu názvu (jinak by se
+                    // „uctenka.jpg" stahla jako .jpg, ač je uvnitř PDF).
+                    if ($originalFilename !== null && $originalFilename !== '') {
+                        $originalFilename = preg_replace('/\.[^.\\/]+$/', '', $originalFilename) . '.pdf';
+                    }
+                } catch (\Throwable $e) {
+                    return ['ok' => false, 'error' => $e->getMessage(), 'source' => 'image_convert_failed'];
+                }
+            }
+        }
+
         // Dedup check — pokud PDF se stejným SHA-256 už existuje u tenanta, vrať existing.
         $sha256 = hash('sha256', $pdfBytes);
         $existingId = $this->repo->findIdByPdfHash($supplierId, $sha256);
@@ -194,9 +213,18 @@ final class AiPdfExtractor
         }
         $resolved = $this->clientResolver->resolveVendor($vendorData, $supplierId);
 
+        // Číslo dokladu chybí (typicky účtenka/paragon bez čísla) → doplň unikátní
+        // fallback z PDF hashe. Musí být unikátní per (vendor, datum), jinak by dvě
+        // účtenky od stejného vendora ve stejný den kolidovaly na uq_pi_vendor_invoice
+        // (nebo by je dedup sloučil). Hash je per-doklad unikátní; re-import téhož
+        // souboru chytne dřív pdf_hash dedup výše.
+        if (empty($data['vendor_invoice_number'])) {
+            $data['vendor_invoice_number'] = 'BEZ-CISLA-' . substr($sha256, 0, 8);
+        }
+
         // Create purchase invoice draft
         try {
-            $invoiceId = $this->createDraft($data, $supplierId, $userId, $resolved['id']);
+            $invoiceId = $this->createDraft($data, $supplierId, $userId, $resolved['id'], $resolved['is_vat_payer'] ?? null);
             // Attach PDF — uložit do archive a updatnout pdf_path/hash/size na faktuře
             $this->attachPdf($invoiceId, $supplierId, $pdfBytes, $originalFilename);
             return [
@@ -229,9 +257,8 @@ final class AiPdfExtractor
         if (empty($data['vendor']['company_name']) && empty($data['vendor']['ic'])) {
             return 'vendor nemá ani company_name ani IČO';
         }
-        if (empty($data['vendor_invoice_number'])) {
-            return 'chybí vendor_invoice_number';
-        }
+        // vendor_invoice_number ZÁMĚRNĚ nevyžadujeme — účtenky/paragony nemusí mít
+        // číslo dokladu. Chybějící číslo doplníme fallbackem z PDF hashe v createDraft.
         if (empty($data['issue_date']) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $data['issue_date'])) {
             return 'invalid issue_date (musí být YYYY-MM-DD)';
         }
@@ -250,7 +277,7 @@ final class AiPdfExtractor
         return null;
     }
 
-    private function createDraft(array $data, int $supplierId, int $userId, int $vendorId): int
+    private function createDraft(array $data, int $supplierId, int $userId, int $vendorId, ?bool $vendorIsVatPayer = null): int
     {
         $vatRates = $this->loadVatRateMap();
         $defaultVatRateId = $this->matchVatRateId($vatRates, 0.0);
@@ -287,6 +314,14 @@ final class AiPdfExtractor
         // přičetla místo odečetla.
         $isCredit = $documentKind === 'credit_note';
 
+        // Účtenky/paragony (a hlavně fotky účtenek) uvádějí ceny VČETNĚ DPH a cena
+        // bez DPH na dokladu vůbec není; totéž doklad od neplátce. AI to signalizuje
+        // `unit_prices_include_vat`; u document_kind=receipt to bereme jako default
+        // (true), když AI flag nevrátí. Cenu NEpřepočítáváme ručně — uložíme ji TAK
+        // JAK JE (s DPH) a fakturu označíme `prices_include_vat=1`. DPH pak spočítá
+        // kalkulátor koeficientem shora (§37 ZDPH) → celek sedí na haléř.
+        $pricesIncludeVat = self::resolvePricesIncludeVat($data, $documentKind);
+
         $items = [];
         foreach ($data['items'] as $idx => $line) {
             $rate = (float) ($line['vat_rate'] ?? 0);
@@ -313,6 +348,34 @@ final class AiPdfExtractor
             ];
         }
 
+        // Dodavatel NEPLÁTCE DPH → na dokladu žádná DPH a NENÍ nárok na odpočet.
+        // Autoritativně z ARES (CZ IČO) / VIES (zahr. DIČ); fallback signál z dokladu.
+        // Vynulujeme sazby (kdyby AI halucinovala 21 %) a níže vynutíme vat_deduction='none'.
+        $vendorNonPayer = self::isVendorNonPayer($vendorIsVatPayer, (array) ($data['vendor'] ?? []));
+        if ($vendorNonPayer) {
+            $zeroRateId = $this->matchVatRateId($vatRates, 0.0) ?? $defaultVatRateId;
+            foreach ($items as &$it) {
+                $it['vat_rate_id'] = $zeroRateId;
+            }
+            unset($it);
+        }
+
+        // Haléřový rounding drift u jednosazbového dokladu (typicky čerpačka: cena/litr
+        // gross→net × množství neround-tripuje na základ z REKAPITULACE) → sluč na 1 řádek
+        // 1 ks × základ daně z rekapitulace. Tím základ/daň/celkem sedí na doklad bez
+        // umělého „zaokrouhlení". V režimu shora (prices_include_vat) netřeba — celek sedí.
+        if (!$pricesIncludeVat) {
+            $collapsed = self::collapseToSummaryBaseLine($items, $data, $isCredit);
+            if ($collapsed !== null) {
+                $this->logger->info('AI extractor: sloučeno na 1 řádek dle rekapitulace DPH (haléřový drift)', [
+                    'vendor_invoice_number' => $data['vendor_invoice_number'] ?? null,
+                    'lines_before'          => count($items),
+                    'summary_base'          => $data['total_without_vat'] ?? null,
+                ]);
+                $items = $collapsed;
+            }
+        }
+
         // Reverse charge auto-detect: vendor je v EU/3.zemi A všechny řádky mají vat_rate=0
         // → typicky přenesená daňová povinnost (Čech přijímá službu/zboží ze zahraničí).
         // AI tuto info neextrahuje explicitně, takže detekujeme heuristikou.
@@ -336,6 +399,10 @@ final class AiPdfExtractor
             'exchange_rate'         => null,
             'exchange_rate_source'  => 'manual',
             'reverse_charge'        => $reverseCharge,
+            'prices_include_vat'    => $pricesIncludeVat,
+            // Neplátce → bez nároku na odpočet (VatLedgerService řádky s 'none' vyloučí
+            // z DPH přiznání ř.40 i z KH sekce B). Uživatel může v editoru vědomě přepsat.
+            'vat_deduction'         => $vendorNonPayer ? 'none' : 'full',
             // Rounding nastavíme až PO recompute z items, ne z AI hodnoty
             // (AI dělá DPH math sama a občas se splete o ±1 haléř — viz user report
             // Vodafone faktury 1025255728, kde AI vrátila total_with_vat=1502,03
@@ -373,7 +440,21 @@ final class AiPdfExtractor
         // Sanity check: rozdíl mezi součtem řádků a AI-vráceným totalem >2 % → varování.
         // Typicky odhalí faktury kde AI sečetla subtotaly jako další items
         // (např. NC Auto BMW Service → 4977 reálně vs 22442 jako duplicitní subtotaly).
-        $this->maybeFlagTotalsMismatch($id, $supplierId, $data, $items);
+        $this->maybeFlagTotalsMismatch($id, $supplierId, $data, $items, $pricesIncludeVat);
+        // Dodavatel neplátce → vysvětlující varování (má přednost před mismatch hláškou).
+        if ($vendorNonPayer) {
+            try {
+                $this->repo->setExtractionWarning(
+                    $id,
+                    $supplierId,
+                    'Dodavatel je neplátce DPH — odpočet daně byl automaticky zakázán '
+                        . '(z dokladu od neplátce nelze uplatnit nárok na odpočet DPH). '
+                        . 'Sazby byly nastaveny na 0 %. V editoru lze vědomě přepsat.',
+                );
+            } catch (\Throwable) {
+                // Varování je „nice to have" — faktura už je vytvořená správně.
+            }
+        }
         // Finální faktura odkazující na zálohu ("zaplaceno zálohou č. X") → zkus najít
         // shodnou přijatou zálohu a NAVRHNI propojení (uživatel potvrdí v detailu).
         if ($documentKind !== 'advance') {
@@ -403,18 +484,100 @@ final class AiPdfExtractor
      * aby UI mohlo uživatele upozornit "AI extrakce mohla započítat mezisoučty
      * jako další položky — zkontroluj data před zaúčtováním."
      */
-    private function maybeFlagTotalsMismatch(int $invoiceId, int $supplierId, array $data, array $items): void
+    /**
+     * Rozhodne, zda jsou ceny řádků z AI extrakce VČETNĚ DPH (brutto) → faktura
+     * dostane `prices_include_vat=1` a DPH se počítá shora koeficientem.
+     *
+     * Pravidlo: AI signalizuje `unit_prices_include_vat` (bool). Když flag chybí,
+     * default odvodíme z typu dokladu — účtenky/paragony (`receipt`) ceny s DPH
+     * uvádějí typicky a cenu bez DPH na dokladu nemají; ostatní doklady default false.
+     */
+    private static function resolvePricesIncludeVat(array $data, string $documentKind): bool
+    {
+        if (array_key_exists('unit_prices_include_vat', $data)) {
+            return !empty($data['unit_prices_include_vat']);
+        }
+        return $documentKind === 'receipt';
+    }
+
+    /**
+     * Dodavatel je neplátce DPH (→ žádný nárok na odpočet, na dokladu žádná DPH)?
+     * Autoritativní výsledek z ARES/VIES (`VendorVatPayerResolver`) má přednost; když je
+     * nezjištěný (null), použijeme explicitní signál z dokladu (AI `vendor.is_vat_payer`
+     * = false, typicky doklad s textem „DIČ: Neplátce DPH").
+     *
+     * @param array<string,mixed> $vendorData
+     */
+    public static function isVendorNonPayer(?bool $resolvedIsVatPayer, array $vendorData): bool
+    {
+        if ($resolvedIsVatPayer === true)  return false;
+        if ($resolvedIsVatPayer === false) return true;
+        return array_key_exists('is_vat_payer', $vendorData) && $vendorData['is_vat_payer'] === false;
+    }
+
+    /**
+     * Když má doklad JEDINOU sazbu DPH a součet řádků (qty×cena po zaokrouhlení) se o haléře
+     * rozchází se základem daně z REKAPITULACE dokladu (`total_without_vat` z AI), nahradí
+     * řádky jediným řádkem `1 ks × stated_base`. Tím základ/daň/celkem přesně odpovídají
+     * rekapitulaci dokladu a odpadne haléřové „zaokrouhlení" z per-řádkového driftu —
+     * typicky čerpačka, kde AI přepočítá cenu/litr z brutto na netto a qty×netto
+     * neround-tripuje (34,29 × 33,71 = 1 155,92 vs rekapitulace 1 155,94).
+     *
+     * Vrací nové `$items` (1 řádek) nebo `null` (neslučovat — víc sazeb, dobropis,
+     * chybějící/0 základ, přesná shoda, nebo příliš velký rozdíl = jiný problém).
+     *
+     * @param list<array{description?:string, quantity:float|int, unit?:string, unit_price_without_vat:float|int, vat_rate_id:int, order_index?:int}> $items
+     * @param array<string,mixed> $data
+     * @return list<array{description:string, quantity:float, unit:string, unit_price_without_vat:float, vat_rate_id:int, order_index:int}>|null
+     */
+    public static function collapseToSummaryBaseLine(array $items, array $data, bool $isCredit): ?array
+    {
+        if ($isCredit || count($items) === 0) {
+            return null; // dobropisy neslučujeme (znaménka), prázdné nic
+        }
+        // Jen jedna sazba DPH (jinak by jeden řádek nešel namapovat na rekapitulaci).
+        $rateIds = array_values(array_unique(array_map(static fn ($i) => (int) $i['vat_rate_id'], $items)));
+        if (count($rateIds) !== 1) {
+            return null;
+        }
+        $aiBase = isset($data['total_without_vat']) ? (float) $data['total_without_vat'] : null;
+        if ($aiBase === null || $aiBase <= 0.0) {
+            return null; // bez rekapitulačního základu nemáme co dosadit
+        }
+        $sumBase = 0.0;
+        foreach ($items as $it) {
+            $sumBase += round((float) $it['quantity'] * (float) $it['unit_price_without_vat'], 2);
+        }
+        $diff = abs(round($sumBase, 2) - round($aiBase, 2));
+        // Slučujeme jen haléřový drift: > 0 a do ~1 Kč. Větší rozdíl = jiný problém
+        // (chybné řádky) → řeší maybeFlagTotalsMismatch, řádky ponecháme.
+        if ($diff <= 0.0 || $diff > 1.0) {
+            return null;
+        }
+        return [[
+            'description'            => (string) ($items[0]['description'] ?? ''),
+            'quantity'               => 1.0,
+            'unit'                   => 'ks',
+            'unit_price_without_vat' => round($aiBase, 2),
+            'vat_rate_id'            => (int) $items[0]['vat_rate_id'],
+            'order_index'            => 0,
+        ]];
+    }
+
+    private function maybeFlagTotalsMismatch(int $invoiceId, int $supplierId, array $data, array $items, bool $pricesIncludeVat = false): void
     {
         // AI JSON může pole vynechat / nastavit null. Po `??` máme float|null.
-        // Sanity check porovnává VÝHRADNĚ částky BEZ DPH (items bez DPH × qty vs AI total
-        // bez DPH). Žádný přepočet `total_with_vat / 1.21` ani podobné — u multi-rate
-        // faktur (mix 21/12/0 %) by to dělalo false positive. Pokud AI nevrátí
-        // `total_without_vat`, kontrolu prostě přeskočíme.
-        $rawTotal = $data['total_without_vat'] ?? null;
+        // Sanity check porovnává součet řádků (qty × cena) s odpovídajícím AI totalem:
+        //  - režim ZDOLA (default): ceny řádků jsou bez DPH → reference = total_without_vat.
+        //  - režim SHORA (účtenky): ceny řádků jsou S DPH → reference = total_with_vat.
+        // Žádný přepočet `total_with_vat / 1.21` (u multi-rate by dělal false positive).
+        // Pokud AI příslušný total nevrátí, kontrolu přeskočíme.
+        $rawTotal = $pricesIncludeVat
+            ? ($data['total_with_vat'] ?? null)
+            : ($data['total_without_vat'] ?? null);
         if ($rawTotal === null) return;
         $aiTotal = abs((float) $rawTotal);
-        // Pro logging/diagnostiku si zapamatujeme i s DPH (pokud existuje), ale do
-        // výpočtu rozdílu vstupuje JEN bez DPH.
+        // Pro logging/diagnostiku si zapamatujeme i protější total (pokud existuje).
         $aiTotalWithVat = isset($data['total_with_vat']) ? abs((float) $data['total_with_vat']) : null;
 
         // Signed sum — respektuje znaménka u slev (qty nebo unit_price může být záporný)

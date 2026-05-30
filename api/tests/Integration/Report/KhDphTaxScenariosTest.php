@@ -11,6 +11,7 @@ use MyInvoice\Service\Report\DphBookBuilder;
 use MyInvoice\Service\Report\DphPriznaniBuilder;
 use MyInvoice\Service\Report\KontrolniHlaseniBuilder;
 use MyInvoice\Service\Report\SouhrnneHlaseniBuilder;
+use MyInvoice\Service\Invoice\InvoiceMath;
 use PDO;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -644,6 +645,62 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertSame('5000',  (string) $dp->Veta2['pln_sluzby'], 'ř.21 služby do JČS');
         $this->assertNotNull($dp->Veta3, 'Veta3 (oddíl C) musí existovat pro třístranný obchod');
         $this->assertSame('7000',  (string) $dp->Veta3['tri_dozb'],   'ř.31 dodání zboží prostřední osobou');
+    }
+
+    /**
+     * Režim „ceny s DPH" (prices_include_vat) end-to-end až do výkazů: faktura, kde
+     * jsou položky brutto (3× 33 Kč s DPH @21 %), se přes InvoiceMath shora rozpadne
+     * na base/vat s rounding distribution. Uložené per-řádkové totály MUSÍ ve výkazech
+     * dát PŘESNĚ koeficientovou daň z celkového grossu — tj. KH A.5 = 81,82 / 17,18
+     * (ne 3× 27,27 / 5,73 = 81,81 / 17,19). Tím je ochráněn celý daňový řetězec:
+     * InvoiceMath shora → uložené totály → VatLedgerService → KH/DPHDP3.
+     */
+    public function testPricesIncludeVatInvoiceLandsCoefficientTaxInReports(): void
+    {
+        $custDic = $this->client('Účtenka odběratel', $this->czId, 'CZ11111118', customer: true);
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+
+        // Top-down rozpad přes reálný InvoiceMath (stejný kód jako kalkulátor).
+        $computed = InvoiceMath::compute([
+            ['quantity' => 1, 'unit_price_without_vat' => 33.00, 'vat_rate_snapshot' => 21],
+            ['quantity' => 1, 'unit_price_without_vat' => 33.00, 'vat_rate_snapshot' => 21],
+            ['quantity' => 1, 'unit_price_without_vat' => 33.00, 'vat_rate_snapshot' => 21],
+        ], pricesIncludeVat: true);
+
+        // Sanity: součet řádkové daně = koeficient z celkového grossu (99 × 21/121 = 17,18).
+        self::assertSame(17.18, $computed['totals']['vat']);
+        self::assertSame(81.82, $computed['totals']['without_vat']);
+        self::assertSame(99.00, $computed['totals']['with_vat']);
+
+        // Vlož fakturu s uloženými top-down totály (tak jak je uloží InvoiceCalculator).
+        $items = array_map(static fn (array $it): array => [$it['base'], $it['vat'], $it['rate']], $computed['items']);
+        $this->sale('2099069001', $custDic, '1', false, $d(10), $d(10), $items);
+
+        // ── KONTROLNÍ HLÁŠENÍ (haléřová přesnost) ──
+        // 99 Kč je pod limitem A.4 (10 000) → sumace A.5. Daň MUSÍ být 17,18 (koeficient),
+        // ne 17,19 (naivní součet per-řádek bez rounding distribution).
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $root = $kh->DPHKH1;
+        self::assertSame('81.82', (string) $root->VetaA5['zakl_dane1'], 'KH A.5 základ = 81,82');
+        self::assertSame('17.18', (string) $root->VetaA5['dan1'], 'KH A.5 daň = 17,18 (koeficient, ne 17,19)');
+
+        // ── Přijatá strana (odpočet) — daňová symetrie: stejný top-down rozpad,
+        // PurchaseInvoiceCalculator sdílí InvoiceMath. Dodavatel s DIČ, tuzemský odpočet.
+        $vendDic = $this->client('Účtenka dodavatel', $this->czId, 'CZ22222220', vendor: true);
+        $this->purchase('P-2099-901', $vendDic, '40', false, 'invoice', $d(12), $d(12), $items);
+
+        // ── DPH PŘIZNÁNÍ (zaokrouhleno na celé Kč) ──
+        $dp = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, self::MONTH, 'monthly')['xml']))->DPHDP3;
+        self::assertSame('82', (string) $dp->Veta1['obrat23'], 'DPHDP3 ř.1 základ = 82 (zaokr.)');
+        self::assertSame('17', (string) $dp->Veta1['dan23'], 'DPHDP3 ř.1 daň = 17 (zaokr.)');
+        // ř.40 odpočet tuzemsko 21 % (přijatá top-down faktura) — symetrie s výstupem.
+        self::assertSame('82', (string) $dp->Veta4['pln23'], 'DPHDP3 ř.40 základ odpočtu = 82');
+        self::assertSame('17', (string) $dp->Veta4['odp_tuz23_nar'], 'DPHDP3 ř.40 daň odpočtu = 17');
+
+        // KH B.3 (pod limitem) — haléřová přesnost přijaté daně = 17,18.
+        $kh2 = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        self::assertSame('81.82', (string) $kh2->DPHKH1->VetaB3['zakl_dane1'], 'KH B.3 základ = 81,82');
+        self::assertSame('17.18', (string) $kh2->DPHKH1->VetaB3['dan1'], 'KH B.3 daň = 17,18 (koeficient)');
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

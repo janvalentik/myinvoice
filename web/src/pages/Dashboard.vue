@@ -376,7 +376,10 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
             </thead>
             <tbody class="divide-y divide-neutral-100">
               <tr v-for="i in summary.overdue" :key="i.id" @click="openInvoice(i.id)" class="cursor-pointer hover:bg-neutral-50">
-                <td class="px-3 py-2 font-mono text-xs">{{ i.varsymbol }}</td>
+                <td class="px-3 py-2 font-mono text-xs">
+                  {{ i.varsymbol }}
+                  <span v-if="i.invoice_type === 'proforma'" class="ml-1 px-1.5 py-0.5 rounded bg-primary-50 text-primary-700 text-[10px] font-sans font-medium uppercase tracking-wide">{{ t('type.proforma') }}</span>
+                </td>
                 <td class="px-3 py-2 truncate max-w-[200px]">{{ i.client_company_name }}</td>
                 <td class="px-3 py-2 text-right font-mono text-xs">{{ formatMoney(i.amount_to_pay, i.currency) }}</td>
                 <td class="px-3 py-2 text-center">
@@ -397,7 +400,10 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
                 <div class="font-mono text-sm whitespace-nowrap">{{ formatMoney(i.amount_to_pay, i.currency) }}</div>
               </div>
               <div class="flex items-baseline justify-between gap-2 mt-0.5">
-                <span class="font-mono text-xs text-neutral-500">{{ i.varsymbol }}</span>
+                <span class="flex items-center gap-1.5 min-w-0">
+                  <span class="font-mono text-xs text-neutral-500">{{ i.varsymbol }}</span>
+                  <span v-if="i.invoice_type === 'proforma'" class="px-1.5 py-0.5 rounded bg-primary-50 text-primary-700 text-[10px] font-medium uppercase tracking-wide">{{ t('type.proforma') }}</span>
+                </span>
                 <span class="text-xs px-1.5 py-0.5 rounded bg-danger-50 text-danger-500 font-medium whitespace-nowrap">
                   +{{ i.days_overdue }}d
                 </span>

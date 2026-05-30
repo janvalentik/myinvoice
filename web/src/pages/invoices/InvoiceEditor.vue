@@ -128,6 +128,7 @@ const form = ref<{
   currency_id: number
   currency: string
   reverse_charge: boolean
+  prices_include_vat: boolean
   language: 'cs' | 'en'
   note_above_items: string
   note_below_items: string
@@ -151,6 +152,7 @@ const form = ref<{
   currency_id: 0,
   currency: 'CZK',
   reverse_charge: false,
+  prices_include_vat: false,
   language: 'cs',
   note_above_items: '',
   note_below_items: '',
@@ -351,6 +353,7 @@ onMounted(async () => {
       currency_id: inv.currency_id,
       currency: inv.currency,
       reverse_charge: inv.reverse_charge,
+      prices_include_vat: (inv as { prices_include_vat?: boolean }).prices_include_vat ?? false,
       language: inv.language,
       note_above_items: inv.note_above_items ?? '',
       note_below_items: inv.note_below_items ?? '',
@@ -380,6 +383,8 @@ onMounted(async () => {
     if (editedStatus.value === 'draft') await loadVarsymbolPreview()
   } else {
     // New invoice — pre-select from query
+    // Výchozí režim cen z nastavení dodavatele (0 = bez DPH; 1 = ceny s DPH).
+    form.value.prices_include_vat = supplierStore.currentSupplier?.default_prices_include_vat ?? false
     if (route.query.client_id) {
       form.value.client_id = Number(route.query.client_id)
       await ensureClientLoaded(form.value.client_id!)
@@ -563,14 +568,24 @@ function moveDown(index: number) {
 
 // Live výpočet sumace na frontendu (server přepočítá při uložení)
 const computed_totals = computed(() => {
+  const pricesIncl = form.value.prices_include_vat && supplierIsVatPayer.value
   const breakdown = new Map<number, { rate: number; base: number; vat: number }>()
 
   for (const item of form.value.items) {
     const vatRate = (form.value.reverse_charge || !supplierIsVatPayer.value)
       ? 0
       : vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0
-    const base = round2(item.quantity * item.unit_price_without_vat)
-    const vat = round2(base * (vatRate / 100))
+    // amount = cena bez DPH (zdola) / cena s DPH (shora, „ceny položek včetně DPH")
+    const amount = round2(item.quantity * item.unit_price_without_vat)
+    let base: number
+    let vat: number
+    if (pricesIncl) {
+      vat = round2(amount * vatRate / (100 + vatRate))
+      base = round2(amount - vat)
+    } else {
+      base = amount
+      vat = round2(base * (vatRate / 100))
+    }
 
     if (!breakdown.has(vatRate)) {
       breakdown.set(vatRate, { rate: vatRate, base: 0, vat: 0 })
@@ -582,16 +597,31 @@ const computed_totals = computed(() => {
 
   // Sleva na úrovni dokladu — odečte se na každé sazbě zvlášť (zrcadlí backend
   // materializaci záporné položky „Sleva X %" na každou sazbu). Server přepočítá
-  // autoritativně při uložení; tohle je jen live náhled.
+  // autoritativně při uložení; tohle je jen live náhled. discountAmount = úbytek
+  // základu (bez DPH) v obou režimech.
   const pct = Math.min(100, Math.max(0, form.value.discount_percent || 0))
   let discountAmount = 0
   if (pct > 0) {
     for (const b of breakdown.values()) {
-      const disc = round2(b.base * (pct / 100))
-      if (disc === 0) continue
-      b.base = round2(b.base - disc)
-      b.vat = round2(b.vat - round2(disc * (b.rate / 100)))
-      discountAmount = round2(discountAmount + disc)
+      if (pricesIncl) {
+        // V režimu „ceny s DPH" je sleva procento z hrubé částky; daň se dopočte
+        // shora z hrubé částky po slevě (koeficient), konzistentně s backendem.
+        const gross = round2(b.base + b.vat)
+        const discGross = round2(gross * (pct / 100))
+        if (discGross === 0) continue
+        const newGross = round2(gross - discGross)
+        const newVat = round2(newGross * b.rate / (100 + b.rate))
+        const newBase = round2(newGross - newVat)
+        discountAmount = round2(discountAmount + round2(b.base - newBase))
+        b.base = newBase
+        b.vat = newVat
+      } else {
+        const disc = round2(b.base * (pct / 100))
+        if (disc === 0) continue
+        b.base = round2(b.base - disc)
+        b.vat = round2(b.vat - round2(disc * (b.rate / 100)))
+        discountAmount = round2(discountAmount + disc)
+      }
     }
   }
 
@@ -640,27 +670,37 @@ function round2(n: number): number {
  * net základ + DPH je v souhrnu níže). U neplátce / reverse-charge je sazba 0 → = základ.
  */
 function itemTotal(item: InvoiceItem): number {
-  const base = round2(Number(item.quantity) * Number(item.unit_price_without_vat))
+  const amount = round2(Number(item.quantity) * Number(item.unit_price_without_vat))
+  // Režim „ceny s DPH": unit_price_without_vat nese cenu S DPH → řádkové „Celkem s DPH" = amount.
+  if (form.value.prices_include_vat && supplierIsVatPayer.value) return amount
   const vatRate = (form.value.reverse_charge || !supplierIsVatPayer.value)
     ? 0
     : (vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0)
-  return round2(base + round2(base * (vatRate / 100)))
+  return round2(amount + round2(amount * (vatRate / 100)))
 }
 
 /**
- * Zadání částky s DPH na řádku → zpětný dopočet jednotkové ceny bez DPH
- * (gross / (1 + sazba) / množství). Podporuje výrazy přes evalMath.
+ * Zadání částky s DPH na řádku „Celkem s DPH" → přepne fakturu do režimu
+ * „ceny s DPH jako hlavní" (prices_include_vat) a uloží gross jako jednotkovou
+ * cenu (gross / množství). DPH se pak počítá shora koeficientem (server přepočítá
+ * autoritativně). Podporuje výrazy přes evalMath.
  */
 function setItemGross(item: InvoiceItem, raw: string): void {
   const gross = evalMath(raw)
   if (gross === null) return
   const qty = Number(item.quantity) || 0
   if (qty === 0) return
-  const vatRate = (form.value.reverse_charge || !supplierIsVatPayer.value)
-    ? 0
-    : Number(vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0)
-  item.unit_price_without_vat = round2(gross / (1 + vatRate / 100) / qty)
+  // Auto-přepnutí jen u plátce DPH (u neplátce je cena = cena, není co počítat shora).
+  if (supplierIsVatPayer.value) form.value.prices_include_vat = true
+  item.unit_price_without_vat = round2(gross / qty)
 }
+
+// Přepínač „ceny s DPH" má smysl jen pro plátce DPH (u neplátce/RC je sazba 0 → gross = net).
+const showPricesIncludeVatUI = computed(() => supplierIsVatPayer.value)
+// Záhlaví sloupce jednotkové ceny — v režimu „ceny s DPH" je to cena včetně DPH.
+const unitPriceHeaderLabel = computed(() => form.value.prices_include_vat && supplierIsVatPayer.value
+  ? t('invoice.items_table.unit_price_gross')
+  : t('invoice.items_table.unit_price'))
 
 // ─── WORK REPORT ────────────────────────────────────────────────
 const wrOpen = ref(false)
@@ -918,6 +958,7 @@ async function submit() {
       due_date: form.value.due_date,
       currency_id: form.value.currency_id,
       reverse_charge: form.value.reverse_charge,
+      prices_include_vat: form.value.prices_include_vat,
       language: form.value.language,
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
@@ -1165,6 +1206,13 @@ async function deleteDraft() {
               <input v-model="form.reverse_charge" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
               <span>{{ t('invoice.reverse_charge') }} ({{ t('invoice.totals.vat') }} 0 %)</span>
             </label>
+            <div v-if="showPricesIncludeVatUI">
+              <label class="flex items-center gap-2 text-sm text-neutral-700">
+                <input v-model="form.prices_include_vat" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                <span>{{ t('invoice.prices_include_vat') }}</span>
+              </label>
+              <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('invoice.prices_include_vat_hint') }}</p>
+            </div>
           </div>
         </div>
 
@@ -1237,7 +1285,7 @@ async function deleteDraft() {
               <th class="px-3 py-2 text-left font-medium">{{ t('invoice.items_table.description') }}</th>
               <th class="px-3 py-2 text-right font-medium w-20">{{ t('invoice.items_table.qty') }}</th>
               <th class="px-3 py-2 text-left font-medium w-16">{{ t('invoice.items_table.unit') }}</th>
-              <th class="px-3 py-2 text-right font-medium w-32">{{ t('invoice.items_table.unit_price') }}</th>
+              <th class="px-3 py-2 text-right font-medium w-32">{{ unitPriceHeaderLabel }}</th>
               <th v-if="supplierIsVatPayer" class="px-3 py-2 text-center font-medium w-24">{{ t('invoice.totals.vat') }}</th>
               <th class="px-3 py-2 text-right font-medium w-32">{{ supplierIsVatPayer ? t('invoice.items_table.total_incl_vat') : t('invoice.totals.total') }}</th>
               <th class="px-3 py-2 w-12"></th>
@@ -1325,7 +1373,7 @@ async function deleteDraft() {
             </div>
             <div :class="supplierIsVatPayer ? 'grid grid-cols-2 gap-2' : ''">
               <div>
-                <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.items_table.unit_price') }}</label>
+                <label class="block text-xs font-medium text-neutral-600 mb-1">{{ unitPriceHeaderLabel }}</label>
                 <input v-model="item.unit_price_without_vat" v-math type="text" inputmode="decimal"
                   :class="['w-full h-10 px-3 border rounded text-right font-mono text-sm', itemHasBothNegative(item) ? 'border-danger-400' : 'border-neutral-200']" />
               </div>
@@ -1666,8 +1714,8 @@ async function deleteDraft() {
       </div>
 
       <!-- Action bar -->
-      <div class="bg-surface border border-neutral-200 rounded-lg p-4 flex justify-between items-center sticky bottom-3 shadow-md">
-        <RouterLink to="/invoices" class="text-sm text-neutral-600 hover:text-neutral-900">{{ t('common.cancel') }}</RouterLink>
+      <div class="bg-surface border border-neutral-200 rounded-lg p-4 flex justify-between items-center shadow-sm">
+        <RouterLink to="/invoices" class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors">{{ t('common.back') }}</RouterLink>
         <button type="submit" :disabled="submitting"
           class="px-5 h-10 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white text-sm font-medium rounded-md">
           {{ submitting ? t('common.saving') : (isEdit ? t('common.save') : t('common.create')) }}

@@ -42,6 +42,8 @@ export interface RecurringTemplate {
   language: 'cs' | 'en'
   payment_method: PaymentMethod
   reverse_charge: boolean
+  /** Ceny položek zadané včetně DPH (brutto) — propíše se do generovaných faktur. */
+  prices_include_vat: boolean
   discount_percent: number
   payment_due_days: number
   tax_date_mode: TaxDateMode
@@ -81,6 +83,7 @@ export interface RecurringTemplatePayload {
   language?: 'cs' | 'en'
   payment_method?: PaymentMethod
   reverse_charge?: boolean
+  prices_include_vat?: boolean
   discount_percent?: number
   payment_due_days?: number
   tax_date_mode?: TaxDateMode

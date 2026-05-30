@@ -22,6 +22,24 @@ final class CrmAggregationService
     public function __construct(private readonly Connection $db) {}
 
     /**
+     * SQL predikát pro pohledávkové doklady (co nám klienti dluží), alias `i`.
+     * Kromě ostrých faktur a dobropisů zahrnuje i NEZAPLACENÉ NESPÁROVANÉ proformy
+     * (proforma bez dceřiného ostrého daňového dokladu) — ty jsou reálný dluh.
+     * Spárovaná proforma se vynechá, aby se dluh nepočítal dvakrát (nese ho ostrý doklad).
+     * Kombinuj VŽDY se statusem IN ('issued','sent','reminded') — vyřadí zaplacené/storno.
+     */
+    private function receivableDocTypeSql(): string
+    {
+        // Zachovej původní množinu (vše kromě proforem) a NAVÍC přidej nespárované
+        // proformy (bez dceřiného ostrého daňového dokladu) — ty jsou reálný dluh.
+        // Záměrně `!= 'proforma'` (ne IN-list), aby se nezahodily případné jiné typy
+        // (cancellation apod.), které sem padaly i dosud. Kombinuj se status filtrem.
+        return "(i.invoice_type != 'proforma'"
+             . " OR NOT EXISTS (SELECT 1 FROM invoices ch"
+             . " WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice'))";
+    }
+
+    /**
      * Volá sp_recompute_crm_monthly_summary pro daný tenant.
      * Manuálně z admin UI nebo z cron jobu.
      */
@@ -373,7 +391,7 @@ final class CrmAggregationService
          LEFT JOIN currencies c ON c.id = i.currency_id
              WHERE i.supplier_id = ?
                AND i.status IN ('issued', 'sent', 'reminded')
-               AND i.invoice_type != 'proforma'
+               AND " . $this->receivableDocTypeSql() . "
           GROUP BY bucket, currency
           ORDER BY currency, FIELD(bucket, 'not_due', 'overdue_30', 'overdue_60', 'overdue_90', 'overdue_90_plus')
         ";

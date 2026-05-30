@@ -90,6 +90,7 @@ const form = ref<{
   language: 'cs' | 'en'
   payment_method: 'bank_transfer' | 'card' | 'cash' | 'other'
   reverse_charge: boolean
+  prices_include_vat: boolean
   discount_percent: number
   payment_due_days: number
   tax_date_mode: 'same_as_issue' | 'previous_month_last_day'
@@ -115,6 +116,7 @@ const form = ref<{
   language: 'cs',
   payment_method: 'bank_transfer',
   reverse_charge: false,
+  prices_include_vat: false,
   discount_percent: 0,
   payment_due_days: 14,
   tax_date_mode: 'same_as_issue',
@@ -167,19 +169,36 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-const computedAmountToPay = computed(() => {
-  const buckets = new Map<number, { base: number; vat: number }>()
+// Naplní vat buckety per sazba; v režimu „ceny s DPH" (prices_include_vat) je
+// cena položky brutto a DPH se počítá shora koeficientem (jako InvoiceMath shora).
+function vatBuckets(): Map<number, { rate: number; base: number; vat: number }> {
+  const pricesIncl = form.value.prices_include_vat
+  const buckets = new Map<number, { rate: number; base: number; vat: number }>()
   for (const item of form.value.items) {
     const vatRate = form.value.reverse_charge
       ? 0
       : vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0
-    const base = round2((Number(item.quantity) || 0) * (Number(item.unit_price_without_vat) || 0))
-    const vat = round2(base * (vatRate / 100))
-    if (!buckets.has(vatRate)) buckets.set(vatRate, { base: 0, vat: 0 })
+    const amount = round2((Number(item.quantity) || 0) * (Number(item.unit_price_without_vat) || 0))
+    let base: number
+    let vat: number
+    if (pricesIncl) {
+      vat = round2(amount * vatRate / (100 + vatRate))
+      base = round2(amount - vat)
+    } else {
+      base = amount
+      vat = round2(base * (vatRate / 100))
+    }
+    if (!buckets.has(vatRate)) buckets.set(vatRate, { rate: vatRate, base: 0, vat: 0 })
     const b = buckets.get(vatRate)!
     b.base += base
     b.vat += vat
   }
+  return buckets
+}
+
+const computedAmountToPay = computed(() => {
+  const pricesIncl = form.value.prices_include_vat
+  const buckets = vatBuckets()
   // Sleva na úrovni dokladu — odečte se na každé sazbě (zrcadlí materializaci
   // záporné položky „Sleva X %" v generátoru).
   const pct = Math.min(100, Math.max(0, Number(form.value.discount_percent) || 0))
@@ -189,10 +208,17 @@ const computedAmountToPay = computed(() => {
     let base = b.base
     let vat = b.vat
     if (pct > 0) {
-      const disc = round2(base * (pct / 100))
-      const rate = base !== 0 ? (b.vat / b.base) * 100 : 0
-      base = round2(base - disc)
-      vat = round2(vat - round2(disc * (rate / 100)))
+      if (pricesIncl) {
+        // Sleva z hrubé částky; daň dopočtena shora z hrubé částky po slevě.
+        const gross = round2(base + vat)
+        const newGross = round2(gross - round2(gross * (pct / 100)))
+        vat = round2(newGross * b.rate / (100 + b.rate))
+        base = round2(newGross - vat)
+      } else {
+        const disc = round2(base * (pct / 100))
+        base = round2(base - disc)
+        vat = round2(vat - round2(disc * (b.rate / 100)))
+      }
     }
     totalBase = round2(totalBase + base)
     totalVat = round2(totalVat + vat)
@@ -204,19 +230,26 @@ const currencyCode = computed(() =>
   currencies.value.find(c => c.id === form.value.currency_id)?.code ?? 'CZK'
 )
 
+// Záhlaví sloupce jednotkové ceny — v režimu „ceny s DPH" je to cena včetně DPH.
+const unitPriceHeaderLabel = computed(() => form.value.prices_include_vat
+  ? t('invoice.items_table.unit_price_gross')
+  : t('invoice.items_table.unit_price'))
+
 const computedDiscountAmount = computed(() => {
   const pct = Math.min(100, Math.max(0, Number(form.value.discount_percent) || 0))
   if (pct <= 0) return 0
+  // discountAmount = úbytek základu (bez DPH) v obou režimech.
   let disc = 0
-  const buckets = new Map<number, number>()
-  for (const item of form.value.items) {
-    const vatRate = form.value.reverse_charge
-      ? 0
-      : vatRates.value.find(v => v.id === item.vat_rate_id)?.rate_percent ?? 0
-    const base = round2((Number(item.quantity) || 0) * (Number(item.unit_price_without_vat) || 0))
-    buckets.set(vatRate, round2((buckets.get(vatRate) ?? 0) + base))
+  for (const b of vatBuckets().values()) {
+    if (form.value.prices_include_vat) {
+      const gross = round2(b.base + b.vat)
+      const newGross = round2(gross - round2(gross * (pct / 100)))
+      const newVat = round2(newGross * b.rate / (100 + b.rate))
+      disc = round2(disc + round2(b.base - round2(newGross - newVat)))
+    } else {
+      disc = round2(disc + round2(b.base * (pct / 100)))
+    }
   }
-  for (const base of buckets.values()) disc = round2(disc + round2(base * (pct / 100)))
   return disc
 })
 
@@ -395,6 +428,7 @@ onMounted(async () => {
         form.value.language = inv.language
         form.value.payment_method = inv.payment_method ?? 'bank_transfer'
         form.value.reverse_charge = inv.reverse_charge
+        form.value.prices_include_vat = (inv as { prices_include_vat?: boolean }).prices_include_vat ?? false
         form.value.discount_percent = inv.discount_percent ?? 0
         form.value.note_above_items = inv.note_above_items ?? ''
         form.value.note_below_items = inv.note_below_items ?? ''
@@ -429,6 +463,7 @@ onMounted(async () => {
         language: tpl.language,
         payment_method: tpl.payment_method,
         reverse_charge: tpl.reverse_charge,
+        prices_include_vat: (tpl as { prices_include_vat?: boolean }).prices_include_vat ?? false,
         discount_percent: tpl.discount_percent ?? 0,
         payment_due_days: tpl.payment_due_days,
         tax_date_mode: tpl.tax_date_mode ?? 'same_as_issue',
@@ -496,6 +531,7 @@ async function submit() {
       language: form.value.language,
       payment_method: form.value.payment_method,
       reverse_charge: form.value.reverse_charge,
+      prices_include_vat: form.value.prices_include_vat,
       discount_percent: form.value.discount_percent || 0,
       payment_due_days: form.value.payment_due_days,
       tax_date_mode: form.value.tax_date_mode,
@@ -727,6 +763,11 @@ async function submit() {
           </button>
         </div>
         <p class="mb-3 text-xs text-neutral-500">{{ t('invoice.negative_item_hint') }}</p>
+        <label class="flex items-center gap-2 text-sm text-neutral-700 mb-1">
+          <input v-model="form.prices_include_vat" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+          <span>{{ t('invoice.prices_include_vat') }}</span>
+        </label>
+        <p class="mb-3 text-xs text-neutral-500 ml-6">{{ t('invoice.prices_include_vat_hint') }}</p>
         <!-- Desktop: tabulka -->
         <div class="hidden md:block overflow-x-auto">
         <table class="w-full text-sm">
@@ -735,7 +776,7 @@ async function submit() {
               <th class="text-left">{{ t('invoice.items_table.description') }}</th>
               <th class="text-right" style="width:8%">{{ t('invoice.items_table.qty') }}</th>
               <th class="text-left" style="width:8%">{{ t('invoice.items_table.unit') }}</th>
-              <th class="text-right" style="width:15%">{{ t('invoice.items_table.unit_price') }}</th>
+              <th class="text-right" style="width:15%">{{ unitPriceHeaderLabel }}</th>
               <th class="text-left" style="width:14%">{{ t('invoice.items_table.vat') ?? 'DPH' }}</th>
               <th style="width:30px"></th>
             </tr>
@@ -792,7 +833,7 @@ async function submit() {
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('invoice.items_table.unit_price') }}</label>
+                <label class="block text-xs font-medium text-neutral-600 mb-1">{{ unitPriceHeaderLabel }}</label>
                 <input v-model="it.unit_price_without_vat" v-math type="text" inputmode="decimal" :class="['w-full h-10 px-3 border rounded text-right font-mono text-sm', itemHasBothNegative(it) ? 'border-danger-400' : 'border-neutral-200']" />
               </div>
               <div>

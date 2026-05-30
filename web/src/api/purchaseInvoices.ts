@@ -91,6 +91,7 @@ export interface PurchaseInvoice {
   exchange_rate_date: string | null
   exchange_rate_source: ExchangeRateSource
   reverse_charge: boolean
+  prices_include_vat?: boolean
   is_fixed_asset: boolean
   /** Nárok na odpočet DPH (full=plný, none=bez nároku → mimo DPH evidenci, proportional=krácený §75). */
   vat_deduction: VatDeduction
@@ -225,6 +226,7 @@ export interface PurchaseInvoicePayload {
   exchange_rate_date?: string | null
   exchange_rate_source?: ExchangeRateSource
   reverse_charge?: boolean
+  prices_include_vat?: boolean
   is_fixed_asset?: boolean
   vat_deduction?: VatDeduction
   vat_deduction_percent?: number

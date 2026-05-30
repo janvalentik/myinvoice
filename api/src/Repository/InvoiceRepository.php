@@ -425,10 +425,10 @@ final class InvoiceRepository
 
         $sql = 'INSERT INTO invoices
             (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
-             issue_date, tax_date, due_date, currency_id, reverse_charge, language,
+             issue_date, tax_date, due_date, currency_id, reverse_charge, prices_include_vat, language,
              note_above_items, note_below_items, advance_paid_amount, discount_percent, varsymbol,
              payment_method, status, vat_classification_code, revenue_category, revenue_category_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -442,6 +442,7 @@ final class InvoiceRepository
             (string) $data['due_date'],
             (int) $data['currency_id'],
             !empty($data['reverse_charge']) ? 1 : 0,
+            !empty($data['prices_include_vat']) ? 1 : 0,
             (string) ($data['language'] ?? 'cs'),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
@@ -490,7 +491,7 @@ final class InvoiceRepository
         $sql = 'UPDATE invoices SET
                 client_id = ?, project_id = ?,
                 issue_date = ?, tax_date = ?, due_date = ?,
-                currency_id = ?, reverse_charge = ?, language = ?,
+                currency_id = ?, reverse_charge = ?, prices_include_vat = ?, language = ?,
                 note_above_items = ?, note_below_items = ?,
                 advance_paid_amount = ?, discount_percent = ?,
                 vat_classification_code = ?, revenue_category = ?, revenue_category_id = ?'
@@ -507,6 +508,7 @@ final class InvoiceRepository
             (string) $data['due_date'],
             (int) $data['currency_id'],
             !empty($data['reverse_charge']) ? 1 : 0,
+            !empty($data['prices_include_vat']) ? 1 : 0,
             (string) ($data['language'] ?? 'cs'),
             $data['note_above_items'] ?? null,
             $data['note_below_items'] ?? null,
@@ -767,6 +769,7 @@ final class InvoiceRepository
         if (isset($row['currency_id']))   $row['currency_id'] = (int) $row['currency_id'];
         if (isset($row['supplier_id']))   $row['supplier_id'] = (int) $row['supplier_id'];
         $row['reverse_charge']      = isset($row['reverse_charge']) ? (bool) $row['reverse_charge'] : false;
+        $row['prices_include_vat']  = isset($row['prices_include_vat']) ? (bool) $row['prices_include_vat'] : false;
         foreach (['total_without_vat', 'total_vat', 'total_with_vat', 'rounding', 'advance_paid_amount', 'amount_to_pay', 'discount_percent'] as $f) {
             if (array_key_exists($f, $row) && $row[$f] !== null) $row[$f] = (float) $row[$f];
         }

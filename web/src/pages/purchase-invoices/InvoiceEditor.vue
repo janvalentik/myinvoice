@@ -22,7 +22,7 @@ import { useToast } from '@/composables/useToast'
 import { apiErrorMessage } from '@/api/errors'
 import VendorPicker from '@/components/purchase/VendorPicker.vue'
 import ClientFormModal from '@/components/modals/ClientFormModal.vue'
-import type { Client } from '@/api/clients'
+import { clientsApi, type Client } from '@/api/clients'
 import PdfDropzone from '@/components/purchase/PdfDropzone.vue'
 import PaymentCurrencyBlock from '@/components/purchase/PaymentCurrencyBlock.vue'
 import ExchangeRateInput from '@/components/purchase/ExchangeRateInput.vue'
@@ -62,6 +62,8 @@ const form = ref<{
   exchange_rate_date: string
   exchange_rate_source: ExchangeRateSource
   reverse_charge: boolean
+  prices_include_vat: boolean
+  vendor_is_vat_payer: boolean
   is_fixed_asset: boolean
   vat_deduction: VatDeduction
   vat_deduction_percent: number
@@ -93,6 +95,8 @@ const form = ref<{
   exchange_rate_date: today,
   exchange_rate_source: 'cnb',
   reverse_charge: false,
+  prices_include_vat: false,
+  vendor_is_vat_payer: true,
   is_fixed_asset: false,
   vat_deduction: 'full',
   vat_deduction_percent: 100,
@@ -151,6 +155,50 @@ function onVendorSelected(v: any) {
     if (v.default_expense_category_id && form.value.expense_category_id === null) {
       form.value.expense_category_id = v.default_expense_category_id
     }
+  }
+  // Změna dodavatele → online ověř plátcovství DPH (ARES/VIES) a u neplátce vynuť
+  // vat_deduction='none' + vynuluj sazby (žádný nárok na odpočet).
+  if (v && v.id) fetchVendorVatStatus(Number(v.id), true)
+}
+
+// === Plátcovství DPH dodavatele (online ARES/VIES) ===
+const vendorVatStatusLoading = ref(false)
+
+function zeroAllItemRates() {
+  const zero = vatRates.value.find(r => Number(r.rate_percent) === 0 && !r.is_reverse_charge)
+  if (zero) form.value.items.forEach(it => { it.vat_rate_id = zero.id })
+}
+
+/**
+ * enforce=true (změna dodavatele / ruční přepnutí checkboxu) → u neplátce vynutí
+ * vat_deduction='none' + vynuluje sazby. enforce=false (načtení existující faktury) →
+ * jen nastaví příznak pro checkbox, NEpřepisuje uloženou volbu.
+ */
+function applyVendorVatStatus(isVatPayer: boolean, enforce: boolean) {
+  form.value.vendor_is_vat_payer = isVatPayer
+  if (enforce && !isVatPayer) {
+    form.value.vat_deduction = 'none'
+    zeroAllItemRates()
+  }
+}
+
+async function fetchVendorVatStatus(vendorId: number, enforce: boolean) {
+  vendorVatStatusLoading.value = true
+  try {
+    const r = await clientsApi.getVatStatus(vendorId)
+    applyVendorVatStatus(r.is_vat_payer, enforce)
+  } catch {
+    // ARES/VIES nedostupné — necháme dosavadní příznak beze změny.
+  } finally {
+    vendorVatStatusLoading.value = false
+  }
+}
+
+// Ruční přepnutí checkboxu „Dodavatel je plátce DPH" → u neplátce zakázat odpočet.
+function onVendorVatPayerToggle() {
+  if (!form.value.vendor_is_vat_payer) {
+    form.value.vat_deduction = 'none'
+    zeroAllItemRates()
   }
 }
 
@@ -245,6 +293,7 @@ onMounted(async () => {
     const qVendor = Number(route.query.vendor_id)
     if (!isNaN(qVendor) && qVendor > 0) {
       form.value.vendor_id = qVendor
+      void fetchVendorVatStatus(qVendor, true)
     }
     // Default první prázdná položka pro nový draft (user feedback: UX, méně klikání)
     if (form.value.items.length === 0) {
@@ -299,6 +348,7 @@ function populate(inv: PurchaseInvoice) {
   form.value.exchange_rate_date = inv.exchange_rate_date || inv.issue_date
   form.value.exchange_rate_source = inv.exchange_rate_source
   form.value.reverse_charge = inv.reverse_charge
+  form.value.prices_include_vat = (inv as { prices_include_vat?: boolean }).prices_include_vat ?? false
   form.value.is_fixed_asset = (inv as { is_fixed_asset?: boolean }).is_fixed_asset ?? false
   form.value.vat_deduction = inv.vat_deduction ?? 'full'
   form.value.vat_deduction_percent = inv.vat_deduction_percent ?? 100
@@ -317,6 +367,10 @@ function populate(inv: PurchaseInvoice) {
   form.value.vat_classification_code = inv.vat_classification_code ?? null
   form.value.items = inv.items.length > 0 ? inv.items : []
   extractionWarning.value = inv.extraction_warning ?? null
+  // Existující faktura: zobraz plátcovství dodavatele (jen příznak, NEpřepisuj uloženou
+  // volbu vat_deduction). Při ruční změně dodavatele/checkboxu se enforce zapne.
+  form.value.vendor_is_vat_payer = (inv as { vendor_is_vat_payer?: boolean }).vendor_is_vat_payer ?? true
+  if (inv.vendor_id) void fetchVendorVatStatus(inv.vendor_id, false)
 
   if (inv.pdf_path) {
     existingPdf.value = {
@@ -349,10 +403,15 @@ function removeItem(idx: number) {
 
 // Per-item live calc preview (read-only, server přepočte při save)
 function itemTotal(it: PurchaseInvoiceItem) {
-  const base = Number(it.quantity || 0) * Number(it.unit_price_without_vat || 0)
+  const amt = Number(it.quantity || 0) * Number(it.unit_price_without_vat || 0)
   const rate = form.value.reverse_charge ? 0 : (vatRates.value.find(v => v.id === it.vat_rate_id)?.rate_percent || 0)
-  const vat = base * rate / 100
-  return { base: round2(base), vat: round2(vat), with: round2(base + vat) }
+  // Režim "ceny s DPH": unit_price_without_vat nese cenu S DPH (gross) → DPH shora.
+  if (form.value.prices_include_vat) {
+    const vat = round2(amt * rate / (100 + rate))
+    return { base: round2(amt - vat), vat, with: round2(amt) }
+  }
+  const vat = amt * rate / 100
+  return { base: round2(amt), vat: round2(vat), with: round2(amt + vat) }
 }
 function round2(n: number) { return Math.round(n * 100) / 100 }
 
@@ -363,9 +422,17 @@ function setItemGross(it: PurchaseInvoiceItem, raw: string): void {
   if (gross === null) return
   const qty = Number(it.quantity) || 0
   if (qty === 0) return
-  const rate = form.value.reverse_charge ? 0 : Number(vatRates.value.find(v => v.id === it.vat_rate_id)?.rate_percent || 0)
-  it.unit_price_without_vat = round2(gross / (1 + rate / 100) / qty)
+  // Zadání ceny s DPH → přepni celou fakturu do režimu "ceny s DPH" a ulož gross
+  // jako jednotkovou cenu (v tomto režimu unit_price_without_vat nese cenu s DPH).
+  // DPH se počítá shora; server přepočítá přesně.
+  form.value.prices_include_vat = true
+  it.unit_price_without_vat = round2(gross / qty)
 }
+
+// Záhlaví sloupce jednotkové ceny — v režimu „ceny s DPH" je to cena včetně DPH.
+const unitPriceHeaderLabel = computed(() => form.value.prices_include_vat
+  ? t('purchase_invoice.items.unit_price_gross')
+  : t('purchase_invoice.items.unit_price'))
 
 // Popisek sazby — odliš dvě 0% sazby (osvobozeno vs. přenesená DPH), jako u vydané faktury.
 function vatRateLabel(r: VatRate): string {
@@ -465,6 +532,7 @@ async function submit() {
       exchange_rate_date: form.value.exchange_rate_date || null,
       exchange_rate_source: form.value.exchange_rate_source,
       reverse_charge: form.value.reverse_charge,
+      prices_include_vat: form.value.prices_include_vat,
       is_fixed_asset: form.value.is_fixed_asset,
       vat_deduction: form.value.vat_deduction,
       vat_deduction_percent: form.value.vat_deduction_percent,
@@ -751,9 +819,18 @@ function fieldErr(key: string): string | null {
             <input type="checkbox" v-model="form.reverse_charge" class="rounded" />
             {{ t('purchase_invoice.fields.reverse_charge') }}
           </label>
+          <label class="inline-flex items-center gap-2 text-sm" :title="t('purchase_invoice.fields.vendor_is_vat_payer_hint')">
+            <input type="checkbox" v-model="form.vendor_is_vat_payer" @change="onVendorVatPayerToggle" class="rounded" />
+            <span :class="!form.vendor_is_vat_payer ? 'text-warning-700' : ''">{{ t('purchase_invoice.fields.vendor_is_vat_payer') }}</span>
+            <span v-if="vendorVatStatusLoading" class="text-xs text-neutral-400">…</span>
+          </label>
           <label class="inline-flex items-center gap-2 text-sm" :title="t('purchase_invoice.fields.is_fixed_asset_hint')">
             <input type="checkbox" v-model="form.is_fixed_asset" class="rounded" />
             {{ t('purchase_invoice.fields.is_fixed_asset') }}
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm" :title="t('purchase_invoice.fields.prices_include_vat_hint')">
+            <input type="checkbox" v-model="form.prices_include_vat" class="rounded" />
+            {{ t('purchase_invoice.fields.prices_include_vat') }}
           </label>
           <div class="inline-flex items-center gap-2">
             <label class="text-sm text-neutral-700">{{ t('purchase_invoice.fields.language') }}:</label>
@@ -784,7 +861,7 @@ function fieldErr(key: string): string | null {
               <th class="text-left py-2 pl-5 pr-2 font-normal">{{ t('purchase_invoice.items.description') }}</th>
               <th class="text-right py-2 px-1 font-normal w-20">{{ t('purchase_invoice.items.quantity') }}</th>
               <th class="text-left py-2 px-1 font-normal w-20">{{ t('purchase_invoice.items.unit') }}</th>
-              <th class="text-right py-2 px-1 font-normal w-28">{{ t('purchase_invoice.items.unit_price') }}</th>
+              <th class="text-right py-2 px-1 font-normal w-28">{{ unitPriceHeaderLabel }}</th>
               <th class="text-left py-2 px-1 font-normal w-24">{{ t('purchase_invoice.items.vat_rate') }}</th>
               <th class="text-right py-2 px-1 font-normal w-28">{{ t('purchase_invoice.items.total_with_vat') }}</th>
               <th class="w-10 pr-3"></th>
@@ -849,7 +926,7 @@ function fieldErr(key: string): string | null {
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('purchase_invoice.items.unit_price') }}</label>
+                <label class="block text-xs font-medium text-neutral-600 mb-1">{{ unitPriceHeaderLabel }}</label>
                 <input v-model="it.unit_price_without_vat" v-math type="text" inputmode="decimal" class="w-full h-10 px-3 border border-neutral-200 rounded text-sm text-right font-mono" />
               </div>
               <div>
@@ -995,9 +1072,9 @@ function fieldErr(key: string): string | null {
       </div>
 
       <!-- Submit bar — sticky bottom -->
-      <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm flex items-center justify-end gap-2">
-        <RouterLink to="/purchase-invoices" class="px-4 h-10 inline-flex items-center text-sm border border-neutral-300 rounded-md hover:bg-neutral-50">
-          {{ t('purchase_invoice.actions.back') }}
+      <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm flex items-center justify-between gap-2">
+        <RouterLink to="/purchase-invoices" class="px-4 h-10 inline-flex items-center text-sm text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors">
+          ← {{ t('purchase_invoice.actions.back') }}
         </RouterLink>
         <button type="submit" :disabled="submitting" class="cursor-pointer px-5 h-10 inline-flex items-center text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-md disabled:opacity-50">
           {{ submitting ? '…' : t('purchase_invoice.actions.save') }}

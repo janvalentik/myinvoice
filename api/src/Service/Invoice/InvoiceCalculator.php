@@ -31,14 +31,15 @@ final class InvoiceCalculator
     {
         $pdo = $this->db->pdo();
 
-        // Načti hlavičku (pro reverse_charge)
-        $stmt = $pdo->prepare('SELECT reverse_charge FROM invoices WHERE id = ?');
+        // Načti hlavičku (pro reverse_charge + režim cen s DPH)
+        $stmt = $pdo->prepare('SELECT reverse_charge, prices_include_vat FROM invoices WHERE id = ?');
         $stmt->execute([$invoiceId]);
         $header = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$header) {
             throw new \RuntimeException("Invoice {$invoiceId} not found");
         }
-        $reverseCharge = (bool) $header['reverse_charge'];
+        $reverseCharge    = (bool) $header['reverse_charge'];
+        $pricesIncludeVat = (bool) $header['prices_include_vat'];
 
         // Načti položky
         $stmt = $pdo->prepare(
@@ -49,7 +50,7 @@ final class InvoiceCalculator
         $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Vlastní výpočty delegujeme na pure-function InvoiceMath (testovatelné bez DB).
-        $computed = InvoiceMath::compute($items, $reverseCharge);
+        $computed = InvoiceMath::compute($items, $reverseCharge, $pricesIncludeVat);
 
         // Persist per-item totals
         $updateItem = $pdo->prepare(

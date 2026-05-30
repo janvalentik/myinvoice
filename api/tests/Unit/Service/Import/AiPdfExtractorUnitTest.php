@@ -14,6 +14,7 @@ use MyInvoice\Service\Import\AnthropicClient;
 use MyInvoice\Service\Import\ClientResolver;
 use MyInvoice\Service\Import\IsdocParser;
 use MyInvoice\Service\Import\IsdocToPurchaseInvoiceMapper;
+use MyInvoice\Service\Import\ImageToPdfConverter;
 use MyInvoice\Service\Import\PdfIsdocExtractor;
 use MyInvoice\Service\Invoice\PurchaseInvoiceCalculator;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
@@ -57,6 +58,7 @@ final class AiPdfExtractorUnitTest extends TestCase
             $this->createMock(IsdocToPurchaseInvoiceMapper::class),
             $this->createMock(Config::class),
             $this->createMock(CnbExchangeRateClient::class),
+            new ImageToPdfConverter(), // bez závislostí — reálná instance stačí
             new NullLogger(),
         );
     }
@@ -341,7 +343,142 @@ final class AiPdfExtractorUnitTest extends TestCase
         ], false);
     }
 
+    // ── resolvePricesIncludeVat (režim „ceny s DPH" pro účtenky) ────────────
+
+    public function testPricesInclVat_explicit_true_flag_wins(): void
+    {
+        // AI explicitně řekla, že ceny jsou s DPH → režim shora, bez ohledu na typ.
+        self::assertTrue($this->invokeResolvePricesInclVat(['unit_prices_include_vat' => true], 'invoice'));
+    }
+
+    public function testPricesInclVat_explicit_false_flag_wins_even_for_receipt(): void
+    {
+        // I u účtenky: když AI explicitně řekne false (cena bez DPH na dokladu je),
+        // respektujeme to a NEpřepínáme na režim shora.
+        self::assertFalse($this->invokeResolvePricesInclVat(['unit_prices_include_vat' => false], 'receipt'));
+    }
+
+    public function testPricesInclVat_receipt_defaults_to_true_when_flag_missing(): void
+    {
+        // Účtenka bez flagu → default true (ceny s DPH, bez DPH cena na dokladu není).
+        self::assertTrue($this->invokeResolvePricesInclVat([], 'receipt'));
+    }
+
+    public function testPricesInclVat_invoice_defaults_to_false_when_flag_missing(): void
+    {
+        // Běžná faktura bez flagu → default false (ceny bez DPH, počítá se zdola).
+        self::assertFalse($this->invokeResolvePricesInclVat([], 'invoice'));
+    }
+
+    public function testMismatch_receipt_gross_sum_matches_total_with_vat_no_warning(): void
+    {
+        // Režim shora: ceny řádků jsou s DPH → reference je total_with_vat, ne _without_.
+        // Účtenka 344 (1×344) sedí s total_with_vat → žádné varování,
+        // i když total_without_vat (284,30) by se součtem řádků NEsedělo.
+        $this->repo->expects($this->never())->method('setExtractionWarning');
+
+        $items = [['quantity' => 1, 'unit_price_without_vat' => 344.00, 'vat_rate_id' => 1]];
+        $data = ['total_with_vat' => 344.00, 'total_without_vat' => 284.30];
+        $this->invokeFlag(42, 1, $data, $items, true); // pricesIncludeVat = true
+    }
+
+    // ── isVendorNonPayer (dodavatel neplátce → bez nároku na odpočet) ───────
+
+    public function testNonPayer_ares_says_payer_false(): void
+    {
+        // Autoritativní ARES/VIES výsledek true → plátce → false (je nárok).
+        self::assertFalse(AiPdfExtractor::isVendorNonPayer(true, ['is_vat_payer' => false]));
+    }
+
+    public function testNonPayer_ares_says_nonpayer_true(): void
+    {
+        // ARES/VIES říká neplátce (false) → true (bez nároku), přebije i signál z dokladu.
+        self::assertTrue(AiPdfExtractor::isVendorNonPayer(false, ['is_vat_payer' => true]));
+    }
+
+    public function testNonPayer_unknown_uses_document_signal_false_means_nonpayer(): void
+    {
+        // Registr nerozhodl (null) → signál z dokladu: AI vendor.is_vat_payer=false ⇒ neplátce.
+        self::assertTrue(AiPdfExtractor::isVendorNonPayer(null, ['is_vat_payer' => false]));
+    }
+
+    public function testNonPayer_unknown_without_signal_defaults_payer(): void
+    {
+        // Nezjištěno z registru ani z dokladu → konzervativně NEpředpokládej neplátce.
+        self::assertFalse(AiPdfExtractor::isVendorNonPayer(null, []));
+        self::assertFalse(AiPdfExtractor::isVendorNonPayer(null, ['is_vat_payer' => true]));
+    }
+
+    // ── collapseToSummaryBaseLine (haléřový drift → 1 ks dle rekapitulace) ──
+
+    public function testCollapse_fuelReceipt_matchesVatRecap(): void
+    {
+        // Reálný případ (faktura 984): 34,29 l × 33,71 = 1 155,92, ale REKAPITULACE
+        // dokladu má základ 1 155,94. Sluč na 1 ks × 1 155,94.
+        $items = [[
+            'description' => 'Prémiová nafta', 'quantity' => 34.29, 'unit' => 'l',
+            'unit_price_without_vat' => 33.71, 'vat_rate_id' => 7, 'order_index' => 0,
+        ]];
+        $out = \MyInvoice\Service\Import\AiPdfExtractor::collapseToSummaryBaseLine($items, ['total_without_vat' => 1155.94], false);
+
+        self::assertNotNull($out);
+        self::assertCount(1, $out);
+        self::assertSame(1.0, $out[0]['quantity']);
+        self::assertSame(1155.94, $out[0]['unit_price_without_vat']);
+        self::assertSame(7, $out[0]['vat_rate_id']);
+        self::assertSame('Prémiová nafta', $out[0]['description']);
+
+        // A přes InvoiceMath sedí na rekapitulaci: 1 155,94 / 242,75 / 1 398,69.
+        $r = \MyInvoice\Service\Invoice\InvoiceMath::compute([
+            ['quantity' => 1.0, 'unit_price_without_vat' => 1155.94, 'vat_rate_snapshot' => 21],
+        ]);
+        self::assertSame(1155.94, $r['totals']['without_vat']);
+        self::assertSame(242.75,  $r['totals']['vat']);
+        self::assertSame(1398.69, $r['totals']['with_vat']);
+    }
+
+    public function testCollapse_exactMatch_keepsLines(): void
+    {
+        // Součet řádků přesně sedí se základem → neslučovat (null).
+        $items = [['description' => 'X', 'quantity' => 2.0, 'unit' => 'ks', 'unit_price_without_vat' => 100.0, 'vat_rate_id' => 7, 'order_index' => 0]];
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::collapseToSummaryBaseLine($items, ['total_without_vat' => 200.0], false));
+    }
+
+    public function testCollapse_multipleRates_keepsLines(): void
+    {
+        $items = [
+            ['description' => 'A', 'quantity' => 1.0, 'unit' => 'ks', 'unit_price_without_vat' => 100.0, 'vat_rate_id' => 7, 'order_index' => 0],
+            ['description' => 'B', 'quantity' => 1.0, 'unit' => 'ks', 'unit_price_without_vat' => 50.0,  'vat_rate_id' => 8, 'order_index' => 1],
+        ];
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::collapseToSummaryBaseLine($items, ['total_without_vat' => 149.99], false));
+    }
+
+    public function testCollapse_creditNote_keepsLines(): void
+    {
+        $items = [['description' => 'X', 'quantity' => 34.29, 'unit' => 'l', 'unit_price_without_vat' => 33.71, 'vat_rate_id' => 7, 'order_index' => 0]];
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::collapseToSummaryBaseLine($items, ['total_without_vat' => 1155.94], true));
+    }
+
+    public function testCollapse_largeDiff_keepsLines(): void
+    {
+        // Rozdíl > 1 Kč = jiný problém (chybné řádky) → neslučovat, řeší warning.
+        $items = [['description' => 'X', 'quantity' => 10.0, 'unit' => 'ks', 'unit_price_without_vat' => 100.0, 'vat_rate_id' => 7, 'order_index' => 0]];
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::collapseToSummaryBaseLine($items, ['total_without_vat' => 950.0], false));
+    }
+
+    public function testCollapse_missingSummaryBase_keepsLines(): void
+    {
+        $items = [['description' => 'X', 'quantity' => 34.29, 'unit' => 'l', 'unit_price_without_vat' => 33.71, 'vat_rate_id' => 7, 'order_index' => 0]];
+        self::assertNull(\MyInvoice\Service\Import\AiPdfExtractor::collapseToSummaryBaseLine($items, [], false));
+    }
+
     // ── Helper: reflection invokers ────────────────────────────────────────
+
+    private function invokeResolvePricesInclVat(array $data, string $documentKind): bool
+    {
+        $ref = new \ReflectionMethod($this->extractor, 'resolvePricesIncludeVat');
+        return (bool) $ref->invoke(null, $data, $documentKind);
+    }
 
     private function invokeDetectWeak(array $data, ?string $tenantIc): ?string
     {
@@ -349,10 +486,10 @@ final class AiPdfExtractorUnitTest extends TestCase
         return $ref->invoke($this->extractor, $data, $tenantIc);
     }
 
-    private function invokeFlag(int $invoiceId, int $supplierId, array $data, array $items): void
+    private function invokeFlag(int $invoiceId, int $supplierId, array $data, array $items, bool $pricesIncludeVat = false): void
     {
         $ref = new \ReflectionMethod($this->extractor, 'maybeFlagTotalsMismatch');
-        $ref->invoke($this->extractor, $invoiceId, $supplierId, $data, $items);
+        $ref->invoke($this->extractor, $invoiceId, $supplierId, $data, $items, $pricesIncludeVat);
     }
 
     private function invokeRounding(int $id, int $supplierId, array $data, bool $isCredit): void

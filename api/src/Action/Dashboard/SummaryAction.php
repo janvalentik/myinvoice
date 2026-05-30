@@ -374,7 +374,7 @@ final class SummaryAction
                JOIN currencies cur ON cur.id = i.currency_id
               WHERE i.supplier_id = ?
                 AND i.status IN ('issued','sent','reminded') AND i.due_date <= CURDATE()
-                AND i.invoice_type IN ('invoice','credit_note')
+                AND " . $this->receivableDocTypeSql() . "
               GROUP BY cur.code"
         );
         $stmt->execute([$sid]);
@@ -484,6 +484,22 @@ final class SummaryAction
              . " WHERE adv_s.advance_purchase_invoice_id = pi.id)))";
     }
 
+    /**
+     * SQL predikát pro pohledávkové doklady (co nám klienti dluží), alias `i`.
+     * Kromě ostrých faktur a dobropisů zahrnuje i NEZAPLACENÉ NESPÁROVANÉ proformy
+     * (proforma bez dceřiného ostrého daňového dokladu) — ty jsou reálný dluh.
+     * Spárovaná proforma se vynechá, aby se dluh nepočítal dvakrát (nese ho ostrý doklad).
+     * Kombinuj VŽDY se statusem IN ('issued','sent','reminded') — vyřadí zaplacené/storno.
+     * Pozn.: tržby/DPH/počty vystavených dokladů zůstávají jen invoice/credit_note.
+     */
+    private function receivableDocTypeSql(): string
+    {
+        return "(i.invoice_type IN ('invoice','credit_note')"
+             . " OR (i.invoice_type = 'proforma'"
+             . " AND NOT EXISTS (SELECT 1 FROM invoices ch"
+             . " WHERE ch.parent_invoice_id = i.id AND ch.invoice_type = 'invoice')))";
+    }
+
     private function purchaseCostsByMonth(\PDO $pdo, int $sid): array
     {
         $sql = "SELECT DATE_FORMAT(pi.issue_date, '%Y-%m') AS ym,
@@ -523,7 +539,7 @@ final class SummaryAction
                  WHERE i.supplier_id = ?
                    AND i.status IN ('issued','sent','reminded')
                    AND i.due_date <= CURDATE()
-                   AND i.invoice_type IN ('invoice','credit_note')
+                   AND " . $this->receivableDocTypeSql() . "
                  ORDER BY i.due_date ASC
                  LIMIT 20";
         $stmt = $pdo->prepare($sql);
@@ -968,7 +984,7 @@ final class SummaryAction
                   JOIN currencies cur ON cur.id = i.currency_id
                  WHERE i.supplier_id = ?
                    AND i.status IN ('issued','sent','reminded')
-                   AND i.invoice_type IN ('invoice','credit_note')
+                   AND " . $this->receivableDocTypeSql() . "
                  GROUP BY cur.code";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([$sid]);

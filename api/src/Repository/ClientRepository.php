@@ -143,7 +143,7 @@ final class ClientRepository
         // Cache `client_revenue_cache` — primární řádek vybíráme přes c.currency_default_id
         $sql = "SELECT c.id, c.supplier_id, c.company_name, c.ic, c.dic, c.main_email, c.language,
                        c.currency_default_id, cur.code AS currency_default,
-                       c.reverse_charge, c.is_customer, c.is_vendor,
+                       c.reverse_charge, c.is_vat_payer, c.is_customer, c.is_vendor,
                        c.payment_due_default, c.payment_due_unit, c.hourly_rate,
                        c.default_expense_category_id, c.default_revenue_category_id,
                        c.archived_at, co.iso2 AS country_iso2,
@@ -236,12 +236,12 @@ final class ClientRepository
 
         $sql = 'INSERT INTO clients
             (supplier_id, company_name, first_name, last_name, ic, dic, street, city, zip, country_id,
-             main_email, phone, language, currency_default_id, reverse_charge,
+             main_email, phone, language, currency_default_id, reverse_charge, is_vat_payer,
              is_customer, is_vendor,
              auto_send_reminders, payment_due_default, payment_due_unit, hourly_rate, note,
              default_expense_category_id, default_revenue_category_id,
              invoice_number_format, proforma_number_format, credit_note_number_format, invoice_number_period)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
         $stmt = $this->db->pdo()->prepare($sql);
         $stmt->execute([
             $supplierId,
@@ -259,6 +259,9 @@ final class ClientRepository
             (string) ($data['language'] ?? 'cs'),
             $currencyId,
             !empty($data['reverse_charge']) ? 1 : 0,
+            // Plátcovství DPH — default 1 (BC); import doplní z ARES/VIES (neplátce = 0).
+            // isset() → null (nezjištěno) spadne na default 1; VendorVatPayerResolver opraví.
+            isset($data['is_vat_payer']) ? ((int) (bool) $data['is_vat_payer']) : 1,
             $isCustomer,
             $isVendor,
             array_key_exists('auto_send_reminders', $data) ? ((int) (bool) $data['auto_send_reminders']) : 1,
@@ -286,6 +289,17 @@ final class ClientRepository
         $this->db->pdo()
             ->prepare('UPDATE clients SET is_vendor = 1 WHERE id = ? AND is_vendor = 0')
             ->execute([$id]);
+    }
+
+    /**
+     * Nastaví plátcovství DPH klienta (z ARES dle IČO / VIES dle DIČ). Volá se z importu,
+     * online refresh endpointu i backfill skriptu. Idempotentní.
+     */
+    public function setVatPayer(int $id, bool $isVatPayer): void
+    {
+        $this->db->pdo()
+            ->prepare('UPDATE clients SET is_vat_payer = ? WHERE id = ?')
+            ->execute([$isVatPayer ? 1 : 0, $id]);
     }
 
     /**
@@ -374,7 +388,7 @@ final class ClientRepository
                 company_name = ?, first_name = ?, last_name = ?, ic = ?, dic = ?,
                 street = ?, city = ?, zip = ?, country_id = ?,
                 main_email = ?, phone = ?, language = ?, currency_default_id = ?,
-                reverse_charge = ?, is_customer = ?, is_vendor = ?,
+                reverse_charge = ?, is_vat_payer = COALESCE(?, is_vat_payer), is_customer = ?, is_vendor = ?,
                 auto_send_reminders = ?, payment_due_default = ?, payment_due_unit = ?,
                 hourly_rate = ?, note = ?, default_expense_category_id = ?, default_revenue_category_id = ?,
                 invoice_number_format = ?, proforma_number_format = ?,
@@ -396,6 +410,8 @@ final class ClientRepository
             (string) ($data['language'] ?? 'cs'),
             $currencyId,
             !empty($data['reverse_charge']) ? 1 : 0,
+            // COALESCE: null (klíč chybí) → zachová stávající is_vat_payer; jinak nastav.
+            array_key_exists('is_vat_payer', $data) ? ((int) (bool) $data['is_vat_payer']) : null,
             $newIsCustomer,
             $newIsVendor,
             array_key_exists('auto_send_reminders', $data) ? ((int) (bool) $data['auto_send_reminders']) : 1,
@@ -572,6 +588,7 @@ final class ClientRepository
                 : null;
         }
         $row['reverse_charge']        = (bool) ($row['reverse_charge'] ?? 0);
+        if (array_key_exists('is_vat_payer', $row)) $row['is_vat_payer'] = (bool) $row['is_vat_payer'];
         if (array_key_exists('is_customer', $row)) $row['is_customer'] = (bool) $row['is_customer'];
         if (array_key_exists('is_vendor', $row))   $row['is_vendor']   = (bool) $row['is_vendor'];
         if (array_key_exists('auto_send_reminders', $row)) {

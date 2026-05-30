@@ -178,6 +178,7 @@ function openClient(c: Client) {
             <th class="text-center px-4 py-2.5 font-medium">{{ roleFilter === 'vendors' ? t('client.invoice_count_label') : t('nav.projects') }}</th>
             <th class="text-right px-4 py-2.5 font-medium">{{ roleFilter === 'vendors' ? t('common.costs') : t('common.revenue') }}</th>
             <th class="text-left px-4 py-2.5 font-medium">{{ t('common.last_activity') }}</th>
+            <th v-if="roleFilter === 'vendors'" class="text-center px-4 py-2.5 font-medium">{{ t('client.vat_payer_label') }}</th>
             <th class="text-center px-4 py-2.5 font-medium">{{ t('common.currency') }}</th>
           </tr>
         </thead>
@@ -234,6 +235,10 @@ function openClient(c: Client) {
                 <span v-if="c.last_invoice_date">{{ formatDate(c.last_invoice_date) }}</span>
                 <span v-else class="text-neutral-300">—</span>
               </template>
+            </td>
+            <td v-if="roleFilter === 'vendors'" class="px-4 py-3 text-center">
+              <span v-if="c.is_vat_payer === false" class="inline-block px-2 py-0.5 text-xs bg-warning-50 text-warning-700 rounded">{{ t('common.no') }}</span>
+              <span v-else class="inline-block px-2 py-0.5 text-xs bg-success-50 text-success-700 rounded">{{ t('common.yes') }}</span>
             </td>
             <td class="px-4 py-3 text-center text-neutral-600 font-mono text-xs">{{ c.currency_default }}</td>
           </tr>

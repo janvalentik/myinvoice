@@ -25,6 +25,7 @@ final class ClientResolver
         private readonly ClientRepository $clients,
         private readonly AresClient $ares,
         private readonly \MyInvoice\Service\Ares\ViesClient $vies,
+        private readonly \MyInvoice\Service\Ares\VendorVatPayerResolver $vatPayer,
     ) {}
 
     /**
@@ -44,7 +45,7 @@ final class ClientResolver
      * Dual-role firma OK.
      *
      * @param array<string,?string> $parsedVendor
-     * @return array{id:int, created:bool, role_added:bool}
+     * @return array{id:int, created:bool, role_added:bool, is_vat_payer:?bool}
      */
     public function resolveVendor(array $parsedVendor, int $supplierId): array
     {
@@ -61,7 +62,12 @@ final class ClientResolver
                 $roleAdded = true;
             }
         }
-        return ['id' => $r['id'], 'created' => $r['created'], 'role_added' => $roleAdded];
+
+        // Plátcovství DPH dodavatele z ARES (CZ) / VIES (zahraniční) — uloží na klienta
+        // (nový i existující). Z toho pak import vynutí vat_deduction='none' u neplátce.
+        $vat = $this->vatPayer->resolveAndPersist($r['id'], $parsedVendor['ic'] ?? null, $parsedVendor['dic'] ?? null);
+
+        return ['id' => $r['id'], 'created' => $r['created'], 'role_added' => $roleAdded, 'is_vat_payer' => $vat['is_vat_payer']];
     }
 
     /**

@@ -365,10 +365,10 @@ final class RecurringInvoiceGenerator
             $stmt = $pdo->prepare(
                 'INSERT INTO invoices
                    (invoice_type, client_id, project_id, supplier_id,
-                    issue_date, tax_date, due_date, currency_id, reverse_charge, language,
+                    issue_date, tax_date, due_date, currency_id, reverse_charge, prices_include_vat, language,
                     note_above_items, note_below_items, payment_method, discount_percent,
                     recurring_template_id, revenue_category_id, status, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?)'
             );
             $stmt->execute([
                 $type,
@@ -380,6 +380,7 @@ final class RecurringInvoiceGenerator
                 $dueDate,
                 (int) $template['currency_id'],
                 $template['reverse_charge'] ? 1 : 0,
+                !empty($template['prices_include_vat']) ? 1 : 0,
                 (string) ($template['language'] ?? 'cs'),
                 $template['note_above_items'] ?? null,
                 $template['note_below_items'] ?? null,

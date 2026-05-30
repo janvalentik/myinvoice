@@ -12,6 +12,7 @@ use MyInvoice\Action\Client\ArchiveClientAction;
 use MyInvoice\Action\Client\CreateClientAction;
 use MyInvoice\Action\Client\DeleteClientAction;
 use MyInvoice\Action\Client\GetClientAction;
+use MyInvoice\Action\Client\ClientVatStatusAction;
 use MyInvoice\Action\Client\ListClientsAction;
 use MyInvoice\Action\Client\UpdateClientAction;
 use MyInvoice\Action\Codebook\CodebookAction;
@@ -220,6 +221,7 @@ final class Routes
         $app->get   ('/api/clients',                 ListClientsAction::class);
         $app->post  ('/api/clients',                 CreateClientAction::class);
         $app->get   ('/api/clients/{id:[0-9]+}',     GetClientAction::class);
+        $app->get   ('/api/clients/{id:[0-9]+}/vat-status', ClientVatStatusAction::class);  // online ARES/VIES plátcovství
         $app->put   ('/api/clients/{id:[0-9]+}',     UpdateClientAction::class);
         $app->post  ('/api/clients/{id:[0-9]+}/archive',   ArchiveClientAction::class);
         $app->post  ('/api/clients/{id:[0-9]+}/unarchive', ArchiveClientAction::class);

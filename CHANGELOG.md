@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.0] — 2026-05-31
+
+Import faktur a účtenek z fotek, režim cen „s DPH" (brutto) napříč doklady a daňově korektní zacházení s dodavateli neplátci DPH.
+
+### Added
+
+- **Import faktur/účtenek z fotky (#75)** — do importu (drag&drop i nahrání) lze nově dát **obrázek** dokladu, ne jen PDF. Podporované formáty **JPG, PNG, WEBP a HEIC/HEIF** (fotky z mobilu) se na vstupu automaticky převedou na PDF (`ImageToPdfConverter`) a dál projdou stejnou AI extrakcí jako PDF. HEIC se zpracuje, pokud má prostředí Imagick; jinak appka srozumitelně poradí převést na JPG/PNG. Vše ostatní (rozpoznání dodavatele, položek, DPH) zůstává beze změny.
+- **Režim cen „s DPH" (brutto) na dokladech** — u **vystavených i přijatých faktur** a u **šablon pravidelné fakturace** lze přepnout, že ceny položek jsou uvedené **včetně DPH** (účtenky, paragony, B2C). DPH se pak počítá „shora" koeficientovou metodou (§37 ZDP) a **celková částka sedí na haléř** (33 Kč s DPH @ 21 % → základ 27,27 / DPH 5,73, ne 32,9967). U více řádků stejné sazby se haléřové reziduum dorovná tak, aby součet daně přesně odpovídal dani z celkového brutto (KH i přiznání ukážou stejné číslo jako detail faktury). Přepínač lze **předvyplnit per dodavatel** (výchozí *Ceny s DPH* v nastavení) a v editoru se **automaticky zapne**, jakmile zadáš cenu do sloupce „Celkem s DPH". Výchozí stav i všechny existující doklady zůstávají v dosavadním režimu „zdola" (beze změny). AI import účtenek nově ukládá ceny tak, jak jsou na účtence (s DPH), a nastaví režim sám.
+- **Dodavatel neplátce DPH → bez nároku na odpočet** — u dodavatelů se sleduje **plátcovství DPH** (autoritativně z ARES dle IČO, u zahraničních EU subjektů z VIES dle DIČ; online při výběru/editaci dodavatele, cache 24 h) a zobrazuje se i ve **výpisu klientů** (badge *Plátce DPH*) a v **editoru přijaté faktury** (volba pod *Reverse charge*). U **neplátce** se automaticky vynutí `vat_deduction='none'`, vynulují sazby a zobrazí varování — do přiznání DPH (ř. 40) ani kontrolního hlášení (sekce B) se tak nedostane neoprávněný odpočet z dokladu, na kterém žádná DPH není. Příznak lze v editoru vědomě přepsat.
+
+### Fixed
+
+- **AI import od neplátce nesprávně nárokoval odpočet DPH** — doklad od dodavatele neplátce (např. „DIČ: Neplátce DPH") se importoval s `vat_deduction='full'` a dostával se do ř. 40 přiznání. Nově se plátcovství ověří a u neplátce se odpočet automaticky zakáže.
+
+### Upgrade
+
+- **Zpětný backfill plátcovství dodavatelů** — po nasazení doporučeno jednorázově spustit `php api/bin/backfill-vendor-vat-payer.php`. Skript projde stávající dodavatele, podle ARES/VIES doplní `clients.is_vat_payer` a u **neplátců** opraví už zaevidované přijaté faktury (nastaví `vat_deduction='none'`, sazby na 0 %, základ = zaúčtovaná částka, **celková částka beze změny**) + přečísluje variabilní symboly. **Výchozí běh je dry-run** (jen náhled, nic nezapisuje) — zápis provede až s přepínačem `--apply`. Migrace `0083` a `0084` se aplikují přes `php api/bin/migrate.php`.
+
 ## [4.6.4] — 2026-05-30
 
 Další automatické načítání údajů z veřejných registrů (ARES + registr plátců DPH), děkovný e-mail za úhradu faktury a drobné opravy.
