@@ -241,6 +241,8 @@ async function save() {
                 <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">+ {{ t('tax.bd_social') }}</td><td class="py-1.5 text-right font-medium font-mono">{{ formatMoney(cmp.regular.soc, 'CZK') }}</td></tr>
                 <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">+ {{ t('tax.bd_health') }}</td><td class="py-1.5 text-right font-medium font-mono">{{ formatMoney(cmp.regular.hea, 'CZK') }}</td></tr>
                 <tr><td class="pt-2 font-bold text-neutral-900">{{ t('tax.bd_total') }}</td><td class="pt-2 text-right font-bold font-mono">{{ formatMoney(cmp.regular.total, 'CZK') }}</td></tr>
+                <tr class="border-t-2 border-neutral-200"><td class="pt-2 font-bold text-success-700">= {{ t('tax.bd_net') }}</td><td class="pt-2 text-right font-bold font-mono text-success-700">{{ formatMoney(cmp.regular.net, 'CZK') }}</td></tr>
+                <tr><td class="py-1 text-neutral-500 text-xs">{{ t('tax.bd_effective') }}</td><td class="py-1 text-right text-xs text-neutral-500 font-mono">{{ (cmp.regular.eff * 100).toFixed(1) }} %</td></tr>
               </tbody>
             </table>
           </div>

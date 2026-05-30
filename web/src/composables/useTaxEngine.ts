@@ -61,6 +61,7 @@ function kidSum(n: number, arr: number[]): number {
 export interface RegularResult {
   exp: number; ded: number; base: number; tax: number; kids: number
   incomeTax: number; isBonus: boolean; soc: number; hea: number; total: number
+  net: number; eff: number
 }
 
 export function regular(p: EngineProfile, income: number, c: TaxConstantsData): RegularResult {
@@ -76,9 +77,12 @@ export function regular(p: EngineProfile, income: number, c: TaxConstantsData): 
   const kids = kidSum(p.children_count, c.child_credits)
   const incomeTax = afterNonRef - kids
   const profit = income - exp
-  const soc = Math.max(profit * c.assessment_base_pct, p.is_secondary ? c.social_min_base_secondary : c.social_min_base_main) * c.social_rate
-  const hea = Math.max(profit * c.assessment_base_pct, c.health_min_base) * c.health_rate
-  return { exp, ded, base, tax, kids, incomeTax, isBonus: incomeTax < 0, soc, hea, total: incomeTax + soc + hea }
+  // Sociální 55 % zisku, zdravotní 50 % zisku (od 2024 odlišné), s ročními minimy.
+  const soc = Math.max(profit * c.social_assessment_pct, p.is_secondary ? c.social_min_base_secondary : c.social_min_base_main) * c.social_rate
+  const hea = Math.max(profit * c.health_assessment_pct, c.health_min_base) * c.health_rate
+  const total = incomeTax + soc + hea
+  // Čistý příjem = co reálně zbyde (paušální výdaje nejsou reálný výdaj); eff = odvody/příjem.
+  return { exp, ded, base, tax, kids, incomeTax, isBonus: incomeTax < 0, soc, hea, total, net: income - total, eff: income > 0 ? total / income : 0 }
 }
 
 export interface CompareResult {

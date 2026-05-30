@@ -166,12 +166,12 @@ final class TaxOptimizer
         $childTotal = $this->childCreditTotal((int) ($profile['children_count'] ?? 0), $c['child_credits']);
         $incomeTax = $taxAfterCredits - $childTotal;
 
-        // Pojistné — z vyměřovacího základu (55 % zisku), s ročními minimy. Slevy neovlivní.
+        // Pojistné — z vyměřovacího základu (% zisku), s ročními minimy. Slevy neovlivní.
+        // Od 2024 se základ liší: sociální 55 % zisku, zdravotní 50 % zisku.
         $profit = $income - $expenses;
-        $pct = (float) $c['assessment_base_pct'];
         $socMin = !empty($profile['is_secondary']) ? (float) $c['social_min_base_secondary'] : (float) $c['social_min_base_main'];
-        $socialBase = max($profit * $pct, $socMin);
-        $healthBase = max($profit * $pct, (float) $c['health_min_base']);
+        $socialBase = max($profit * (float) $c['social_assessment_pct'], $socMin);
+        $healthBase = max($profit * (float) $c['health_assessment_pct'], (float) $c['health_min_base']);
         $social = $socialBase * $c['social_rate'];
         $health = $healthBase * $c['health_rate'];
 
@@ -192,6 +192,10 @@ final class TaxOptimizer
             'social'       => round($social, 0),
             'health'       => round($health, 0),
             'total'        => round($total, 0),
+            // Čistý příjem = co reálně zbyde (paušální výdaje nejsou reálný výdaj,
+            // proto se neodečítají); efektivní sazba = podíl odvodů na příjmu.
+            'net_income'     => round($income - $total, 0),
+            'effective_rate' => $income > 0 ? round($total / $income, 4) : 0.0,
         ];
     }
 

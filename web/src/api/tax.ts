@@ -28,7 +28,8 @@ export interface TaxConstantsData {
   tax_high_threshold: number
   social_rate: number
   health_rate: number
-  assessment_base_pct: number
+  social_assessment_pct: number
+  health_assessment_pct: number
   social_min_base_main: number
   social_min_base_secondary: number
   health_min_base: number
