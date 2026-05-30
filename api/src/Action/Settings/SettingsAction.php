@@ -306,7 +306,7 @@ final class SettingsAction
         foreach ($allowed as $f) {
             if (array_key_exists($f, $body)) {
                 $sets[] = "$f = ?";
-                $params[] = in_array($f, ['is_vat_payer', 'auto_send_reminders', 'auto_generate_recurring', 'embed_isdoc', 'email_branding_enabled', 'pdf_logo_show_name'], true)
+                $params[] = in_array($f, ['is_vat_payer', 'auto_send_reminders', 'auto_generate_recurring', 'embed_isdoc', 'email_branding_enabled', 'pdf_logo_show_name', 'pdf_signing_enabled'], true)
                     ? ((int) (bool) $body[$f])
                     : $body[$f];
             }
