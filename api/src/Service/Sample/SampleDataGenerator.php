@@ -5,26 +5,28 @@ declare(strict_types=1);
 namespace MyInvoice\Service\Sample;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Repository\RecurringTemplateRepository;
 use MyInvoice\Service\Stats\StatsRecomputer;
 use PDO;
 
 /**
  * Generuje testovací sample data — 5 klientů, 8 zakázek, 20 faktur, 4 dobropisy,
- * 4 dodavatelé a 12 přijatých faktur.
+ * 4 dodavatelé, 12 přijatých faktur a 2 pravidelné fakturace.
  * Sdílená logika pro `bin/sample.php` (CLI) i `SetupSampleAction` (HTTP wizard).
  *
  * Vrací: ['clients' => 5, 'projects' => 8, 'invoices' => 20, 'credit_notes' => 4,
- *         'vendors' => 4, 'purchase_invoices' => 12]
+ *         'vendors' => 4, 'purchase_invoices' => 12, 'recurring' => 2]
  */
 final class SampleDataGenerator
 {
     public function __construct(
         private readonly Connection $db,
         private readonly StatsRecomputer $stats,
+        private readonly RecurringTemplateRepository $recurring,
     ) {}
 
     /**
-     * @return array{clients:int, projects:int, invoices:int, credit_notes:int, vendors:int, purchase_invoices:int}
+     * @return array{clients:int, projects:int, invoices:int, credit_notes:int, vendors:int, purchase_invoices:int, recurring:int}
      */
     public function generate(int $supplierId, int $adminUserId): array
     {
@@ -344,6 +346,63 @@ final class SampleDataGenerator
             $purchaseCount++;
         }
 
+        // ───── Pravidelné fakturace (2 šablony) ─────
+        // Vystavení od 1. dne příštího měsíce (ať cron hned něco negeneruje a uživatel
+        // si je v klidu prohlédne). Přes RecurringTemplateRepository (stejné defaulty jako UI).
+        $firstNextMonth = $today->modify('first day of next month')->format('Y-m-d');
+        $recurringTemplates = [
+            [
+                'client_idx' => 0, 'project_idx' => 0, 'currency_id' => $czkId,
+                'name' => 'Měsíční hosting a údržba webu', 'frequency' => 'monthly',
+                'language' => 'cs', 'rc' => 0, 'vat' => $stdVat,
+                'items' => [
+                    ['Webhosting + správa serveru', 2500.0],
+                    ['Údržba webu (měsíční paušál)', 3500.0],
+                ],
+            ],
+            [
+                'client_idx' => 4, 'project_idx' => 7, 'currency_id' => $eurId,
+                'name' => 'Quarterly support retainer', 'frequency' => 'quarterly',
+                'language' => 'en', 'rc' => 1, 'vat' => $rcVat,
+                'items' => [
+                    ['Quarterly support & maintenance retainer', 1200.0],
+                ],
+            ],
+        ];
+        $recurringCount = 0;
+        foreach ($recurringTemplates as $rt) {
+            $tplId = $this->recurring->create([
+                'supplier_id'     => $supplierId,
+                'client_id'       => $clientIds[$rt['client_idx']],
+                'project_id'      => $projectIds[$rt['project_idx']],
+                'name'            => $rt['name'],
+                'frequency'       => $rt['frequency'],
+                'day_of_month'    => 1,
+                'anchor_date'     => $firstNextMonth,
+                'invoice_type'    => 'invoice',
+                'currency_id'     => $rt['currency_id'],
+                'language'        => $rt['language'],
+                'reverse_charge'  => $rt['rc'],
+                'payment_due_days' => 14,
+                'auto_issue'      => 1,
+                'auto_send_email' => 0,  // sample: negenerovat reálné e-maily
+                'status'          => 'active',
+            ], $adminUserId);
+            $this->recurring->replaceItems($tplId, array_map(
+                fn (array $it, int $k) => [
+                    'description'            => $it[0],
+                    'quantity'               => 1,
+                    'unit'                   => 'ks',
+                    'unit_price_without_vat' => $it[1],
+                    'vat_rate_id'            => $rt['vat'],
+                    'order_index'            => $k,
+                ],
+                $rt['items'],
+                array_keys($rt['items']),
+            ));
+            $recurringCount++;
+        }
+
         // Sample data nejdou přes InvoiceActions, takže project/client revenue cache by zůstaly prázdné
         // → dashboard a top-clients koláč by hlásily nulu. Recompute všech vygenerovaných entit.
         foreach ($projectIds as $pid) $this->stats->recomputeProject((int) $pid);
@@ -357,6 +416,7 @@ final class SampleDataGenerator
             'credit_notes'      => 4,
             'vendors'           => count($vendorIds),
             'purchase_invoices' => $purchaseCount,
+            'recurring'         => $recurringCount,
         ];
     }
 

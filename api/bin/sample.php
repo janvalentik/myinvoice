@@ -56,7 +56,7 @@ echo "  MyInvoice.cz — SAMPLE TEST DATA\n";
 echo "================================================\n";
 echo "  Supplier:   #$supplierId\n";
 echo "  Admin:      #$adminId\n";
-echo "  Vygeneruje: 5 klientů, 8 zakázek, 20 faktur, 4 dobropisy\n";
+echo "  Vygeneruje: 5 klientů, 8 zakázek, 20 faktur, 4 dobropisy, 2 pravidelné fakturace\n";
 echo "  Období:     poslední 2 měsíce\n";
 echo "================================================\n\n";
 
@@ -74,5 +74,5 @@ try {
 }
 
 echo "================================================\n";
-printf("  HOTOVO. %d klientů, %d zakázek, %d faktur, %d dobropisů.\n", $r['clients'], $r['projects'], $r['invoices'], $r['credit_notes']);
+printf("  HOTOVO. %d klientů, %d zakázek, %d faktur, %d dobropisů, %d pravidelných fakturací.\n", $r['clients'], $r['projects'], $r['invoices'], $r['credit_notes'], $r['recurring']);
 echo "================================================\n";
