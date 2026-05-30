@@ -7,15 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.6.4] — 2026-05-30
+
+Další automatické načítání údajů z veřejných registrů (ARES + registr plátců DPH), děkovný e-mail za úhradu faktury a drobné opravy.
+
 ### Added
 
 - **Auto-nastavení typu poplatníka z ARES** — při načtení dodavatele z ARES (setup wizard i *Číselníky → Nový dodavatel*) se z právní formy automaticky odvodí **Typ poplatníka**: OSVČ (fyzická osoba) → **FO/DPFO**, firma (s.r.o./a.s./…) → **PO/DPPO**. Lze ručně přepsat v Nastavení.
 - **Auto-doplnění EPO údajů z registrů při vytvoření dodavatele** — při založení dodavatele (setup i *Nový dodavatel*) se „na pozadí" (bez polí ve formuláři) doplní: z **ARES** číslo popisné/orientační, spisová značka a typ poplatníka; z **registru plátců DPH** kód finančního úřadu (autoritativní `cisloFu`, ne kód územního pracoviště). **CZ-NACE** jen pokud je jednoznačná (subjekt má jediný kód) — jinak prázdné, aby se do přiznání nedostala špatná převažující činnost. Doplní jen prázdná pole (nepřepisuje ruční vstup); výpadek registru vytvoření nezablokuje. ID datové schránky z ARES nelze (je v samostatném registru ISDS).
 - **Děkovný e-mail za úhradu faktury (#57)** — po označení faktury jako uhrazené lze zákazníkovi poslat krátké poděkování. **Volitelné a ve výchozím stavu vypnuté** (per dodavatel: zapnutí, automatické odeslání při bankovním párování, předzaškrtnutí v ručním označení, volitelná příloha PDF). Funguje při **ručním** označení (checkbox v modalu), **hromadném** označení (volba + souhrn odesláno/selhalo) i **automaticky při spárování platby z banky**. Vlastní e-mailová šablona `invoice_payment_thanks` (CS/EN, editovatelná v *Admin → E-mailové šablony*) s variantou pro zálohu (proforma). Idempotentní (auto odeslání jen jednou), neposílá pro storno ani bez příjemce; vše v activity logu (`invoice.payment_thanks_sent/skipped/failed`). Selhání e-mailu nikdy nerozbije označení/párování.
+- **Sample data — pravidelné fakturace** — generátor ukázkových dat (setup wizard i `bin/sample.php`) nově vytvoří i **2 pravidelné fakturace** (měsíční CZK hosting/údržba + čtvrtletní EUR reverse-charge retainer).
 
 ### Fixed
 
 - **Dark theme — stav „Odesláno" zářil** — badge používal nepřemapovaný světlý odstín; nově má vlastní tlumenou tyrkysovou paletu (laděnou k zelené ikoně e-mailu, ale odlišitelnou od „Zaplaceno"). Sladěn i badge „Proforma".
+- **„Načíst z ARES" u OSVČ hlásilo chybu (#76)** — chybějící spisová značka u fyzické osoby (OSVČ není v OR) se hlásila jako červená chyba. Nově se podle `taxpayer_type` u OSVČ zobrazí neutrální info, červená chyba zůstává jen tam, kde zápis v OR opravdu chybět nemá.
 
 ## [4.6.3] — 2026-05-30
 
