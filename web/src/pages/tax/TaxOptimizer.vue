@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { taxApi, type TaxAnalysis, type TaxProfile } from '@/api/tax'
 import { useToast } from '@/composables/useToast'
 import { formatMoney, formatMonth } from '@/composables/useFormat'
-import { compare as engineCompare, predict as enginePredict, type EngineProfile } from '@/composables/useTaxEngine'
+import { compare as engineCompare, predict as enginePredict, regular as engineRegular, type EngineProfile } from '@/composables/useTaxEngine'
 
 const { t } = useI18n()
 const toast = useToast()
@@ -16,7 +16,8 @@ const analysis = ref<TaxAnalysis | null>(null)
 const year = ref<number>(new Date().getFullYear())
 
 const profile = reactive<TaxProfile>({
-  activity_rate: 60, flat_tax_band: 'none', is_secondary: false, spouse_credit: false,
+  activity_rate: 60, use_actual_expenses: false, actual_expenses: 0,
+  flat_tax_band: 'none', is_secondary: false, spouse_credit: false,
   children_count: 0, mortgage_interest: 0, pension_contrib: 0, life_insurance: 0, donations: 0,
 })
 
@@ -52,6 +53,17 @@ const pred = computed(() =>
   analysis.value && isForecast.value
     ? enginePredict(engineProfile.value, analysis.value.ytd_income ?? 0, analysis.value.months_elapsed ?? 1, analysis.value.constants)
     : null)
+
+// YoY: čistý příjem standardního režimu loni (stejný profil na loňský příjem + loňské konstanty).
+const prevNet = computed(() => {
+  const p = analysis.value?.prev
+  if (!p || !cmp.value) return null
+  return { year: p.year, net: Math.round(engineRegular(engineProfile.value, p.income, p.constants).net) }
+})
+const yoyNetPct = computed(() => {
+  if (!prevNet.value || !cmp.value || prevNet.value.net === 0) return null
+  return (cmp.value.regular.net - prevNet.value.net) / Math.abs(prevNet.value.net) * 100
+})
 
 // Teploměr — škála a pozice (procenta)
 const SCALE = 2_700_000
@@ -119,6 +131,22 @@ async function save() {
               <option :value="40">{{ t('tax.activity_40') }}</option>
               <option :value="30">{{ t('tax.activity_30') }}</option>
             </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('tax.expense_mode') }}</label>
+            <div class="flex rounded-md border border-neutral-300 overflow-hidden text-sm mb-2">
+              <button type="button" @click="profile.use_actual_expenses = false"
+                :class="!profile.use_actual_expenses ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+                class="flex-1 px-3 h-9 cursor-pointer">{{ t('tax.expense_pausal') }}</button>
+              <button type="button" @click="profile.use_actual_expenses = true"
+                :class="profile.use_actual_expenses ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+                class="flex-1 px-3 h-9 cursor-pointer border-l border-neutral-300">{{ t('tax.expense_actual') }}</button>
+            </div>
+            <input v-if="profile.use_actual_expenses" v-model.number="profile.actual_expenses" type="number" min="0"
+              :placeholder="t('tax.expense_actual_ph')"
+              class="w-full h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm font-mono" />
+            <p class="text-xs text-neutral-400 mt-1">{{ t('tax.expense_mode_hint') }}</p>
           </div>
 
           <div>
@@ -234,7 +262,7 @@ async function save() {
             <table class="w-full text-sm">
               <tbody>
                 <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">{{ t('tax.bd_income') }}</td><td class="py-1.5 text-right font-medium font-mono">{{ formatMoney(income, 'CZK') }}</td></tr>
-                <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">− {{ t('tax.bd_expenses', { rate: profile.activity_rate }) }}</td><td class="py-1.5 text-right font-medium font-mono">{{ formatMoney(cmp.regular.exp, 'CZK') }}</td></tr>
+                <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">− {{ cmp.regular.useActual ? t('tax.bd_expenses_actual') : t('tax.bd_expenses', { rate: profile.activity_rate }) }}</td><td class="py-1.5 text-right font-medium font-mono">{{ formatMoney(cmp.regular.exp, 'CZK') }}</td></tr>
                 <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">− {{ t('tax.bd_deductions') }}</td><td class="py-1.5 text-right font-medium font-mono">{{ formatMoney(cmp.regular.ded, 'CZK') }}</td></tr>
                 <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">= {{ t('tax.bd_base') }}</td><td class="py-1.5 text-right font-medium font-mono">{{ formatMoney(cmp.regular.base, 'CZK') }}</td></tr>
                 <tr class="border-b border-neutral-100"><td class="py-1.5 text-neutral-600">{{ t('tax.bd_tax_after') }}</td><td class="py-1.5 text-right font-medium font-mono" :class="cmp.regular.isBonus ? 'text-success-600' : ''">{{ formatMoney(cmp.regular.incomeTax, 'CZK') }}</td></tr>
@@ -243,6 +271,13 @@ async function save() {
                 <tr><td class="pt-2 font-bold text-neutral-900">{{ t('tax.bd_total') }}</td><td class="pt-2 text-right font-bold font-mono">{{ formatMoney(cmp.regular.total, 'CZK') }}</td></tr>
                 <tr class="border-t-2 border-neutral-200"><td class="pt-2 font-bold text-success-700">= {{ t('tax.bd_net') }}</td><td class="pt-2 text-right font-bold font-mono text-success-700">{{ formatMoney(cmp.regular.net, 'CZK') }}</td></tr>
                 <tr><td class="py-1 text-neutral-500 text-xs">{{ t('tax.bd_effective') }}</td><td class="py-1 text-right text-xs text-neutral-500 font-mono">{{ (cmp.regular.eff * 100).toFixed(1) }} %</td></tr>
+                <tr v-if="prevNet && yoyNetPct !== null">
+                  <td class="py-1 text-neutral-500 text-xs">{{ t('tax.yoy_net', { year: prevNet.year }) }}</td>
+                  <td class="py-1 text-right text-xs font-mono">
+                    <span class="text-neutral-500">{{ formatMoney(prevNet.net, 'CZK') }}</span>
+                    <span class="ml-1" :class="yoyNetPct >= 0 ? 'text-success-600' : 'text-danger-500'">{{ yoyNetPct >= 0 ? '▲' : '▼' }} {{ Math.abs(yoyNetPct).toFixed(0) }} %</span>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>

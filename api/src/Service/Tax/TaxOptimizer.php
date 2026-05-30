@@ -143,7 +143,11 @@ final class TaxOptimizer
     private function computeRegular(array $profile, float $income, array $c): array
     {
         $rate = (int) ($profile['activity_rate'] ?? 40);
-        $expenses = min($income * $rate / 100, (float) ($c['expense_caps'][$rate] ?? PHP_INT_MAX));
+        // Skutečné výdaje (daňová evidence) NEBO výdajový paušál % se stropem.
+        $useActual = !empty($profile['use_actual_expenses']);
+        $expenses = $useActual
+            ? max(0.0, (float) ($profile['actual_expenses'] ?? 0))
+            : min($income * $rate / 100, (float) ($c['expense_caps'][$rate] ?? PHP_INT_MAX));
 
         $deductions = min((float) ($profile['mortgage_interest'] ?? 0), (float) $c['mortgage_cap'])
             + min((float) ($profile['pension_contrib'] ?? 0), (float) $c['pension_cap'])
@@ -180,6 +184,7 @@ final class TaxOptimizer
         return [
             'applicable'   => true,
             'expense_rate' => $rate,
+            'use_actual'   => $useActual,
             'expenses'     => round($expenses, 0),
             'deductions'   => round($deductions, 0),
             'tax_base'     => round($base, 0),

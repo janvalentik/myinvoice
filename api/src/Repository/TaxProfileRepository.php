@@ -20,9 +20,9 @@ final class TaxProfileRepository
     public function find(int $supplierId, int $year): ?array
     {
         $stmt = $this->db->pdo()->prepare(
-            'SELECT id, supplier_id, year, activity_rate, flat_tax_band, is_secondary,
-                    spouse_credit, children_count, mortgage_interest, pension_contrib,
-                    life_insurance, donations
+            'SELECT id, supplier_id, year, activity_rate, use_actual_expenses, actual_expenses,
+                    flat_tax_band, is_secondary, spouse_credit, children_count, mortgage_interest,
+                    pension_contrib, life_insurance, donations
                FROM tax_profiles WHERE supplier_id = ? AND year = ?'
         );
         $stmt->execute([$supplierId, $year]);
@@ -42,12 +42,16 @@ final class TaxProfileRepository
 
         $this->db->pdo()->prepare(
             'INSERT INTO tax_profiles
-                (supplier_id, year, activity_rate, flat_tax_band, is_secondary, spouse_credit,
-                 children_count, mortgage_interest, pension_contrib, life_insurance, donations)
-             VALUES (:sid, :year, :activity_rate, :flat_tax_band, :is_secondary, :spouse_credit,
-                 :children_count, :mortgage_interest, :pension_contrib, :life_insurance, :donations)
+                (supplier_id, year, activity_rate, use_actual_expenses, actual_expenses, flat_tax_band,
+                 is_secondary, spouse_credit, children_count, mortgage_interest, pension_contrib,
+                 life_insurance, donations)
+             VALUES (:sid, :year, :activity_rate, :use_actual_expenses, :actual_expenses, :flat_tax_band,
+                 :is_secondary, :spouse_credit, :children_count, :mortgage_interest, :pension_contrib,
+                 :life_insurance, :donations)
              ON DUPLICATE KEY UPDATE
                 activity_rate = VALUES(activity_rate),
+                use_actual_expenses = VALUES(use_actual_expenses),
+                actual_expenses = VALUES(actual_expenses),
                 flat_tax_band = VALUES(flat_tax_band),
                 is_secondary = VALUES(is_secondary),
                 spouse_credit = VALUES(spouse_credit),
@@ -60,6 +64,8 @@ final class TaxProfileRepository
             ':sid' => $supplierId,
             ':year' => $year,
             ':activity_rate' => in_array((string) ($data['activity_rate'] ?? '60'), ['30', '40', '60', '80'], true) ? (string) $data['activity_rate'] : '60',
+            ':use_actual_expenses' => !empty($data['use_actual_expenses']) ? 1 : 0,
+            ':actual_expenses' => max(0.0, (float) ($data['actual_expenses'] ?? 0)),
             ':flat_tax_band' => in_array((string) ($data['flat_tax_band'] ?? 'none'), ['none', 'band1', 'band2', 'band3'], true) ? (string) $data['flat_tax_band'] : 'none',
             ':is_secondary' => !empty($data['is_secondary']) ? 1 : 0,
             ':spouse_credit' => !empty($data['spouse_credit']) ? 1 : 0,
@@ -143,6 +149,8 @@ final class TaxProfileRepository
         $r['supplier_id'] = (int) $r['supplier_id'];
         $r['year'] = (int) $r['year'];
         $r['activity_rate'] = (int) $r['activity_rate'];
+        $r['use_actual_expenses'] = (bool) $r['use_actual_expenses'];
+        $r['actual_expenses'] = (float) $r['actual_expenses'];
         $r['is_secondary'] = (bool) $r['is_secondary'];
         $r['spouse_credit'] = (bool) $r['spouse_credit'];
         $r['children_count'] = (int) $r['children_count'];

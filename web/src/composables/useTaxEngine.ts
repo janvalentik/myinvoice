@@ -61,11 +61,14 @@ function kidSum(n: number, arr: number[]): number {
 export interface RegularResult {
   exp: number; ded: number; base: number; tax: number; kids: number
   incomeTax: number; isBonus: boolean; soc: number; hea: number; total: number
-  net: number; eff: number
+  net: number; eff: number; useActual: boolean
 }
 
 export function regular(p: EngineProfile, income: number, c: TaxConstantsData): RegularResult {
-  const exp = Math.min(income * p.activity_rate / 100, c.expense_caps[p.activity_rate])
+  // Skutečné výdaje (daňová evidence) NEBO výdajový paušál % se stropem.
+  const exp = p.use_actual_expenses
+    ? Math.max(0, p.actual_expenses || 0)
+    : Math.min(income * p.activity_rate / 100, c.expense_caps[p.activity_rate])
   const ded = Math.min(p.mortgage_interest, c.mortgage_cap) + Math.min(p.pension_contrib, c.pension_cap)
     + (p.life_insurance || 0) + (p.donations || 0)
   const base = Math.max(0, income - exp - ded)
@@ -82,7 +85,7 @@ export function regular(p: EngineProfile, income: number, c: TaxConstantsData): 
   const hea = Math.max(profit * c.health_assessment_pct, c.health_min_base) * c.health_rate
   const total = incomeTax + soc + hea
   // Čistý příjem = co reálně zbyde (paušální výdaje nejsou reálný výdaj); eff = odvody/příjem.
-  return { exp, ded, base, tax, kids, incomeTax, isBonus: incomeTax < 0, soc, hea, total, net: income - total, eff: income > 0 ? total / income : 0 }
+  return { exp, ded, base, tax, kids, incomeTax, isBonus: incomeTax < 0, soc, hea, total, net: income - total, eff: income > 0 ? total / income : 0, useActual: !!p.use_actual_expenses }
 }
 
 export interface CompareResult {

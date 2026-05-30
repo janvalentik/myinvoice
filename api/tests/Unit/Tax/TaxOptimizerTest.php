@@ -88,6 +88,21 @@ final class TaxOptimizerTest extends TestCase
         self::assertSame(17951.0, $r['social']);        // 61 476 × 29,2 % (ne 195 540)
     }
 
+    /** Skutečné výdaje (daňová evidence) místo paušálu. */
+    public function testActualExpensesOverridePausal(): void
+    {
+        $r = $this->opt->compare(
+            $this->profile(['use_actual_expenses' => true, 'actual_expenses' => 300000]),
+            1_000_000, $this->c
+        )['regular'];
+        self::assertTrue($r['use_actual']);
+        self::assertSame(300000.0, $r['expenses']);   // skutečné, NE 600 000 paušál
+        self::assertSame(74160.0, $r['income_tax']);  // (700k × 15 %) − 30 840
+        self::assertSame(112420.0, $r['social']);     // 385 000 (55 %) × 29,2 %
+        self::assertSame(47250.0, $r['health']);      // 350 000 (50 %) × 13,5 %
+        self::assertSame(766170.0, $r['net_income']);
+    }
+
     /** Paušál: vyšší příjem než strop deklarovaného pásma → posun + doplatek. */
     public function testPausalBandUpgradeSurcharge(): void
     {

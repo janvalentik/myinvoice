@@ -4,6 +4,8 @@ export type FlatTaxBand = 'none' | 'band1' | 'band2' | 'band3'
 
 export interface TaxProfile {
   activity_rate: number
+  use_actual_expenses: boolean
+  actual_expenses: number
   flat_tax_band: FlatTaxBand
   is_secondary: boolean
   spouse_credit: boolean
@@ -51,6 +53,8 @@ export interface TaxAnalysis {
   income?: number
   ytd_income?: number
   months_elapsed?: number
+  /** YoY: příjem + konstanty předchozího roku (jen v retrospektivě, pokud loni byl příjem). */
+  prev?: { year: number; income: number; constants: TaxConstantsData } | null
 }
 
 export const taxApi = {

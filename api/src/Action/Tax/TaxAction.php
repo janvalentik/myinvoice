@@ -64,6 +64,12 @@ final class TaxAction
             $payload['mode']    = 'retrospective';
             $payload['income']  = $income;
             $payload['compare'] = $this->optimizer->compare($engineProfile, $income, $c);
+            // YoY: příjem + konstanty předchozího roku (frontend dopočítá meziroční srovnání).
+            $prevYear   = $year - 1;
+            $prevIncome = $this->profiles->annualIncome($sid, $prevYear, $isVat);
+            $payload['prev'] = $prevIncome > 0
+                ? ['year' => $prevYear, 'income' => $prevIncome, 'constants' => $this->constants->forYear($prevYear)]
+                : null;
         } else {
             // Běžící rok → projekce a sledování limitů
             $monthly = $this->profiles->monthlyIncome($sid, $year, $isVat);
@@ -118,7 +124,9 @@ final class TaxAction
     private function publicProfile(?array $row, array $flags): array
     {
         return [
-            'activity_rate'     => (int) ($row['activity_rate'] ?? 60),
+            'activity_rate'       => (int) ($row['activity_rate'] ?? 60),
+            'use_actual_expenses' => (bool) ($row['use_actual_expenses'] ?? false),
+            'actual_expenses'     => (float) ($row['actual_expenses'] ?? 0),
             'flat_tax_band'     => (string) ($row['flat_tax_band'] ?? $flags['flat_tax_band']),
             'is_secondary'      => (bool) ($row['is_secondary'] ?? false),
             'spouse_credit'     => (bool) ($row['spouse_credit'] ?? false),
