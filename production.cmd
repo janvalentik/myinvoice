@@ -109,9 +109,10 @@ if !CACHE_HIT!==1 (
 
 REM ====== 3. Manual HTML + PDF build ======
 echo.
-echo === Smazani stareho manual/generated (fresh HTML) ===
-if exist manual\generated rmdir /s /q manual\generated
-if exist manual\manual.pdf del /q manual\manual.pdf
+REM manual/generated se NEMAZE rucne — generateManualHtml.php sam unlinkne stara
+REM *.html a prepise _toc.php + search-index.json (fresh rebuild). exportManualToPdf.php
+REM prepise manual.pdf. Drivejsi `rmdir`/`del` jen zbytecne padaly na file-locku, kdyz
+REM mel AV (Defender) / editor otevreny handle na souboru ve slozce.
 
 echo === Generate manual HTML ===
 php tools\generateManualHtml.php
@@ -172,10 +173,14 @@ REM Stash web/dist a manual/generated mimo working tree, jinak je `git checkout 
 REM smaze (tracked v deploy-temp, untracked v master) a museli bychom je rebuildovat.
 echo.
 echo === Stash web/dist + manual/generated + manual.pdf pred checkout master ===
+REM robocopy /MOVE /R:15 /W:1 misto `move` — pokud ma AV (Defender) / editor kratce
+REM otevreny handle na cerstve vygenerovanem souboru, `move` hned spadne a nasledny
+REM `git checkout master` pak visi na "Deletion of directory failed. Try again? (y/n)".
+REM robocopy zamek prepocka (az 15x 1s). Zdrojova slozka se po MOVE smaze.
 if exist web\dist.bak rmdir /s /q web\dist.bak
-if exist web\dist move web\dist web\dist.bak >nul
+if exist web\dist robocopy web\dist web\dist.bak /MOVE /E /R:15 /W:1 /NFL /NDL /NJH /NJS /NP >nul
 if exist manual\generated.bak rmdir /s /q manual\generated.bak
-if exist manual\generated move manual\generated manual\generated.bak >nul
+if exist manual\generated robocopy manual\generated manual\generated.bak /MOVE /E /R:15 /W:1 /NFL /NDL /NJH /NJS /NP >nul
 if exist manual\manual.pdf.bak del /q manual\manual.pdf.bak
 if exist manual\manual.pdf move manual\manual.pdf manual\manual.pdf.bak >nul
 
