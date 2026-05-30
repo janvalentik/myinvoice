@@ -117,6 +117,14 @@ final class AresClient
             'is_vat_payer' => ($regs['stavZdrojeDph'] ?? '') === 'AKTIVNI',
             'date_active'  => (string) ($raw['datumVzniku'] ?? ''),
             'legal_form'   => (string) ($raw['pravniForma'] ?? ''),
+            // Číslo popisné / orientační zvlášť (pro EPO VetaP). cisloOrientacni může mít písmeno.
+            'street_number_pop'    => $cisloDom !== null ? (string) $cisloDom : '',
+            'street_number_orient' => $cisloOr !== null
+                ? ((string) $cisloOr . (string) ($sidlo['cisloOrientacniPismeno'] ?? ''))
+                : '',
+            // Převažující CZ-NACE NELZE z agregovaného seznamu ARES spolehlivě určit
+            // (nemá příznak hlavní činnosti). Vyplníme jen když je jednoznačná (1 reálný kód).
+            'cz_nace_code' => self::primaryNace($raw),
             // Typ poplatníka odvozený z právní formy: OSVČ → 'fo' (DPFO), firma → 'po' (DPPO).
             'taxpayer_type' => self::taxpayerTypeFromLegalForm((string) ($raw['pravniForma'] ?? '')),
             // Zápis v OR pro PO (např. „Spisová značka C 45039 vedená u Krajského
@@ -137,6 +145,29 @@ final class AresClient
             return '';
         }
         return preg_match('/^10\d$/', $pf) === 1 ? 'fo' : 'po';
+    }
+
+    /**
+     * Jednoznačná převažující CZ-NACE z `czNace` — jen pokud po odfiltrování
+     * placeholderů (kód „00"/samé nuly) zbyde právě jeden kód. Jinak '' (raději
+     * nevyplnit, než dosadit špatnou převažující činnost do přiznání).
+     */
+    private static function primaryNace(array $raw): string
+    {
+        $list = $raw['czNace'] ?? null;
+        if (!is_array($list)) {
+            return '';
+        }
+        $codes = [];
+        foreach ($list as $c) {
+            $c = trim((string) $c);
+            if ($c === '' || (int) $c === 0) {
+                continue; // přeskoč „00" / prázdné
+            }
+            $codes[$c] = true;
+        }
+        $codes = array_keys($codes);
+        return count($codes) === 1 ? $codes[0] : '';
     }
 
     /**

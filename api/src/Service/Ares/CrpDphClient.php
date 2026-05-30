@@ -38,13 +38,13 @@ final class CrpDphClient
     ) {}
 
     /**
-     * @return array{found:bool, unreliable:?bool, accounts:list<array{prefix:string, number:string, bank_code:string, iban:?string, display:string}>, source:'cache'|'fresh'|'error'}
+     * @return array{found:bool, unreliable:?bool, accounts:list<array{prefix:string, number:string, bank_code:string, iban:?string, display:string}>, fu_code:string, source:'cache'|'fresh'|'error'}
      */
     public function lookup(string $dic): array
     {
         $dic = $this->normalizeDic($dic);
         if ($dic === null) {
-            return ['found' => false, 'unreliable' => null, 'accounts' => [], 'source' => 'error'];
+            return ['found' => false, 'unreliable' => null, 'accounts' => [], 'fu_code' => '', 'source' => 'error'];
         }
 
         $cached = $this->fromCache($dic);
@@ -56,7 +56,7 @@ final class CrpDphClient
         $endpoint = (string) $this->config->get('crpdph.endpoint', '');
         if ($endpoint === '') {
             $this->logger->warning('CRPDPH endpoint není nakonfigurovaný — lookup přeskočen', ['dic' => $dic]);
-            return ['found' => false, 'unreliable' => null, 'accounts' => [], 'source' => 'error'];
+            return ['found' => false, 'unreliable' => null, 'accounts' => [], 'fu_code' => '', 'source' => 'error'];
         }
         $timeout = (int) $this->config->get('crpdph.timeout', 8);
 
@@ -72,7 +72,7 @@ final class CrpDphClient
             ]);
             if ($resp->getStatusCode() !== 200) {
                 $this->logger->warning('CRPDPH vrátilo neočekávaný status', ['dic' => $dic, 'status' => $resp->getStatusCode()]);
-                return ['found' => false, 'unreliable' => null, 'accounts' => [], 'source' => 'error'];
+                return ['found' => false, 'unreliable' => null, 'accounts' => [], 'fu_code' => '', 'source' => 'error'];
             }
 
             $parsed = self::parseResponse((string) $resp->getBody(), $dic);
@@ -81,7 +81,7 @@ final class CrpDphClient
             return $parsed;
         } catch (GuzzleException $e) {
             $this->logger->warning('CRPDPH služba nedostupná: ' . $e->getMessage(), ['dic' => $dic]);
-            return ['found' => false, 'unreliable' => null, 'accounts' => [], 'source' => 'error'];
+            return ['found' => false, 'unreliable' => null, 'accounts' => [], 'fu_code' => '', 'source' => 'error'];
         }
     }
 
@@ -118,11 +118,11 @@ final class CrpDphClient
      * `zverejneneUcty/ucet`, každý buď `standardniUcet` (predcisli/cislo/kodBanky)
      * nebo `nestandardniUcet` (IBAN). Bereme atributy i fallback na child elementy.
      *
-     * @return array{found:bool, unreliable:?bool, accounts:list<array{prefix:string, number:string, bank_code:string, iban:?string, display:string}>}
+     * @return array{found:bool, unreliable:?bool, accounts:list<array{prefix:string, number:string, bank_code:string, iban:?string, display:string}>, fu_code:string}
      */
     public static function parseResponse(string $xml, string $dic): array
     {
-        $empty = ['found' => false, 'unreliable' => null, 'accounts' => []];
+        $empty = ['found' => false, 'unreliable' => null, 'accounts' => [], 'fu_code' => ''];
         if (trim($xml) === '') {
             return $empty;
         }
@@ -157,6 +157,8 @@ final class CrpDphClient
             return $empty;
         }
 
+        // Kód finančního úřadu (EPO c_ufo, systém 451–465) — autoritativní pro přiznání.
+        $fuCode = self::attrOrChild($xp, $node, 'cisloFu');
         $status = strtoupper(trim(self::attrOrChild($xp, $node, 'nespolehlivyPlatce')));
         $unreliable = match ($status) {
             'ANO' => true,
@@ -216,7 +218,7 @@ final class CrpDphClient
             }
         }
 
-        return ['found' => $found, 'unreliable' => $unreliable, 'accounts' => $accounts];
+        return ['found' => $found, 'unreliable' => $unreliable, 'accounts' => $accounts, 'fu_code' => $fuCode];
     }
 
     /**

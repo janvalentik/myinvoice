@@ -33,6 +33,7 @@ final class CrpDphClientTest extends TestCase
 
         self::assertTrue($r['found']);
         self::assertFalse($r['unreliable']);
+        self::assertSame('451', $r['fu_code']); // cisloFu z odpovědi
         self::assertCount(3, $r['accounts']);
 
         self::assertSame('2000145399/0800', $r['accounts'][0]['display']);
@@ -116,6 +117,7 @@ final class CrpDphClientTest extends TestCase
         $r = CrpDphClient::parseResponse($xml, '22222222');
 
         self::assertFalse($r['unreliable']);
+        self::assertSame('2', $r['fu_code']); // cisloFu z odpovídajícího DIČ bloku
         self::assertCount(1, $r['accounts']);
         self::assertSame('555/0300', $r['accounts'][0]['display']);
     }

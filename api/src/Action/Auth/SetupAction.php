@@ -10,6 +10,7 @@ use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\Auth\PasswordHasher;
+use MyInvoice\Service\Ares\SupplierRegistryEnricher;
 use MyInvoice\Service\Auth\SessionManager;
 use MyInvoice\Service\Config\CfgLocalWriter;
 use MyInvoice\Service\IpMatcher;
@@ -28,6 +29,7 @@ final class SetupAction
         private readonly IpMatcher $ipMatcher,
         private readonly SessionManager $sessions,
         private readonly Config $config,
+        private readonly SupplierRegistryEnricher $enricher,
     ) {}
 
     public function __invoke(Request $request, Response $response): Response
@@ -73,8 +75,9 @@ final class SetupAction
             $userId = (int) $pdo->lastInsertId();
 
             // Volitelně dodavatel
+            $createdSupplierId = null;
             if ($supplier !== null) {
-                $this->insertSupplier($pdo, $supplier);
+                $createdSupplierId = $this->insertSupplier($pdo, $supplier);
             }
 
             $this->logger->log('setup.completed', $userId, 'user', $userId, [
@@ -87,6 +90,12 @@ final class SetupAction
         } catch (\PDOException $e) {
             $pdo->rollBack();
             return Json::error($response, 'setup_failed', $e->getMessage(), 500);
+        }
+
+        // Po commitu (mimo DB transakci — dělá síťové volání): doplň z veřejných
+        // registrů, co jde (čísla domu, NACE, spisová značka, typ poplatníka, kód FÚ).
+        if ($createdSupplierId !== null) {
+            $this->enricher->enrich($createdSupplierId, $supplier['ic'] ?? null, $supplier['dic'] ?? null);
         }
 
         // Zapiš auth.require_totp + (volitelně) detekované app.url do cfg.local.php.
@@ -145,7 +154,7 @@ final class SetupAction
         ], 201);
     }
 
-    private function insertSupplier(\PDO $pdo, array $supplier): void
+    private function insertSupplier(\PDO $pdo, array $supplier): int
     {
         // Najdi country_id z iso2
         $iso2 = strtoupper((string) ($supplier['country_iso2'] ?? 'CZ'));
@@ -239,6 +248,8 @@ final class SetupAction
         $pdo->prepare('UPDATE supplier SET default_currency_id = ? WHERE id = ?')
             ->execute([$defaultCurrencyId, $supplierId]);
         $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+
+        return $supplierId;
     }
 
     /**

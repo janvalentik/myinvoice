@@ -37,6 +37,7 @@ final class SettingsAction
         private readonly InvoicePdfRenderer $pdf,
         private readonly Config $config,
         private readonly \MyInvoice\Service\Auth\SecretEncryption $secrets,
+        private readonly \MyInvoice\Service\Ares\SupplierRegistryEnricher $enricher,
     ) {}
 
     /** Aktuální supplier (z X-Supplier-Id middleware). */
@@ -192,6 +193,10 @@ final class SettingsAction
             }
             return Json::error($response, 'create_failed', 'Vytvoření supplier selhalo: ' . $e->getMessage(), 500);
         }
+
+        // Po commitu (mimo DB transakci — síťové volání): doplň z veřejných registrů,
+        // co jde (čísla domu, NACE, spisová značka, typ poplatníka, kód FÚ).
+        $this->enricher->enrich($newSupplierId, $b['ic'] ?? null, $b['dic'] ?? null);
 
         $this->log($request, 'supplier.created', $newSupplierId, ['company_name' => $b['company_name'], 'ic' => $b['ic'] ?? null]);
         return Json::ok($response, ['id' => $newSupplierId], 201);

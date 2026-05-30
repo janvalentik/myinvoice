@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Auto-nastavení typu poplatníka z ARES** — při načtení dodavatele z ARES (setup wizard i *Číselníky → Nový dodavatel*) se z právní formy automaticky odvodí **Typ poplatníka**: OSVČ (fyzická osoba) → **FO/DPFO**, firma (s.r.o./a.s./…) → **PO/DPPO**. Lze ručně přepsat v Nastavení.
+- **Auto-doplnění EPO údajů z registrů při vytvoření dodavatele** — při založení dodavatele (setup i *Nový dodavatel*) se „na pozadí" (bez polí ve formuláři) doplní: z **ARES** číslo popisné/orientační, spisová značka a typ poplatníka; z **registru plátců DPH** kód finančního úřadu (autoritativní `cisloFu`, ne kód územního pracoviště). **CZ-NACE** jen pokud je jednoznačná (subjekt má jediný kód) — jinak prázdné, aby se do přiznání nedostala špatná převažující činnost. Doplní jen prázdná pole (nepřepisuje ruční vstup); výpadek registru vytvoření nezablokuje. ID datové schránky z ARES nelze (je v samostatném registru ISDS).
 
 ## [4.6.3] — 2026-05-30
 
