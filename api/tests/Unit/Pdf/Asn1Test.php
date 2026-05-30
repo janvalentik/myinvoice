@@ -35,10 +35,14 @@ final class Asn1Test extends TestCase
 
     public function testRoundTripOnRealCertificate(): void
     {
-        // self-signed cert → DER (reálná složitá ASN.1 struktura) → decode → encode == identita
+        // self-signed cert → DER (reálná složitá ASN.1 struktura) → decode → encode == identita.
+        // openssl ext potřebuje openssl.cnf — bez něj (holý Windows) gen vrátí false → skip.
         $pkey = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-        $csr = openssl_csr_new(['commonName' => 'RT Test', 'countryName' => 'CZ'], $pkey);
-        $x509 = openssl_csr_sign($csr, null, $pkey, 365);
+        $csr = $pkey ? openssl_csr_new(['commonName' => 'RT Test', 'countryName' => 'CZ'], $pkey) : false;
+        $x509 = $csr ? openssl_csr_sign($csr, null, $pkey, 365) : false;
+        if ($x509 === false) {
+            self::markTestSkipped('openssl ext neumí vygenerovat test cert (chybí openssl.cnf).');
+        }
         openssl_x509_export($x509, $pem);
         // PEM → DER
         $der = base64_decode(preg_replace('/-----[^-]+-----|\s/', '', $pem), true);

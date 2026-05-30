@@ -12,17 +12,25 @@ use PHPUnit\Framework\TestCase;
 
 final class PdfSignerTest extends TestCase
 {
-    private static string $p12Path;
-    private static string $certPemPath;
+    private static string $p12Path = '';
+    private static string $certPemPath = '';
+    private static ?string $skipReason = null;
     private const PASS = 'testpass';
 
     public static function setUpBeforeClass(): void
     {
-        // self-signed cert + RSA klíč → P12 (+ samostatný cert PEM pro verify)
+        // self-signed cert + RSA klíč → P12 (+ samostatný cert PEM pro verify).
+        // openssl ext potřebuje openssl.cnf — když ho prostředí nemá (typicky holý
+        // Windows bez OPENSSL_CONF), gen vrátí false → celá třída se skipne místo
+        // tvrdé chyby (reálnou verifikaci pokrývá Linux CI).
         $pkey = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
         $dn = ['commonName' => 'Test Signer', 'countryName' => 'CZ'];
-        $csr = openssl_csr_new($dn, $pkey);
-        $x509 = openssl_csr_sign($csr, null, $pkey, 365);
+        $csr = $pkey ? openssl_csr_new($dn, $pkey) : false;
+        $x509 = $csr ? openssl_csr_sign($csr, null, $pkey, 365) : false;
+        if ($x509 === false) {
+            self::$skipReason = 'openssl ext neumí vygenerovat test cert (chybí openssl.cnf).';
+            return;
+        }
         $p12 = '';
         openssl_pkcs12_export($x509, $p12, $pkey, self::PASS);
         self::$p12Path = (string) tempnam(sys_get_temp_dir(), 'p12-');
@@ -32,10 +40,17 @@ final class PdfSignerTest extends TestCase
         file_put_contents(self::$certPemPath, $pem);
     }
 
+    protected function setUp(): void
+    {
+        if (self::$skipReason !== null) {
+            self::markTestSkipped(self::$skipReason);
+        }
+    }
+
     public static function tearDownAfterClass(): void
     {
-        @unlink(self::$p12Path);
-        @unlink(self::$certPemPath);
+        if (self::$p12Path !== '') { @unlink(self::$p12Path); }
+        if (self::$certPemPath !== '') { @unlink(self::$certPemPath); }
     }
 
     private function signer(): PdfSigner
@@ -97,6 +112,13 @@ final class PdfSignerTest extends TestCase
 
     public function testPkcs7VerifiesAgainstSignedBytes(): void
     {
+        // Křížová verifikace běží přes openssl CLI. Když není v PATH, test přeskoč
+        // (ne fail) — logiku ByteRange/CMS pokrývají testy výše.
+        exec('openssl version 2>&1', $vOut, $vRc);
+        if ($vRc !== 0) {
+            self::markTestSkipped('openssl CLI není dostupné — křížová verifikace přeskočena.');
+        }
+
         $signed = $this->signer()->sign($this->makeMpdf(), $this->cfg());
         preg_match('/\/ByteRange \[0 +(\d+) +(\d+) +(\d+)\]/', $signed, $m);
         [$x1, $x2, $x3] = [(int) $m[1], (int) $m[2], (int) $m[3]];
@@ -113,18 +135,20 @@ final class PdfSignerTest extends TestCase
 
         $derFile = (string) tempnam(sys_get_temp_dir(), 'der-');
         $dataFile = (string) tempnam(sys_get_temp_dir(), 'dat-');
+        $nullSink = (string) tempnam(sys_get_temp_dir(), 'nul-'); // portabilní /dev/null (Windows ho nemá)
         file_put_contents($derFile, $der);
         file_put_contents($dataFile, $signedBytes);
 
         // openssl cms -verify (CLI) — spolehlivé pro detached DER CMS proti datům.
-        // -no_signer_cert_verify: self-signed test cert (neřešíme chain).
+        // -noverify: self-signed test cert (neřešíme chain).
         $cmd = sprintf(
             'openssl cms -verify -in %s -inform DER -content %s -certfile %s '
-            . '-noverify -binary -out /dev/null 2>&1',
-            escapeshellarg($derFile), escapeshellarg($dataFile), escapeshellarg(self::$certPemPath)
+            . '-noverify -binary -out %s 2>&1',
+            escapeshellarg($derFile), escapeshellarg($dataFile), escapeshellarg(self::$certPemPath),
+            escapeshellarg($nullSink)
         );
         exec($cmd, $out, $rc);
-        @unlink($derFile); @unlink($dataFile);
+        @unlink($derFile); @unlink($dataFile); @unlink($nullSink);
         self::assertSame(0, $rc, 'CMS podpis neověřen proti ByteRange datům: ' . implode("\n", $out));
     }
 }
