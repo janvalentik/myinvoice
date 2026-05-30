@@ -47,18 +47,68 @@ onMounted(loadAll)
 const supplierDraft = reactive<SupplierCreatePayload>({
   company_name: '', street: '', city: '', zip: '', email: '',
   country_iso2: 'CZ', ic: '', dic: '', is_vat_payer: true,
+  commercial_register: '',
   default_payment_due_days: 14, default_hourly_rate: 1500,
 })
 const supplierCreateOpen = ref(false)
 const supplierAresLoading = ref(false)
 const supplierAresMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
+// Bankovní účet nového dodavatele (volitelný, lze načíst z registru plátců DPH)
+const supplierBank = reactive({ currency: 'CZK', account_number: '', bank_code: '', bank_name: '', iban: '', bic: '' })
+const supplierBankLoading = ref(false)
+const supplierBankMessage = ref<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
+const supplierBankAccounts = ref<import('@/api/clients').CrpDphAccount[]>([])
+
+function supplierApplyBank(acc: import('@/api/clients').CrpDphAccount) {
+  if (acc.iban) {
+    supplierBank.currency = 'EUR'
+    supplierBank.iban = acc.iban
+  } else {
+    supplierBank.currency = 'CZK'
+    supplierBank.account_number = acc.prefix ? `${acc.prefix}-${acc.number}` : acc.number
+    supplierBank.bank_code = acc.bank_code
+  }
+}
+
+async function supplierLookupBank() {
+  const dic = (supplierDraft.dic || '').replace(/\D/g, '')
+  if (!/^\d{8,10}$/.test(dic)) {
+    supplierBankMessage.value = { type: 'error', text: t('supplier.bank_lookup_no_dic') }
+    return
+  }
+  supplierBankLoading.value = true
+  supplierBankMessage.value = null
+  supplierBankAccounts.value = []
+  try {
+    const r = await clientsApi.lookupBank(dic)
+    supplierBankAccounts.value = r.accounts
+    if (r.accounts.length === 0) {
+      supplierBankMessage.value = { type: 'error', text: t('supplier.bank_lookup_none') }
+    } else {
+      supplierApplyBank(r.accounts[0])
+      supplierBankMessage.value = r.accounts.length === 1
+        ? { type: 'success', text: t('supplier.bank_lookup_one') }
+        : { type: 'success', text: t('supplier.bank_lookup_many', { n: r.accounts.length }) }
+    }
+    if (r.unreliable === true) supplierBankMessage.value = { type: 'warning', text: t('supplier.bank_lookup_unreliable') }
+  } catch (e: any) {
+    supplierBankMessage.value = { type: 'error', text: e?.response?.data?.error?.message || t('supplier.bank_lookup_failed') }
+  } finally {
+    supplierBankLoading.value = false
+  }
+}
+
 function newSupplier() {
   Object.assign(supplierDraft, {
     company_name: '', street: '', city: '', zip: '', email: '',
     country_iso2: 'CZ', ic: '', dic: '', is_vat_payer: true,
+    commercial_register: '',
     default_payment_due_days: 14, default_hourly_rate: 1500,
   })
+  Object.assign(supplierBank, { currency: 'CZK', account_number: '', bank_code: '', bank_name: '', iban: '', bic: '' })
+  supplierBankMessage.value = null
+  supplierBankAccounts.value = []
   supplierAresMessage.value = null
   supplierCreateOpen.value = true
 }
@@ -86,6 +136,7 @@ async function supplierLookupAres() {
     supplierDraft.ic           = d.ic           || ic
     supplierDraft.dic          = d.dic          || supplierDraft.dic
     supplierDraft.is_vat_payer = d.is_vat_payer
+    supplierDraft.commercial_register = d.commercial_register || supplierDraft.commercial_register
     supplierAresMessage.value = { type: 'success', text: t('supplier.ares_loaded', { name: d.company_name }) }
   } catch (e: any) {
     supplierAresMessage.value = { type: 'error', text: e?.response?.data?.error?.message || t('supplier.ares_failed') }
@@ -100,7 +151,18 @@ async function saveSupplier() {
     return
   }
   try {
-    await suppliersApi.create(supplierDraft)
+    const payload = { ...supplierDraft }
+    if (supplierBank.account_number || supplierBank.iban) {
+      payload.bank_account = {
+        currency: supplierBank.currency,
+        account_number: supplierBank.account_number || undefined,
+        bank_code: supplierBank.bank_code || undefined,
+        bank_name: supplierBank.bank_name || undefined,
+        iban: supplierBank.iban || undefined,
+        bic: supplierBank.bic || undefined,
+      }
+    }
+    await suppliersApi.create(payload)
     supplierCreateOpen.value = false
     toast.success(t('common.saved'))
     await loadAll()
@@ -533,6 +595,7 @@ const taxYears = ref<TaxConstantsYear[]>([])
 const taxYear = ref<number>(0)
 const taxModel = ref<TaxConstantsData | null>(null)
 const taxIsOverride = ref(false)
+const taxIsNew = ref(false)   // nově přidaný, ještě neuložený rok
 const taxSaving = ref(false)
 const taxRates = [30, 40, 60, 80] as const
 const taxBands = ['band1', 'band2', 'band3'] as const
@@ -548,7 +611,27 @@ function selectTaxYear(year: number) {
   if (!row) return
   taxYear.value = year
   taxIsOverride.value = row.is_override
+  taxIsNew.value = false
   taxModel.value = JSON.parse(JSON.stringify(row.data)) // hluboká kopie pro editaci
+}
+
+/** Přidá další rok (nejnovější + 1) předvyplněný hodnotami nejnovějšího roku; uloží se až tlačítkem Uložit. */
+function addTaxYear() {
+  if (!taxYears.value.length) return
+  const maxYear = Math.max(...taxYears.value.map(y => y.year))
+  const newYear = maxYear + 1
+  if (newYear > 2100) return
+  if (taxYears.value.some(y => y.year === newYear)) { selectTaxYear(newYear); return }
+  const base = taxYears.value.find(y => y.year === maxYear)
+  if (!base) return
+  const cloned = JSON.parse(JSON.stringify(base.data))
+  cloned.year = newYear
+  taxYears.value.unshift({ year: newYear, is_override: false, data: cloned })
+  taxYear.value = newYear
+  taxIsOverride.value = false
+  taxIsNew.value = true
+  taxModel.value = cloned
+  toast.success(t('codebooks.tax_year_added', { year: newYear }))
 }
 async function saveTaxConstants() {
   if (!taxModel.value) return
@@ -558,6 +641,7 @@ async function saveTaxConstants() {
     const i = taxYears.value.findIndex(y => y.year === taxYear.value)
     if (i >= 0) taxYears.value[i] = updated
     taxIsOverride.value = updated.is_override
+    taxIsNew.value = false
     toast.success(t('codebooks.tax_saved'))
   } catch (e: any) {
     toast.error(e?.response?.data?.error?.message || t('common.error'))
@@ -1180,10 +1264,16 @@ watch(tab, (newTab) => {
       <div class="flex flex-wrap items-center gap-3 mb-3">
         <label class="text-sm text-neutral-600">{{ t('codebooks.tax_year') }}:</label>
         <select v-model.number="taxYear" @change="selectTaxYear(taxYear)"
-          class="h-9 px-3 border border-neutral-300 rounded-md text-sm">
+          class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
           <option v-for="y in taxYears" :key="y.year" :value="y.year">{{ y.year }}</option>
         </select>
-        <span v-if="taxIsOverride" class="text-xs px-2 py-0.5 rounded bg-warning-50 text-warning-600 font-medium">{{ t('codebooks.tax_overridden') }}</span>
+        <button v-if="auth.user?.role === 'admin'" @click="addTaxYear" type="button"
+          class="cursor-pointer h-9 px-3 text-sm border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50 inline-flex items-center gap-1">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          {{ t('codebooks.tax_add_year') }}
+        </button>
+        <span v-if="taxIsNew" class="text-xs px-2 py-0.5 rounded bg-primary-50 text-primary-700 font-medium">{{ t('codebooks.tax_year_new') }}</span>
+        <span v-else-if="taxIsOverride" class="text-xs px-2 py-0.5 rounded bg-warning-50 text-warning-600 font-medium">{{ t('codebooks.tax_overridden') }}</span>
         <span v-else class="text-xs px-2 py-0.5 rounded bg-neutral-100 text-neutral-500">{{ t('codebooks.tax_default') }}</span>
         <div class="ml-auto flex items-center gap-2" v-if="auth.user?.role === 'admin'">
           <button v-if="taxIsOverride" @click="resetTaxConstants" type="button"
@@ -1496,6 +1586,59 @@ watch(tab, (newTab) => {
             <div>
               <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('supplier.email') }} *</label>
               <input v-model="supplierDraft.email" type="email" required class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.commercial_register') }}</label>
+              <input v-model="supplierDraft.commercial_register" type="text" :placeholder="t('settings.commercial_register_placeholder')" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+            </div>
+
+            <div class="border-t border-neutral-200 pt-3">
+              <div class="flex items-center justify-between mb-2 gap-2">
+                <label class="block text-xs font-medium text-neutral-700">{{ t('settings.account_cz') }} / {{ t('settings.iban') }} <span class="text-neutral-400">{{ t('common.optional') }}</span></label>
+                <button type="button" @click="supplierLookupBank" :disabled="supplierBankLoading"
+                  class="cursor-pointer h-8 px-3 text-xs bg-surface border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50 disabled:opacity-50 shrink-0">
+                  {{ supplierBankLoading ? t('common.loading') : t('supplier.bank_lookup') }}
+                </button>
+              </div>
+              <div v-if="supplierBankMessage" class="mb-2 text-xs px-2 py-1 rounded"
+                :class="{
+                  'bg-success-50 text-success-600': supplierBankMessage.type === 'success',
+                  'bg-danger-50 text-danger-500': supplierBankMessage.type === 'error',
+                  'bg-warning-50 text-warning-600': supplierBankMessage.type === 'warning',
+                }">
+                {{ supplierBankMessage.text }}
+              </div>
+              <div v-if="supplierBankAccounts.length > 1" class="mb-2 flex flex-wrap gap-1.5">
+                <button v-for="(acc, i) in supplierBankAccounts" :key="i" type="button" @click="supplierApplyBank(acc)"
+                  class="cursor-pointer px-2 py-1 text-xs font-mono border border-neutral-300 rounded hover:bg-primary-50 hover:border-primary-300">
+                  {{ acc.display }}
+                </button>
+              </div>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('common.currency') }}</label>
+                  <select v-model="supplierBank.currency" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm bg-surface">
+                    <option value="CZK">CZK</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </div>
+                <template v-if="supplierBank.currency === 'CZK'">
+                  <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.currency_account_cz') }}</label>
+                    <input v-model="supplierBank.account_number" placeholder="1000000005" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.currency_bank_code') }}</label>
+                    <input v-model="supplierBank.bank_code" maxlength="4" placeholder="0100" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="col-span-2">
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.iban') }}</label>
+                    <input v-model="supplierBank.iban" placeholder="CZ65 0800 0000 1920 0014 5399" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
           <div class="flex justify-end gap-2 pt-4 mt-3 border-t border-neutral-200">

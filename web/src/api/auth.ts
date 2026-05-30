@@ -65,6 +65,7 @@ export interface SetupPayload {
     email: string
     phone?: string
     web?: string
+    commercial_register?: string
     default_currency?: string
     default_payment_due_days?: number
     default_hourly_rate?: number
@@ -95,6 +96,10 @@ export const authApi = {
   /** ARES lookup pro setup wizard (funguje jen když ještě nemáme admin usera). */
   setupAresLookup: (ic: string) =>
     api.post<import('./clients').AresLookupResult>('/auth/setup-ares-lookup', { ic }).then((r) => r.data),
+
+  /** Účty z registru plátců DPH (CRPDPH) pro setup wizard (jen dokud nemáme admin usera). */
+  setupCrpdphLookup: (dic: string) =>
+    api.post<import('./clients').BankLookupResult>('/auth/setup-crpdph-lookup', { dic }).then((r) => r.data),
 
   /** Sample data generator po setup wizardu (jen pokud DB nemá data). */
   setupSample: () =>

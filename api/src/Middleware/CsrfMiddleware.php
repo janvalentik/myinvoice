@@ -27,6 +27,7 @@ final class CsrfMiddleware implements MiddlewareInterface
     private const CSRF_EXEMPT_PATHS = [
         '/api/auth/setup',
         '/api/auth/setup-ares-lookup',
+        '/api/auth/setup-crpdph-lookup',
         // setup-sample je auth + má CSRF token (po auto-loginu)
         '/api/auth/login',
         '/api/auth/forgot',

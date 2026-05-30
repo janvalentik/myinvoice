@@ -202,6 +202,12 @@ final class Config
                 'cache_ttl' => 10800,
                 'timeout'   => 8,
             ],
+            // Registr plátců DPH (CRPDPH/MFČR) — zveřejněné bankovní účty + nespolehlivý plátce.
+            'crpdph' => [
+                'endpoint'  => 'https://adisrws.mfcr.cz/adistc/axis2/services/rozhraniCRPDPH.rozhraniCRPDPHSOAP',
+                'cache_ttl' => 86400,
+                'timeout'   => 8,
+            ],
         ];
     }
 
@@ -272,6 +278,8 @@ final class Config
             'MYINVOICE_ARES_TIMEOUT'   => ['ares.timeout', 'int'],
             'MYINVOICE_VIES_REST_API'  => ['vies.rest_api', 'string'],
             'MYINVOICE_VIES_TIMEOUT'   => ['vies.timeout', 'int'],
+            'MYINVOICE_CRPDPH_ENDPOINT' => ['crpdph.endpoint', 'string'],
+            'MYINVOICE_CRPDPH_TIMEOUT'  => ['crpdph.timeout', 'int'],
 
             // Logging
             'MYINVOICE_LOG_LEVEL' => ['logging.level', 'string'],

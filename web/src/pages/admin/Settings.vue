@@ -2,6 +2,7 @@
 import { ref, onMounted, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { settingsApi, type Supplier, type CurrencyAccount, type SigningCertMeta } from '@/api/settings'
+import { clientsApi } from '@/api/clients'
 import { useHotkey } from '@/composables/useHotkey'
 import { useToast } from '@/composables/useToast'
 import { renderVarsymbolTemplate, hasCounterPlaceholder } from '@/utils/varsymbol'
@@ -18,6 +19,59 @@ const editingCurrencyLabel = ref<string>('')
 const currencyDraft = reactive<Partial<CurrencyAccount>>({})
 
 useHotkey('escape', () => { if (editingCurrency.value !== null) editingCurrency.value = null })
+
+// ARES → spisová značka (commercial_register) podle IČ
+const crLoading = ref(false)
+async function loadCommercialRegister() {
+  const ic = (supplier.value?.ic || '').replace(/\D/g, '')
+  if (!/^\d{8}$/.test(ic)) { toast.error(t('supplier.ares_invalid_ic')); return }
+  crLoading.value = true
+  try {
+    const r = await clientsApi.lookupAres(ic)
+    if (r.found && r.data?.commercial_register && supplier.value) {
+      supplier.value.commercial_register = r.data.commercial_register
+      toast.success(t('settings.commercial_register_loaded'))
+    } else {
+      toast.error(t('settings.commercial_register_not_found'))
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('supplier.ares_failed'))
+  } finally {
+    crLoading.value = false
+  }
+}
+
+// Registr plátců DPH (CRPDPH) → bankovní účet do právě editované měny (currencyDraft)
+const bankDraftLoading = ref(false)
+const bankDraftMsg = ref<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
+async function loadBankToDraft() {
+  const dic = (supplier.value?.dic || '').replace(/\D/g, '')
+  if (!/^\d{8,10}$/.test(dic)) { bankDraftMsg.value = { type: 'error', text: t('supplier.bank_lookup_no_dic') }; return }
+  bankDraftLoading.value = true
+  bankDraftMsg.value = null
+  try {
+    const r = await clientsApi.lookupBank(dic)
+    if (r.accounts.length === 0) {
+      bankDraftMsg.value = { type: 'error', text: t('supplier.bank_lookup_none') }
+    } else {
+      // Preferuj účet odpovídající editované měně: CZK → standardní účet, jinak IBAN.
+      const isCzk = (currencyDraft.code || '').toUpperCase() === 'CZK'
+      const acc = (isCzk ? r.accounts.find(a => !a.iban) : r.accounts.find(a => a.iban)) || r.accounts[0]
+      if (acc.iban) {
+        currencyDraft.iban = acc.iban
+      } else {
+        currencyDraft.account_number = acc.prefix ? `${acc.prefix}-${acc.number}` : acc.number
+        currencyDraft.bank_code = acc.bank_code
+      }
+      bankDraftMsg.value = { type: 'success', text: r.accounts.length === 1 ? t('supplier.bank_lookup_one') : t('supplier.bank_lookup_many', { n: r.accounts.length }) }
+    }
+    if (r.unreliable === true) bankDraftMsg.value = { type: 'warning', text: t('supplier.bank_lookup_unreliable') }
+  } catch (e: any) {
+    bankDraftMsg.value = { type: 'error', text: e?.response?.data?.error?.message || t('supplier.bank_lookup_failed') }
+  } finally {
+    bankDraftLoading.value = false
+  }
+}
 
 // Live preview pro číslování faktur — okamžitá zpětná vazba pod každým polem.
 // Chybějící counter → červený error; jinak „Náhled: JD2026-01".
@@ -324,6 +378,7 @@ async function removeCert() {
 function startEditCurrency(c: CurrencyAccount) {
   editingCurrency.value = c.id
   editingCurrencyLabel.value = c.label
+  bankDraftMsg.value = null
   Object.assign(currencyDraft, { ...c })
 }
 
@@ -440,7 +495,13 @@ async function removeCurrency(c: CurrencyAccount) {
             <input v-model="supplier.tagline" type="text" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
           </div>
           <div class="md:col-span-2">
-            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('settings.commercial_register') }}</label>
+            <div class="flex items-center justify-between mb-1 gap-2">
+              <label class="block text-sm font-medium text-neutral-700">{{ t('settings.commercial_register') }}</label>
+              <button type="button" @click="loadCommercialRegister" :disabled="crLoading || !supplier.ic"
+                class="cursor-pointer h-7 px-2.5 text-xs bg-surface border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50 disabled:opacity-50 shrink-0">
+                {{ crLoading ? '…' : t('settings.commercial_register_load_ares') }}
+              </button>
+            </div>
             <input v-model="supplier.commercial_register" type="text"
               :placeholder="t('settings.commercial_register_placeholder')"
               class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
@@ -954,6 +1015,21 @@ async function removeCurrency(c: CurrencyAccount) {
       <div class="bg-surface rounded-xl shadow-lg max-w-md w-full p-5">
         <h3 class="text-lg font-semibold mb-3">{{ t('settings.edit_currency_label_full', { label: editingCurrencyLabel }) }}</h3>
         <div class="space-y-3">
+          <div class="flex items-center justify-end">
+            <button type="button" @click="loadBankToDraft" :disabled="bankDraftLoading"
+              class="cursor-pointer h-8 px-3 text-xs bg-surface border border-primary-300 text-primary-700 rounded-md hover:bg-primary-50 disabled:opacity-50 inline-flex items-center gap-1.5">
+              <span v-if="bankDraftLoading">…</span>
+              {{ bankDraftLoading ? t('common.loading') : t('supplier.bank_lookup') }}
+            </button>
+          </div>
+          <div v-if="bankDraftMsg" class="text-xs px-2 py-1 rounded"
+            :class="{
+              'bg-success-50 text-success-600': bankDraftMsg.type === 'success',
+              'bg-danger-50 text-danger-500': bankDraftMsg.type === 'error',
+              'bg-warning-50 text-warning-600': bankDraftMsg.type === 'warning',
+            }">
+            {{ bankDraftMsg.text }}
+          </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('settings.account_label_form') }}</label>
             <input v-model="currencyDraft.label" type="text" placeholder="CZK — Fio Bank"

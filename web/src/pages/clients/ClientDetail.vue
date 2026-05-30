@@ -3,7 +3,7 @@ import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vu
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { clientsApi, type Client } from '@/api/clients'
+import { clientsApi, type Client, type BankLookupResult } from '@/api/clients'
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
 import { purchaseInvoicesApi, type PurchaseInvoice } from '@/api/purchaseInvoices'
 import { recurringApi, type RecurringTemplate } from '@/api/recurring'
@@ -31,6 +31,27 @@ const invoicesPages = ref(1)
 const recurringTemplates = ref<RecurringTemplate[]>([])
 const purchaseInvoices = ref<PurchaseInvoice[]>([])
 const purchaseInvoicesLoading = ref(false)
+
+// Detaily plátce DPH (registr plátců DPH / CRPDPH) — načítají se až na vyžádání.
+const vatInfoOpen = ref(false)
+const vatInfoLoading = ref(false)
+const vatInfo = ref<BankLookupResult | null>(null)
+const vatInfoError = ref('')
+
+async function loadVatPayerDetails() {
+  const dic = (client.value?.dic || '').replace(/\D/g, '')
+  if (!dic) return
+  vatInfoOpen.value = true
+  vatInfoLoading.value = true
+  vatInfoError.value = ''
+  try {
+    vatInfo.value = await clientsApi.lookupBank(dic)
+  } catch (e: any) {
+    vatInfoError.value = e?.response?.data?.error?.message || t('client.vat_payer_details_failed')
+  } finally {
+    vatInfoLoading.value = false
+  }
+}
 
 // Aggregace přijatých faktur per měsíc / rok (paralel se statistikami vystavených).
 // Server zatím nevrací aggregated dataset, takže computované client-side z purchaseInvoices.
@@ -307,6 +328,11 @@ async function deleteClient() {
         </div>
       </div>
       <div class="flex flex-wrap gap-2 md:justify-end">
+        <button v-if="client.dic" @click="loadVatPayerDetails" :disabled="vatInfoLoading"
+          class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 rounded-md text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1.5 disabled:opacity-50">
+          <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+          {{ vatInfoLoading ? t('common.loading') : t('client.vat_payer_details') }}
+        </button>
         <RouterLink v-if="auth.canWrite" :to="`/clients/${client.id}/edit`"
           class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 rounded-md text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1.5">
           <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
@@ -328,6 +354,36 @@ async function deleteClient() {
           {{ t('common.delete') }}
         </button>
       </div>
+    </div>
+
+    <!-- Detaily plátce DPH (na vyžádání z registru plátců DPH / MFČR) -->
+    <div v-if="vatInfoOpen" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('client.vat_payer_details') }}</h3>
+        <button @click="vatInfoOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-700 text-sm leading-none">✕</button>
+      </div>
+      <div v-if="vatInfoLoading" class="text-sm text-neutral-500">{{ t('common.loading') }}</div>
+      <div v-else-if="vatInfoError" class="text-sm text-danger-500">{{ vatInfoError }}</div>
+      <template v-else-if="vatInfo">
+        <div v-if="vatInfo.source === 'error'" class="text-sm text-warning-600">{{ t('client.vat_payer_unavailable') }}</div>
+        <div v-else-if="!vatInfo.found" class="text-sm text-neutral-600">{{ t('client.vat_payer_not_registered') }}</div>
+        <div v-else class="space-y-3 text-sm">
+          <div class="flex items-center gap-2">
+            <span class="text-neutral-500">{{ t('client.vat_payer_reliability') }}:</span>
+            <span v-if="vatInfo.unreliable === true" class="px-2 py-0.5 rounded bg-danger-50 text-danger-600 font-medium">{{ t('client.vat_payer_unreliable') }}</span>
+            <span v-else-if="vatInfo.unreliable === false" class="px-2 py-0.5 rounded bg-success-50 text-success-600 font-medium">{{ t('client.vat_payer_reliable') }}</span>
+            <span v-else class="px-2 py-0.5 rounded bg-neutral-100 text-neutral-600">{{ t('client.vat_payer_unknown') }}</span>
+          </div>
+          <div>
+            <div class="text-neutral-500 mb-1">{{ t('client.vat_payer_accounts') }}:</div>
+            <ul v-if="vatInfo.accounts.length" class="space-y-1">
+              <li v-for="(a, i) in vatInfo.accounts" :key="i" class="font-mono text-neutral-900">{{ a.display }}</li>
+            </ul>
+            <div v-else class="text-neutral-500">{{ t('client.vat_payer_no_accounts') }}</div>
+          </div>
+          <p class="text-xs text-neutral-400">{{ t('client.vat_payer_source') }}</p>
+        </div>
+      </template>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">

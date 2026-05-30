@@ -83,7 +83,27 @@ export interface AresLookupResult {
     is_vat_payer: boolean
     date_active?: string
     legal_form?: string
+    /** Zápis v OR pro PO (např. „Spisová značka C 45039 vedená u Krajského soudu v Plzni"). Prázdné u OSVČ. */
+    commercial_register?: string
   }
+}
+
+/** Zveřejněný bankovní účet z registru plátců DPH (CRPDPH/MFČR). */
+export interface CrpDphAccount {
+  prefix: string
+  number: string
+  bank_code: string
+  iban: string | null
+  /** Hotový lidský zápis: „19-2000145399/0800" nebo IBAN. */
+  display: string
+}
+
+export interface BankLookupResult {
+  found: boolean
+  /** true = nespolehlivý plátce, false = spolehlivý, null = neznámé/nenalezeno. */
+  unreliable: boolean | null
+  accounts: CrpDphAccount[]
+  source: 'cache' | 'fresh' | 'error'
 }
 
 export interface ViesLookupResult {
@@ -178,4 +198,7 @@ export const clientsApi = {
     api.post<AresLookupResult>('/clients/lookup-ares', { ic }).then((r) => r.data),
   lookupVies: (vatId: string) =>
     api.post<ViesLookupResult>('/clients/lookup-vies', { vat_id: vatId }).then((r) => r.data),
+  /** Zveřejněné bankovní účty z registru plátců DPH podle DIČ. */
+  lookupBank: (dic: string) =>
+    api.post<BankLookupResult>('/clients/lookup-bank', { dic }).then((r) => r.data),
 }

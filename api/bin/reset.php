@@ -17,7 +17,7 @@ declare(strict_types=1);
  *       invoice_counters, purchase_invoice_counters, invoice_pdfs (PDF historie),
  *       invoice_attachments, recurring_invoice_templates + _items
  *       (pravidelné fakturace), purchase_invoices + _items, app_meta
- *       (version cache), ares_cache, vies_cache (volitelně), email_templates,
+ *       (version cache), ares_cache, vies_cache, crpdph_cache (volitelně), email_templates,
  *       project/client revenue cache, currencies (per-supplier!),
  *       crm_monthly_summary, tax_submissions
  *
@@ -161,6 +161,7 @@ $wipeWithGlobalSeed = [
 if (!$keepCache) {
     $wipe[] = 'ares_cache';
     $wipe[] = 'vies_cache';
+    $wipe[] = 'crpdph_cache';
 }
 
 echo "\n[reset] Mažu tabulky…\n";

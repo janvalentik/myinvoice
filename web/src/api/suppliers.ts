@@ -52,9 +52,18 @@ export interface SupplierCreatePayload {
   phone?: string
   web?: string
   tagline?: string
+  commercial_register?: string
   default_payment_due_days?: number
   default_payment_due_unit?: 'days' | 'month'
   default_hourly_rate?: number
+  bank_account?: {
+    currency: string
+    account_number?: string
+    bank_code?: string
+    bank_name?: string
+    iban?: string
+    bic?: string
+  }
 }
 
 export const suppliersApi = {

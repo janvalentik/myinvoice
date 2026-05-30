@@ -121,10 +121,10 @@ final class SettingsAction
 
             $stmt = $pdo->prepare(
                 'INSERT INTO supplier (company_name, display_name, street, city, zip, country_id,
-                                       ic, dic, is_vat_payer, email, phone, web, tagline,
+                                       ic, dic, is_vat_payer, email, phone, web, tagline, commercial_register,
                                        default_currency_id, default_vat_rate_id,
                                        default_payment_due_days, default_hourly_rate)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
             );
             $stmt->execute([
                 (string) $b['company_name'],
@@ -140,6 +140,7 @@ final class SettingsAction
                 $this->nullable($b, 'phone'),
                 $this->nullable($b, 'web'),
                 $this->nullable($b, 'tagline'),
+                $this->nullable($b, 'commercial_register'),
                 $bootstrapCurId ?: 0,
                 $defaultVatId ?: 1,
                 (int) ($b['default_payment_due_days'] ?? 14),
@@ -155,6 +156,24 @@ final class SettingsAction
             $insertCur->execute([$newSupplierId, 'CZK', 'CZK — výchozí', 'Kč', 'Česká koruna', 'Czech Koruna', 2]);
             $newDefaultCurId = (int) $pdo->lastInsertId();
             $insertCur->execute([$newSupplierId, 'EUR', 'EUR — výchozí', '€', 'Euro', 'Euro', 2]);
+            $newEurCurId = (int) $pdo->lastInsertId();
+
+            // 2b. Volitelný bankovní účet (např. načtený z registru plátců DPH) → na seeded měnu.
+            $bank = isset($b['bank_account']) && is_array($b['bank_account']) ? $b['bank_account'] : null;
+            if ($bank !== null) {
+                $bankCcy = strtoupper((string) ($bank['currency'] ?? 'CZK'));
+                $targetCurId = $bankCcy === 'EUR' ? $newEurCurId : $newDefaultCurId;
+                $pdo->prepare(
+                    'UPDATE currencies SET account_number = ?, bank_code = ?, bank_name = ?, iban = ?, bic = ? WHERE id = ?'
+                )->execute([
+                    $this->nullable($bank, 'account_number'),
+                    $this->nullable($bank, 'bank_code'),
+                    $this->nullable($bank, 'bank_name'),
+                    $this->nullable($bank, 'iban'),
+                    $this->nullable($bank, 'bic'),
+                    $targetCurId,
+                ]);
+            }
 
             // 3. Update supplier.default_currency_id na CZK supplier
             $pdo->prepare('UPDATE supplier SET default_currency_id = ? WHERE id = ?')

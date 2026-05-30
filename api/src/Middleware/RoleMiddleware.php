@@ -38,6 +38,7 @@ final class RoleMiddleware implements MiddlewareInterface
         '/api/auth/setup-status',
         '/api/auth/setup',
         '/api/auth/setup-ares-lookup',
+        '/api/auth/setup-crpdph-lookup',
         '/api/auth/setup-sample',
         '/api/auth/login',
         '/api/auth/logout',

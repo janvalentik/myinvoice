@@ -26,6 +26,7 @@ final class FirstRunLockMiddleware implements MiddlewareInterface
         'GET /api/auth/setup-status',
         'POST /api/auth/setup',
         'POST /api/auth/setup-ares-lookup',
+        'POST /api/auth/setup-crpdph-lookup',
         // setup-sample je záměrně ve PUBLIC_PATHS ale NE v ALLOWED_PATHS:
         // volá se až PO úspěšném /setup, kdy needsSetup() vrací false (admin existuje).
     ];

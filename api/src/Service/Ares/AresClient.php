@@ -117,8 +117,65 @@ final class AresClient
             'is_vat_payer' => ($regs['stavZdrojeDph'] ?? '') === 'AKTIVNI',
             'date_active'  => (string) ($raw['datumVzniku'] ?? ''),
             'legal_form'   => (string) ($raw['pravniForma'] ?? ''),
+            // Zápis v OR pro PO (např. „Spisová značka C 45039 vedená u Krajského
+            // soudu v Plzni"). U OSVČ / subjektů mimo OR zůstává prázdné.
+            'commercial_register' => $this->extractCommercialRegister($raw),
         ];
     }
+
+    /**
+     * Spisová značka je v `dalsiUdaje[].spisovaZnacka` ve formátu „C 45039/KSPL"
+     * (oddíl, vložka, kód rejstříkového soudu). Preferujeme záznam z veřejného
+     * rejstříku (`datovyZdroj == 'vr'`). Vrátíme čitelný text, nebo '' když chybí.
+     */
+    private function extractCommercialRegister(array $raw): string
+    {
+        $dalsi = $raw['dalsiUdaje'] ?? null;
+        if (!is_array($dalsi)) {
+            return '';
+        }
+        $znacka = '';
+        foreach ($dalsi as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $val = trim((string) ($entry['spisovaZnacka'] ?? ''));
+            if ($val === '') {
+                continue;
+            }
+            $znacka = $val;
+            if (($entry['datovyZdroj'] ?? '') === 'vr') {
+                break; // preferovaný zdroj nalezen
+            }
+        }
+        if ($znacka === '') {
+            return '';
+        }
+
+        // „C 45039/KSPL" → oddíl=C, vložka=45039, soud=KSPL
+        if (preg_match('~^\s*([A-Za-z]+)\s+(\S+?)\s*/\s*([A-Z]{2,5})\s*$~u', $znacka, $m)) {
+            $court = self::COURT_NAMES[strtoupper($m[3])] ?? null;
+            if ($court !== null) {
+                return "Spisová značka {$m[1]} {$m[2]} vedená u {$court}";
+            }
+        }
+        // Neznámý formát/soud → vrať aspoň surovou značku.
+        return 'Spisová značka ' . $znacka;
+    }
+
+    /**
+     * Kódy rejstříkových soudů (ARES `dalsiUdaje.spisovaZnacka` suffix) → genitiv
+     * pro větu „… vedená u …".
+     */
+    private const COURT_NAMES = [
+        'MSPH' => 'Městského soudu v Praze',
+        'KSCB' => 'Krajského soudu v Českých Budějovicích',
+        'KSPL' => 'Krajského soudu v Plzni',
+        'KSUL' => 'Krajského soudu v Ústí nad Labem',
+        'KSHK' => 'Krajského soudu v Hradci Králové',
+        'KSBR' => 'Krajského soudu v Brně',
+        'KSOS' => 'Krajského soudu v Ostravě',
+    ];
 
     private function fromCache(string $ico): ?array
     {

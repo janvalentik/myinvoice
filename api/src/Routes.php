@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice;
 
 use MyInvoice\Action\AresVies\AresLookupAction;
+use MyInvoice\Action\AresVies\CrpDphLookupAction;
 use MyInvoice\Action\AresVies\ViesLookupAction;
 use MyInvoice\Action\Auth\ChangePasswordAction;
 use MyInvoice\Action\Client\ArchiveClientAction;
@@ -116,6 +117,7 @@ use MyInvoice\Action\Auth\MeAction;
 use MyInvoice\Action\Auth\ResetPasswordAction;
 use MyInvoice\Action\Auth\SetupAction;
 use MyInvoice\Action\Auth\SetupAresLookupAction;
+use MyInvoice\Action\Auth\SetupCrpDphLookupAction;
 use MyInvoice\Action\Auth\SetupSampleAction;
 use MyInvoice\Action\Auth\SetupStatusAction;
 use MyInvoice\Action\Auth\Tokens\CreateTokenAction;
@@ -156,6 +158,7 @@ final class Routes
             $g->get ('/setup-status',    SetupStatusAction::class);
             $g->post('/setup',           SetupAction::class);
             $g->post('/setup-ares-lookup', SetupAresLookupAction::class);  // public ARES proxy během setup wizardu
+            $g->post('/setup-crpdph-lookup', SetupCrpDphLookupAction::class);  // public proxy do registru plátců DPH (účty z DIČ)
             $g->post('/setup-sample',    SetupSampleAction::class);         // public sample data generator (jen pokud nejsou data)
             $g->post('/login',           LoginAction::class);
             $g->post('/logout',          LogoutAction::class);
@@ -177,6 +180,7 @@ final class Routes
         // ARES + VIES lookups (vyžadují auth)
         $app->post('/api/clients/lookup-ares', AresLookupAction::class);
         $app->post('/api/clients/lookup-vies', ViesLookupAction::class);
+        $app->post('/api/clients/lookup-bank', CrpDphLookupAction::class);  // účty z DIČ přes registr plátců DPH
 
         // Globální vyhledávač pro sidebar (klienti/dodavatelé + vydané/přijaté faktury)
         $app->get('/api/search', \MyInvoice\Action\Search\GlobalSearchAction::class);
