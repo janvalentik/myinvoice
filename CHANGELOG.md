@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.5] — 2026-05-31
+
+Oprava importu z iDokladu — naimportovaly se vždy jen 3 záznamy od každé entity.
+
+### Fixed
+
+- **iDoklad import našel jen 3 doklady od všeho (#80)** — iDoklad v3 API balí stránkované seznamy do envelope `{ "Data": { "Items": [...], "TotalItems": N, "TotalPages": M } }`, kde `Data` je objekt `Page` s **přesně třemi** klíči. Klient `Data` envelope nerozbaloval a omylem za seznam položek bral celý `Page` wrapper, takže import iteroval jeho 3 klíče (`Items`/`TotalItems`/`TotalPages`) — žádný nemá `Id`, takže se vše přeskočilo. Výsledkem bylo uniformní **„z 3, vytvořeno 0"** u kontaktů, vydaných i přijatých faktur a import se ani nestránkoval. Nyní se envelope správně rozbalí a stáhnou se všechny stránky. *(Oprava ruší dřívější domněnku z 4.7.2 o „špatné/demo agendě" — šlo o tuto chybu v parsování odpovědi.)*
+
 ## [4.7.4] — 2026-05-31
 
 Sjednocení akčních tlačítek v detailech a čitelnější výkaz práce.

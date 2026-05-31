@@ -199,10 +199,39 @@ final class IdokladClient
         if (!is_array($data)) {
             throw new \RuntimeException("iDoklad GET {$endpoint} returned invalid JSON.");
         }
+        return self::parseListResponse($data);
+    }
+
+    /**
+     * Rozbalí iDoklad v3 list response do `{Items, TotalItems, TotalPages}`.
+     *
+     * iDoklad v3 zabaluje každou odpověď do ApiResult envelope:
+     *   { "Data": <payload>, "IsSuccess": true, "ErrorCode": 0, "Message": null, ... }
+     * U stránkovaných list endpointů je payload Page objekt s přesně třemi klíči:
+     *   { "Items": [...], "TotalItems": N, "TotalPages": M }
+     * Některé endpointy (např. Attachments) vrací Data rovnou jako pole. Envelope MUSÍME
+     * rozbalit — jinak bychom iterovali klíče Page wrapperu (Items/TotalItems/TotalPages),
+     * což dává falešné „3 záznamy" u každé entity (viz #80).
+     *
+     * @param array<string,mixed> $data  dekódovaná JSON odpověď
+     * @return array{Items: list<array<string,mixed>>, TotalItems: int, TotalPages: int}
+     */
+    public static function parseListResponse(array $data): array
+    {
+        $payload = (isset($data['Data']) && is_array($data['Data'])) ? $data['Data'] : $data;
+
+        if (isset($payload['Items']) && is_array($payload['Items'])) {
+            $items = $payload['Items'];
+        } elseif (array_is_list($payload)) {
+            $items = $payload;
+        } else {
+            $items = [];
+        }
+
         return [
-            'Items'      => $data['Items'] ?? $data['Data'] ?? [],
-            'TotalItems' => (int) ($data['TotalItems'] ?? count($data['Items'] ?? $data['Data'] ?? [])),
-            'TotalPages' => (int) ($data['TotalPages'] ?? 0),
+            'Items'      => array_values($items),
+            'TotalItems' => (int) ($payload['TotalItems'] ?? $data['TotalItems'] ?? count($items)),
+            'TotalPages' => (int) ($payload['TotalPages'] ?? $data['TotalPages'] ?? 0),
         ];
     }
 
