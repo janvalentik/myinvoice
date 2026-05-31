@@ -108,6 +108,14 @@ function defaultItemUnit(): string {
 // Aktivní dodavatel — pokud není plátce DPH, fakturuje bez DPH (žádné DPH UI ani v PDF).
 const supplierIsVatPayer = computed(() => supplierStore.currentSupplier?.is_vat_payer ?? true)
 
+// „Osvobozeno od daně z příjmů" má smysl jen pro OSVČ (FO): osvobození dle § 4 ZDP
+// platí výhradně pro fyzické osoby, u s.r.o. (PO) žádný § 4 není a prodej majetku je
+// vždy zdanitelný výnos. U PO proto checkbox skryjeme. Ponecháme ho ale, pokud už je
+// příznak zaškrtnutý (legacy/import), aby šel zrušit.
+const showIncomeTaxExemptUI = computed(
+  () => supplierStore.currentSupplier?.taxpayer_type === 'fo' || form.value.income_tax_exempt,
+)
+
 // RC zobrazit jen když:
 //   - dodavatel je plátce DPH (neplátce nemůže RC vystavit) A
 //   - klient není vybraný NEBO má RC povolenou v profilu
@@ -1239,7 +1247,7 @@ async function deleteDraft() {
               </label>
               <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('invoice.prices_include_vat_hint') }}</p>
             </div>
-            <div>
+            <div v-if="showIncomeTaxExemptUI">
               <label class="flex items-center gap-2 text-sm text-neutral-700">
                 <input v-model="form.income_tax_exempt" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
                 <span>{{ t('invoice.income_tax_exempt') }}</span>

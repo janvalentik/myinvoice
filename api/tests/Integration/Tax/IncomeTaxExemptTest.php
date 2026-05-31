@@ -33,7 +33,7 @@ final class IncomeTaxExemptTest extends TestCase
 
     protected function setUp(): void
     {
-        $rootDir = dirname(__DIR__, 3);
+        $rootDir = dirname(__DIR__, 4);
         if (!is_file($rootDir . '/cfg.php')) {
             $this->markTestSkipped('cfg.php neexistuje — test vyžaduje DB.');
         }
