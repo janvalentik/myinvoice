@@ -107,7 +107,7 @@
       <th class="num">#</th>
       <th>{% if locale == 'en' %}Description{% else %}Popis{% endif %}</th>
       <th class="num">{% if locale == 'en' %}Qty{% else %}Množ.{% endif %}</th>
-      <th class="num">{% if locale == 'en' %}Unit price{% if invoice.prices_include_vat %} (incl. VAT){% endif %}{% else %}Cena/j{% if invoice.prices_include_vat %} s DPH{% endif %}{% endif %}</th>
+      <th class="num">{% if locale == 'en' %}Unit price{% else %}Cena/j{% endif %}</th>
       <th class="num">DPH</th>
       <th class="num">{% if invoice.prices_include_vat %}{% if locale == 'en' %}Total inc. VAT{% else %}Celkem s DPH{% endif %}{% else %}{% if locale == 'en' %}Total ex. VAT{% else %}Celkem bez DPH{% endif %}{% endif %}</th>
     </tr>
@@ -118,7 +118,7 @@
       <td class="num">{{ loop.index }}.</td>
       <td>{{ item.description }}</td>
       <td class="num">{{ item.quantity|number_format(2, ',', ' ') }} {{ item.unit|default('ks') }}</td>
-      <td class="num">{{ item.unit_price|number_format(2, ',', ' ') }} {{ currency }}</td>
+      <td class="num">{{ item.unit_price_without_vat|number_format(2, ',', ' ') }} {{ currency }}</td>
       <td class="num">{{ item.vat_rate|number_format(0) }}%</td>
       <td class="num">{{ item.line_total|number_format(2, ',', ' ') }} {{ currency }}</td>
     </tr>

@@ -58,9 +58,9 @@ final class PurchaseInvoicePdfRenderer
         ];
 
         // Režim „ceny s DPH": unit_price_without_vat nese BRUTTO (kvůli haléřově přesnému
-        // výpočtu DPH koeficientem). Na dokladu s DPH ukazujeme řádek S DPH (brutto cena/j
-        // i brutto řádkový součet) — odráží, že jde o doklad s cenami včetně DPH a sedí
-        // (množství × cena/j = řádkový součet). V běžném režimu ukazujeme netto.
+        // výpočtu DPH koeficientem). Jednotkovou cenu zobrazujeme vždy jako NETTO (dopočtenou
+        // z řádkového základu), ale řádkový SOUČET ukazujeme S DPH — řádek je tak standardní
+        // (cena/j bez DPH + sazba + celkem s DPH) a odráží, že jde o doklad s cenami vč. DPH.
         $pricesIncludeVat = !empty($invoice['prices_include_vat']);
 
         // Map items na shape co Twig očekává
@@ -74,9 +74,7 @@ final class PurchaseInvoicePdfRenderer
                 'description'            => $it['description'] ?? '',
                 'quantity'               => $qty,
                 'unit'                   => $it['unit'] ?? 'ks',
-                // V režimu s DPH ukaž brutto cena/j (= rawUnit), jinak netto.
-                'unit_price'             => $pricesIncludeVat ? $rawUnit : $unitNet,
-                'unit_price_without_vat' => $unitNet,
+                'unit_price_without_vat' => $unitNet, // vždy netto
                 'vat_rate'               => (float) ($it['vat_rate_snapshot'] ?? $it['vat_rate'] ?? 0),
                 'total_without_vat'      => $base,
                 'total_with_vat'         => $gross,
