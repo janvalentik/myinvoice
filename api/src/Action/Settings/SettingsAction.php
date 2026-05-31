@@ -474,7 +474,16 @@ final class SettingsAction
         $row['payment_thanks_auto_send']      = (bool) ($row['payment_thanks_auto_send'] ?? false);
         $row['payment_thanks_default_checked']= (bool) ($row['payment_thanks_default_checked'] ?? false);
         $row['payment_thanks_attach_paid_pdf']= (bool) ($row['payment_thanks_attach_paid_pdf'] ?? false);
-        unset($row['signing_cert_password_enc'], $row['signing_cert_path'], $row['signing_tsa_password_enc']);
+        // Bezpečnost: do API NIKDY neposílat žádná tajemství. Redakce vzorem `*_enc`
+        // je odolná vůči nově přidaným šifrovaným sloupcům (původní explicitní výčet
+        // nechával unikat idoklad/fakturoid/anthropic credentials). Plus explicitně
+        // živý nešifrovaný token a serverová cesta k certifikátu.
+        foreach (array_keys($row) as $k) {
+            if (str_ends_with((string) $k, '_enc')) {
+                unset($row[$k]);
+            }
+        }
+        unset($row['signing_cert_path'], $row['idoklad_access_token']);
         // Globální cfg fallback pro varsymbol — UI ho použije jako placeholder
         // u prázdných per-supplier polí (aby uživatel viděl, jaká šablona by se
         // použila kdyby ponechal pole prázdné).
