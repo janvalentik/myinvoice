@@ -794,6 +794,11 @@ async function updateApprovalStatus() {
         <span class="text-xs px-2 py-0.5 rounded font-normal bg-neutral-100 text-neutral-600">
           {{ typeLabel(invoice.invoice_type) }}
         </span>
+        <span v-if="invoice.income_tax_exempt"
+          class="text-xs px-2 py-0.5 rounded font-normal bg-amber-100 text-amber-800 border border-amber-200"
+          :title="invoice.income_tax_exempt_reason || ''">
+          {{ t('invoice.income_tax_exempt_badge') }}
+        </span>
         <RouterLink v-if="invoice.recurring_template_id"
           :to="{ name: 'recurring-edit', params: { id: invoice.recurring_template_id } }"
           class="text-xs px-2 py-0.5 rounded font-normal bg-primary-50 text-primary-700 border border-primary-200 hover:bg-primary-100"

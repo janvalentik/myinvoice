@@ -625,8 +625,9 @@ final class InvoiceRepository
             (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
              issue_date, tax_date, due_date, currency_id, reverse_charge, prices_include_vat, language,
              note_above_items, note_below_items, advance_paid_amount, discount_percent, varsymbol,
-             payment_method, status, vat_classification_code, revenue_category, revenue_category_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?)';
+             payment_method, status, vat_classification_code, revenue_category, revenue_category_id,
+             income_tax_exempt, income_tax_exempt_reason, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -651,6 +652,8 @@ final class InvoiceRepository
             !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
             !empty($data['revenue_category']) ? (string) $data['revenue_category'] : null,
             $revenueCategoryId,
+            !empty($data['income_tax_exempt']) ? 1 : 0,
+            self::normalizeExemptReason($data['income_tax_exempt_reason'] ?? null),
             $userId,
         ]);
 
@@ -692,7 +695,8 @@ final class InvoiceRepository
                 currency_id = ?, reverse_charge = ?, prices_include_vat = ?, language = ?,
                 note_above_items = ?, note_below_items = ?,
                 advance_paid_amount = ?, discount_percent = ?,
-                vat_classification_code = ?, revenue_category = ?, revenue_category_id = ?'
+                vat_classification_code = ?, revenue_category = ?, revenue_category_id = ?,
+                income_tax_exempt = ?, income_tax_exempt_reason = ?'
               . ($hasVarsymbol ? ', varsymbol = ?' : '')
               . ($hasPaymentMethod ? ', payment_method = ?' : '')
               . ($hasType ? ', invoice_type = ?' : '')
@@ -715,6 +719,8 @@ final class InvoiceRepository
             !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
             !empty($data['revenue_category']) ? (string) $data['revenue_category'] : null,
             isset($data['revenue_category_id']) && $data['revenue_category_id'] ? (int) $data['revenue_category_id'] : null,
+            !empty($data['income_tax_exempt']) ? 1 : 0,
+            self::normalizeExemptReason($data['income_tax_exempt_reason'] ?? null),
         ];
         if ($hasVarsymbol) $params[] = $manualVarsymbol;
         if ($hasPaymentMethod) $params[] = $paymentMethod;
@@ -880,6 +886,19 @@ final class InvoiceRepository
     }
 
     /**
+     * Důvod osvobození od daně z příjmů — trim, prázdné → null, max 190 znaků
+     * (DB sloupec income_tax_exempt_reason VARCHAR(190)).
+     */
+    private static function normalizeExemptReason(mixed $value): ?string
+    {
+        $s = trim((string) ($value ?? ''));
+        if ($s === '') {
+            return null;
+        }
+        return mb_substr($s, 0, 190);
+    }
+
+    /**
      * Default vat_classification_code podle sazby + RC + země klienta pro VYSTAVENÉ faktury.
      *
      * Mapování:
@@ -968,6 +987,9 @@ final class InvoiceRepository
         if (isset($row['supplier_id']))   $row['supplier_id'] = (int) $row['supplier_id'];
         $row['reverse_charge']      = isset($row['reverse_charge']) ? (bool) $row['reverse_charge'] : false;
         $row['prices_include_vat']  = isset($row['prices_include_vat']) ? (bool) $row['prices_include_vat'] : false;
+        if (array_key_exists('income_tax_exempt', $row)) {
+            $row['income_tax_exempt'] = (bool) $row['income_tax_exempt'];
+        }
         foreach (['total_without_vat', 'total_vat', 'total_with_vat', 'rounding', 'advance_paid_amount', 'amount_to_pay', 'discount_percent'] as $f) {
             if (array_key_exists($f, $row) && $row[$f] !== null) $row[$f] = (float) $row[$f];
         }

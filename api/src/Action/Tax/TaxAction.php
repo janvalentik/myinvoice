@@ -56,6 +56,10 @@ final class TaxAction
             'supplier_band'   => $flags['flat_tax_band'],
             'constants'       => $c,
             'available_years' => $this->availableYears($sid, $currentYear),
+            // Příjmy označené „osvobozeno od daně z příjmů" (§4 / přefakturace) — do
+            // výpočtu daně ani pojistného NEvstupují (jsou už vyloučené v annualIncome);
+            // tady jen pro transparentní zobrazení „z toho vyloučeno" v UI.
+            'exempt_income'   => $this->profiles->annualExemptIncome($sid, $year, $isVat),
         ];
 
         if ($year < $currentYear) {

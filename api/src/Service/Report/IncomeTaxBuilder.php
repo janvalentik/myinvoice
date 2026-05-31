@@ -111,6 +111,7 @@ final class IncomeTaxBuilder
                 'year'              => $year,
                 'taxpayer_type'     => $taxpayerType,
                 'revenue_orientacni' => round($totals['revenue'], 2),
+                'exempt_revenue_orientacni' => round($totals['exempt_revenue'] ?? 0, 2),
                 'costs_orientacni'   => round($totals['costs'], 2),
                 'profit_orientacni'  => round($totals['revenue'] - $totals['costs'], 2),
                 'submission_deadline' => sprintf('%04d-04-01', $year + 1),  // do 1.4. následujícího roku
@@ -130,7 +131,7 @@ final class IncomeTaxBuilder
      * ji nelze, proto bereme částky včetně DPH (`total_with_vat`). Stejný vzor jako
      * StatsRecomputer / migrace 0023_revenue_vat_aware.
      *
-     * @return array{revenue: float, costs: float}
+     * @return array{revenue: float, costs: float, exempt_revenue: float}
      */
     private function loadYearTotals(int $supplierId, int $year, bool $isVatPayer): array
     {
@@ -147,11 +148,30 @@ final class IncomeTaxBuilder
               WHERE i.supplier_id = ?
                 AND i.status NOT IN ('draft', 'cancelled')
                 AND i.invoice_type != 'proforma'
+                -- Doklady mimo základ daně z příjmů (§4 osvobození / přefakturace) se
+                -- do DPFO/DPPO příjmů nezahrnují. Pozn.: DPH/KH/tržby nedotčeny.
+                AND COALESCE(i.income_tax_exempt, 0) = 0
                 AND COALESCE(c.code, 'CZK') = 'CZK'
                 AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?"
         );
         $stmt->execute([$supplierId, $start, $end]);
         $revenue = (float) ($stmt->fetchColumn() ?: 0);
+
+        // Z toho vyloučeno ze základu daně z příjmů (§4 osvobození / přefakturace) —
+        // pro transparentní řádek „z toho vyloučeno" ve výkazu. Do revenue NEvstupuje.
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT SUM(COALESCE(i.{$amount}, 0)) AS total
+               FROM invoices i
+          LEFT JOIN currencies c ON c.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND i.status NOT IN ('draft', 'cancelled')
+                AND i.invoice_type != 'proforma'
+                AND COALESCE(i.income_tax_exempt, 0) = 1
+                AND COALESCE(c.code, 'CZK') = 'CZK'
+                AND COALESCE(i.tax_date, i.issue_date) BETWEEN ? AND ?"
+        );
+        $stmt->execute([$supplierId, $start, $end]);
+        $exemptRevenue = (float) ($stmt->fetchColumn() ?: 0);
 
         // Costs z přijatých
         $stmt = $this->db->pdo()->prepare(
@@ -172,7 +192,7 @@ final class IncomeTaxBuilder
         $stmt->execute([$supplierId, $start, $end]);
         $costs = (float) ($stmt->fetchColumn() ?: 0);
 
-        return ['revenue' => $revenue, 'costs' => $costs];
+        return ['revenue' => $revenue, 'costs' => $costs, 'exempt_revenue' => $exemptRevenue];
     }
 
     /** @return list<string> */

@@ -94,6 +94,31 @@ final class TaxProfileRepository
                 AND i.status = 'paid'
                 AND i.paid_at IS NOT NULL
                 AND i.invoice_type IN ('invoice', 'credit_note')
+                AND COALESCE(i.income_tax_exempt, 0) = 0
+                AND YEAR(i.paid_at) = ?"
+        );
+        $stmt->execute([$supplierId, $year]);
+        return round((float) $stmt->fetchColumn(), 2);
+    }
+
+    /**
+     * Roční příjem označený „osvobozeno od daně z příjmů" (income_tax_exempt=1,
+     * zaplacené faktury daného roku). Slouží jen k transparentnímu zobrazení
+     * „z toho vyloučeno ze základu daně z příjmů" v daňovém optimalizátoru —
+     * do výpočtu daně/pojistného NEvstupuje (ten už osvobozené příjmy nezahrnuje).
+     */
+    public function annualExemptIncome(int $supplierId, int $year, bool $isVatPayer): float
+    {
+        $col = $isVatPayer ? 'i.total_without_vat' : 'i.total_with_vat';
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT COALESCE(SUM({$col} * COALESCE(IF(cur.code = 'CZK', 1, i.exchange_rate), 1)), 0)
+               FROM invoices i
+          LEFT JOIN currencies cur ON cur.id = i.currency_id
+              WHERE i.supplier_id = ?
+                AND i.status = 'paid'
+                AND i.paid_at IS NOT NULL
+                AND i.invoice_type IN ('invoice', 'credit_note')
+                AND COALESCE(i.income_tax_exempt, 0) = 1
                 AND YEAR(i.paid_at) = ?"
         );
         $stmt->execute([$supplierId, $year]);
@@ -116,6 +141,7 @@ final class TaxProfileRepository
                 AND i.status = 'paid'
                 AND i.paid_at IS NOT NULL
                 AND i.invoice_type IN ('invoice', 'credit_note')
+                AND COALESCE(i.income_tax_exempt, 0) = 0
                 AND YEAR(i.paid_at) = ?
            GROUP BY MONTH(i.paid_at)"
         );

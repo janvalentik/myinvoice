@@ -71,6 +71,9 @@ export interface Invoice {
   reverse_charge: boolean
   /** Ceny položek zadané včetně DPH (brutto) — DPH se počítá shora koeficientem. */
   prices_include_vat: boolean
+  /** Doklad není základem daně z příjmů (§4 osvobození / přefakturace) → vyloučen z DPFO/DPPO i SP/ZP. DPH/KH/tržby nedotčeny. */
+  income_tax_exempt: boolean
+  income_tax_exempt_reason: string | null
   language: 'cs' | 'en'
   note_above_items: string | null
   note_below_items: string | null
@@ -222,6 +225,8 @@ export interface InvoicePayload {
   currency_id?: number
   reverse_charge?: boolean
   prices_include_vat?: boolean
+  income_tax_exempt?: boolean
+  income_tax_exempt_reason?: string | null
   language?: 'cs' | 'en'
   note_above_items?: string | null
   note_below_items?: string | null

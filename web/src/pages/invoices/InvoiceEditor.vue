@@ -130,6 +130,8 @@ const form = ref<{
   currency: string
   reverse_charge: boolean
   prices_include_vat: boolean
+  income_tax_exempt: boolean
+  income_tax_exempt_reason: string
   language: 'cs' | 'en'
   note_above_items: string
   note_below_items: string
@@ -154,6 +156,8 @@ const form = ref<{
   currency: 'CZK',
   reverse_charge: false,
   prices_include_vat: false,
+  income_tax_exempt: false,
+  income_tax_exempt_reason: '',
   language: 'cs',
   note_above_items: '',
   note_below_items: '',
@@ -355,6 +359,8 @@ onMounted(async () => {
       currency: inv.currency,
       reverse_charge: inv.reverse_charge,
       prices_include_vat: (inv as { prices_include_vat?: boolean }).prices_include_vat ?? false,
+      income_tax_exempt: (inv as { income_tax_exempt?: boolean }).income_tax_exempt ?? false,
+      income_tax_exempt_reason: (inv as { income_tax_exempt_reason?: string | null }).income_tax_exempt_reason ?? '',
       language: inv.language,
       note_above_items: inv.note_above_items ?? '',
       note_below_items: inv.note_below_items ?? '',
@@ -973,6 +979,8 @@ async function submit() {
       currency_id: form.value.currency_id,
       reverse_charge: form.value.reverse_charge,
       prices_include_vat: form.value.prices_include_vat,
+      income_tax_exempt: form.value.income_tax_exempt,
+      income_tax_exempt_reason: form.value.income_tax_exempt ? (form.value.income_tax_exempt_reason || null) : null,
       language: form.value.language,
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
@@ -1230,6 +1238,22 @@ async function deleteDraft() {
                 <span>{{ t('invoice.prices_include_vat') }}</span>
               </label>
               <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('invoice.prices_include_vat_hint') }}</p>
+            </div>
+            <div>
+              <label class="flex items-center gap-2 text-sm text-neutral-700">
+                <input v-model="form.income_tax_exempt" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                <span>{{ t('invoice.income_tax_exempt') }}</span>
+              </label>
+              <p class="text-xs text-neutral-500 mt-1 ml-6">{{ t('invoice.income_tax_exempt_hint') }}</p>
+              <div v-if="form.income_tax_exempt" class="ml-6 mt-2">
+                <input
+                  v-model="form.income_tax_exempt_reason"
+                  type="text"
+                  maxlength="190"
+                  :placeholder="t('invoice.income_tax_exempt_reason_placeholder')"
+                  class="w-full h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm"
+                />
+              </div>
             </div>
           </div>
         </div>

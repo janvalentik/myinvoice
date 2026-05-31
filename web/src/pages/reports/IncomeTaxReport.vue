@@ -133,6 +133,9 @@ onMounted(loadPreview)
             {{ t('reports.income_tax.revenue_hint') }} ·
             {{ preview.summary.is_vat_payer ? t('reports.income_tax.vat_base_excl') : t('reports.income_tax.vat_base_incl') }}
           </div>
+          <div v-if="(preview.summary.exempt_revenue_orientacni ?? 0) > 0" class="text-xs text-amber-700 mt-1">
+            {{ t('reports.income_tax.exempt_revenue_orientacni') }}: {{ formatMoney(preview.summary.exempt_revenue_orientacni, 'CZK') }}
+          </div>
         </div>
         <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-5">
           <div class="text-xs uppercase tracking-wide text-neutral-500 font-medium mb-1">{{ t('reports.income_tax.costs_orientacni') }}</div>

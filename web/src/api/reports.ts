@@ -194,6 +194,7 @@ export const reportsApi = {
         year: number
         taxpayer_type: 'fo' | 'po'
         revenue_orientacni: number
+        exempt_revenue_orientacni?: number
         costs_orientacni: number
         profit_orientacni: number
         submission_deadline: string
