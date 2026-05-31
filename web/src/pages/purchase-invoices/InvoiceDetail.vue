@@ -46,17 +46,24 @@ async function dismissWarning() {
 }
 
 // ── Propojení se zálohovou fakturou (advance) — proti dvojímu započtení nákladu ──
+// Párování jde z obou stran. 'advance' = jsem na vyúčtovací faktuře, vybírám zálohu;
+// 'final' = jsem na záloze, vybírám vyúčtovací fakturu. Vazba se vždy ukládá na
+// vyúčtovací fakturu (advance_purchase_invoice_id).
 const advanceModalOpen = ref(false)
+const pairMode = ref<'advance' | 'final'>('advance')
 const advanceCandidates = ref<PurchaseInvoiceBrief[]>([])
 const loadingCandidates = ref(false)
 const linkingAdvance = ref(false)
 
-async function openAdvanceModal() {
+async function openPairModal(mode: 'advance' | 'final') {
   if (!invoice.value) return
+  pairMode.value = mode
   advanceModalOpen.value = true
   loadingCandidates.value = true
   try {
-    advanceCandidates.value = await purchaseInvoicesApi.advanceCandidates(invoice.value.id)
+    advanceCandidates.value = mode === 'advance'
+      ? await purchaseInvoicesApi.advanceCandidates(invoice.value.id)
+      : await purchaseInvoicesApi.settlementCandidates(invoice.value.id)
   } catch (e) {
     toast.error(apiErrorMessage(e))
   } finally {
@@ -64,6 +71,7 @@ async function openAdvanceModal() {
   }
 }
 
+// Jsem na vyúčtovací faktuře, advanceId = záloha → vazba na current (i AI návrh).
 async function linkAdvance(advanceId: number) {
   if (!invoice.value || linkingAdvance.value) return
   linkingAdvance.value = true
@@ -79,12 +87,38 @@ async function linkAdvance(advanceId: number) {
   }
 }
 
-async function unlinkAdvance() {
+// Z modalu — význam candId závisí na pairMode.
+async function pickCandidate(candId: number) {
+  if (!invoice.value || linkingAdvance.value) return
+  if (pairMode.value === 'advance') { await linkAdvance(candId); return }
+  // 'final': jsem na záloze, candId = vyúčtovací faktura → vazba na ni, pak reload zálohy.
+  linkingAdvance.value = true
+  try {
+    await purchaseInvoicesApi.linkAdvance(candId, invoice.value.id)
+    advanceModalOpen.value = false
+    toast.success(t('purchase_invoice.advance_link.linked'))
+    await load()
+    purchaseInvoicesApi.activity(id.value).then(a => { activity.value = a }).catch(() => {})
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    linkingAdvance.value = false
+  }
+}
+
+// targetId = id vyúčtovací faktury, jejíž vazbu rušíme. Default = aktuální doklad
+// (jsem na vyúčtovací). Z detailu zálohy předáme id navázané faktury → reload.
+async function unlinkAdvance(targetId?: number) {
   if (!invoice.value || linkingAdvance.value) return
   if (!confirm(t('purchase_invoice.advance_link.unlink_confirm'))) return
   linkingAdvance.value = true
   try {
-    invoice.value = await purchaseInvoicesApi.unlinkAdvance(invoice.value.id)
+    if (targetId && targetId !== invoice.value.id) {
+      await purchaseInvoicesApi.unlinkAdvance(targetId)
+      await load()
+    } else {
+      invoice.value = await purchaseInvoicesApi.unlinkAdvance(invoice.value.id)
+    }
     toast.success(t('purchase_invoice.advance_link.unlinked'))
     purchaseInvoicesApi.activity(id.value).then(a => { activity.value = a }).catch(() => {})
   } catch (e) {
@@ -408,12 +442,20 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
     </div>
 
     <!-- ═══ Propojení se zálohou — banner pod headerem (sjednoceno s vydanou fakturou) ═══ -->
-    <!-- Tento doklad JE záloha → odkaz na vyúčtovací fakturu -->
-    <RouterLink v-if="invoice.settled_by" :to="`/purchase-invoices/${invoice.settled_by.id}`"
-      class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm hover:bg-primary-100 transition">
-      <span class="text-primary-700">{{ t('purchase_invoice.advance_link.settled_by') }}</span>
-      <span class="font-medium text-primary-700 font-mono">{{ invoice.settled_by.varsymbol || invoice.settled_by.vendor_invoice_number || ('#' + invoice.settled_by.id) }} →</span>
-    </RouterLink>
+    <!-- Tento doklad JE záloha → odkaz na vyúčtovací fakturu (+ odpojení) -->
+    <div v-if="invoice.settled_by"
+      class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm">
+      <span class="text-primary-700 min-w-0">
+        {{ t('purchase_invoice.advance_link.settled_by') }}
+        <RouterLink :to="`/purchase-invoices/${invoice.settled_by.id}`" class="font-mono font-medium hover:underline">
+          {{ invoice.settled_by.varsymbol || invoice.settled_by.vendor_invoice_number || ('#' + invoice.settled_by.id) }}
+        </RouterLink>
+      </span>
+      <button v-if="auth.canWrite" type="button" @click="unlinkAdvance(invoice.settled_by.id)" :disabled="linkingAdvance"
+        class="cursor-pointer text-xs px-2 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 shrink-0 bg-surface">
+        {{ t('purchase_invoice.advance_link.unlink') }}
+      </button>
+    </div>
     <!-- Vyúčtovací faktura → odkaz na započtenou zálohu (+ odpojení) -->
     <div v-else-if="invoice.linked_advance"
       class="flex items-center justify-between gap-3 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2.5 text-sm">
@@ -424,7 +466,7 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
         </RouterLink>
         <span class="text-primary-700/70 font-mono">(−{{ formatMoney(invoice.linked_advance.total_with_vat, invoice.linked_advance.currency) }})</span>
       </span>
-      <button v-if="auth.canWrite" type="button" @click="unlinkAdvance" :disabled="linkingAdvance"
+      <button v-if="auth.canWrite" type="button" @click="unlinkAdvance()" :disabled="linkingAdvance"
         class="cursor-pointer text-xs px-2 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 shrink-0 bg-surface">
         {{ t('purchase_invoice.advance_link.unlink') }}
       </button>
@@ -580,9 +622,13 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
             : t('purchase_invoice.advance_link.title_settlement') }}
       </h3>
 
-      <!-- Záloha zatím nevyúčtovaná -->
-      <div v-if="invoice.document_kind === 'advance'" class="text-sm text-neutral-500">
-        {{ t('purchase_invoice.advance_link.not_settled') }}
+      <!-- Záloha zatím nevyúčtovaná → nabídka spárovat s fakturou (opačný směr) -->
+      <div v-if="invoice.document_kind === 'advance'" class="flex items-center justify-between gap-3">
+        <p class="text-sm text-neutral-500">{{ t('purchase_invoice.advance_link.not_settled') }}</p>
+        <button v-if="auth.canWrite && invoice.has_settlement_candidates" type="button" @click="openPairModal('final')"
+          class="cursor-pointer text-sm px-3 h-9 border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md shrink-0">
+          {{ t('purchase_invoice.advance_link.pair_settlement') }}
+        </button>
       </div>
 
       <!-- Vyúčtovací faktura bez propojení → AI návrh / spárovat -->
@@ -610,7 +656,7 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
 
         <div v-else class="flex items-center justify-between gap-3">
           <p class="text-sm text-neutral-500">{{ t('purchase_invoice.advance_link.none') }}</p>
-          <button v-if="auth.canWrite" type="button" @click="openAdvanceModal"
+          <button v-if="auth.canWrite && invoice.has_advance_candidates" type="button" @click="openPairModal('advance')"
             class="cursor-pointer text-sm px-3 h-9 border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded-md shrink-0">
             {{ t('purchase_invoice.advance_link.pair') }}
           </button>
@@ -622,15 +668,15 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
     <div v-if="advanceModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="advanceModalOpen = false">
       <div class="bg-surface rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col">
         <div class="px-5 py-3 border-b border-neutral-100 flex items-center justify-between">
-          <h3 class="font-medium">{{ t('purchase_invoice.advance_link.modal_title') }}</h3>
+          <h3 class="font-medium">{{ pairMode === 'advance' ? t('purchase_invoice.advance_link.modal_title') : t('purchase_invoice.advance_link.modal_title_settlement') }}</h3>
           <button type="button" @click="advanceModalOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-600">✕</button>
         </div>
         <div class="p-4 overflow-y-auto">
           <div v-if="loadingCandidates" class="text-sm text-neutral-500">{{ t('common.loading') }}</div>
-          <div v-else-if="advanceCandidates.length === 0" class="text-sm text-neutral-500">{{ t('purchase_invoice.advance_link.no_candidates') }}</div>
+          <div v-else-if="advanceCandidates.length === 0" class="text-sm text-neutral-500">{{ pairMode === 'advance' ? t('purchase_invoice.advance_link.no_candidates') : t('purchase_invoice.advance_link.no_candidates_settlement') }}</div>
           <ul v-else class="space-y-2">
             <li v-for="cand in advanceCandidates" :key="cand.id">
-              <button type="button" @click="linkAdvance(cand.id)" :disabled="linkingAdvance"
+              <button type="button" @click="pickCandidate(cand.id)" :disabled="linkingAdvance"
                 class="cursor-pointer w-full text-left px-3 py-2 border border-neutral-200 rounded-md hover:border-primary-400 hover:bg-primary-50 disabled:opacity-50 flex justify-between items-center gap-3">
                 <span class="font-mono text-sm">{{ cand.varsymbol || cand.vendor_invoice_number || ('#' + cand.id) }}</span>
                 <span class="text-sm text-neutral-500">{{ cand.issue_date ? formatDate(cand.issue_date) : '' }} · {{ formatMoney(cand.total_with_vat, cand.currency) }}</span>

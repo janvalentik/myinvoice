@@ -141,6 +141,10 @@ export interface PurchaseInvoice {
   advance_link_suggestion?: PurchaseInvoiceBrief | null
   /** U zálohy (advance): finální faktura, která ji vyúčtovává (reverzní pohled). */
   settled_by?: PurchaseInvoiceBrief | null
+  /** Vyúčtovací faktura bez vazby: existuje nespárovaná záloha téhož dodavatele? */
+  has_advance_candidates?: boolean
+  /** Záloha bez vyúčtování: existuje nepropojená finální faktura téhož dodavatele? */
+  has_settlement_candidates?: boolean
   /**
    * Diagnostický popis problému z AI extrakce (např. AI sečetla mezisoučty
    * jako další položky → suma řádků se výrazně liší od AI-vráceného totalu).
@@ -358,6 +362,10 @@ export const purchaseInvoicesApi = {
   // Propojení se zálohovou fakturou (advance) — proti dvojímu započtení nákladu
   advanceCandidates: (id: number) =>
     api.get<{ candidates: PurchaseInvoiceBrief[] }>(`/purchase-invoices/${id}/advance-candidates`)
+      .then(r => r.data.candidates),
+  // Opačný směr — z detailu zálohy nabídni nepropojené vyúčtovací faktury téhož dodavatele
+  settlementCandidates: (id: number) =>
+    api.get<{ candidates: PurchaseInvoiceBrief[] }>(`/purchase-invoices/${id}/settlement-candidates`)
       .then(r => r.data.candidates),
   linkAdvance: (id: number, advanceId: number) =>
     api.post<PurchaseInvoice>(`/purchase-invoices/${id}/link-advance`, { advance_id: advanceId })

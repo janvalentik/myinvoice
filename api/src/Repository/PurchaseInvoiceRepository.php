@@ -76,6 +76,40 @@ final class PurchaseInvoiceRepository
         $row['settled_by'] = ($row['document_kind'] ?? '') === 'advance'
             ? $this->settledByFor($id, $supplierId)
             : null;
+
+        // Příznaky pro UI tlačítka „spárovat" (zobrazit jen když existuje protějšek):
+        //  - has_advance_candidates    = vyúčtovací faktura bez vazby a existuje nespárovaná záloha
+        //  - has_settlement_candidates = záloha bez vyúčtování a existuje nepropojená finální faktura
+        $row['has_advance_candidates'] = false;
+        $row['has_settlement_candidates'] = false;
+        $vendorId = (int) ($row['vendor_id'] ?? 0);
+        if (($row['document_kind'] ?? '') !== 'advance') {
+            if ($row['advance_purchase_invoice_id'] === null) {
+                $q = $this->db->pdo()->prepare(
+                    "SELECT EXISTS (
+                              SELECT 1 FROM purchase_invoices pi
+                               WHERE pi.supplier_id = ? AND pi.vendor_id = ?
+                                 AND pi.document_kind = 'advance' AND pi.status != 'cancelled'
+                                 AND pi.id <> ?
+                                 AND NOT EXISTS (SELECT 1 FROM purchase_invoices s
+                                                  WHERE s.advance_purchase_invoice_id = pi.id)
+                            )"
+                );
+                $q->execute([$supplierId, $vendorId, $id]);
+                $row['has_advance_candidates'] = (bool) $q->fetchColumn();
+            }
+        } elseif ($row['settled_by'] === null) {
+            $q = $this->db->pdo()->prepare(
+                "SELECT EXISTS (
+                          SELECT 1 FROM purchase_invoices pi
+                           WHERE pi.supplier_id = ? AND pi.vendor_id = ?
+                             AND pi.document_kind != 'advance' AND pi.status != 'cancelled'
+                             AND pi.advance_purchase_invoice_id IS NULL AND pi.id <> ?
+                        )"
+            );
+            $q->execute([$supplierId, $vendorId, $id]);
+            $row['has_settlement_candidates'] = (bool) $q->fetchColumn();
+        }
         return $row;
     }
 
@@ -806,6 +840,50 @@ final class PurchaseInvoiceRepository
         $stmt->execute([
             $supplierId, (int) $final['vendor_id'], $finalId,
             (int) $final['currency_id'], (float) $final['total_with_vat'],
+        ]);
+        return array_map(fn (array $r) => [
+            'id'                    => (int) $r['id'],
+            'varsymbol'             => $r['varsymbol'] !== null ? (string) $r['varsymbol'] : null,
+            'vendor_invoice_number' => $r['vendor_invoice_number'] !== null ? (string) $r['vendor_invoice_number'] : null,
+            'document_kind'         => (string) $r['document_kind'],
+            'status'                => (string) $r['status'],
+            'issue_date'            => $r['issue_date'] !== null ? (string) $r['issue_date'] : null,
+            'total_with_vat'        => (float) $r['total_with_vat'],
+            'currency'              => (string) $r['currency'],
+        ], $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []);
+    }
+
+    /**
+     * Opačný směr párování — z detailu zálohy ($advanceId) nabídne nepropojené finální
+     * faktury (document_kind != 'advance', bez advance_purchase_invoice_id) stejného
+     * dodavatele. Vlastní propojení proběhne přes linkAdvance($finalId, $advanceId).
+     * Řazení: stejná měna → nejbližší hrubá částka → nejnovější.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function settlementCandidates(int $advanceId, int $supplierId): array
+    {
+        $advance = $this->find($advanceId, $supplierId);
+        if ($advance === null) return [];
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT pi.id, pi.varsymbol, pi.vendor_invoice_number, pi.document_kind,
+                    pi.status, pi.issue_date, pi.total_with_vat, cur.code AS currency
+               FROM purchase_invoices pi
+               JOIN currencies cur ON cur.id = pi.currency_id
+              WHERE pi.supplier_id = ?
+                AND pi.vendor_id = ?
+                AND pi.document_kind != 'advance'
+                AND pi.status != 'cancelled'
+                AND pi.advance_purchase_invoice_id IS NULL
+                AND pi.id <> ?
+              ORDER BY (pi.currency_id = ?) DESC,
+                       ABS(pi.total_with_vat - ?) ASC,
+                       pi.issue_date DESC, pi.id DESC
+              LIMIT 50"
+        );
+        $stmt->execute([
+            $supplierId, (int) $advance['vendor_id'], $advanceId,
+            (int) $advance['currency_id'], (float) $advance['total_with_vat'],
         ]);
         return array_map(fn (array $r) => [
             'id'                    => (int) $r['id'],
