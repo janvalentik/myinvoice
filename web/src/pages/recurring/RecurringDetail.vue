@@ -236,7 +236,7 @@ async function removeAction() {
             {{ t('recurring.actions.resume') }}
           </button>
           <button v-if="auth.canWrite" @click="removeAction" :disabled="busy"
-            class="cursor-pointer inline-flex items-center gap-1.5 px-3 h-9 text-sm border border-danger-500/40 rounded-md text-danger-700 hover:bg-danger-50">
+            class="cursor-pointer inline-flex items-center gap-1.5 px-3 h-9 text-sm border border-danger-500/50 rounded-md text-danger-500 hover:bg-danger-50">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
             {{ t('recurring.actions.delete') }}
           </button>
