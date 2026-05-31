@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.9.1] — 2026-05-31
+
+Kompletní oprava importu z iDokladu po auditu celého mapování proti oficiálnímu iDoklad v3 API (Solitea SDK) — částky, přílohy, měny, země, kurzy i čísla dokladů. Řeší [#80](https://github.com/radekhulan/myinvoice/issues/80).
+
+### Fixed
+
+- **Importované faktury měly nulové částky (#80).** iDoklad v3 nevrací jednotkovou cenu položky v poli `UnitPrice`, ale vnořeně v `Prices` (autoritativní netto `Prices.TotalWithoutVat`); navíc cena může být včetně DPH dle `PriceType`. Import četl neexistující pole, takže **všechny** vydané i přijaté faktury (i dobropisy) skončily s částkou 0 Kč. Nově se čte správné netto a převádí dle režimu ceny.
+- **U přijatých faktur chyběly PDF přílohy.** Používal se neexistující endpoint (`/ReceivedInvoices/{id}/Attachments`) vracející 404. Opraveno na `/v3/Attachments/{id}/ReceivedInvoice/…`, který vrací bajty přílohy přímo v odpovědi.
+- **Měna se ignorovala — vše se importovalo v CZK.** Seznamové endpointy vrací jen číselné `CurrencyId`, ne kód měny. Doplněn převod přes číselník měn iDokladu, takže se zachová reálná měna dokladu (EUR, USD, …).
+- **Země kontaktu se ignorovala — vše CZ.** Stejná příčina (`CountryId` místo kódu); to navíc rozbíjelo automatickou detekci přenesené daňové povinnosti (reverse charge) u zahraničních dodavatelů. Doplněn převod přes číselník zemí.
+- **Kurz cizí měny mohl být 100× špatně.** iDoklad drží kurz na `ExchangeRateAmount` jednotek (u měn jako HUF/JPY = 100); nově se přepočítává na jednu jednotku.
+- **Číslo přijaté faktury a jméno kontaktu.** U přijatých faktur se nově bere číslo dodavatele (`ReceivedDocumentNumber`) místo interního čísla iDokladu; opraveno i čtení křestního jména kontaktu (`Firstname`).
+
 ## [4.9.0] — 2026-05-31
 
 Přijaté faktury: nahrání originálního dokladu už při zakládání i z detailu, ruční rekapitulace DPH přesně dle dokladu dodavatele (§ 73 ZDPH) a sjednocené, matematicky správné zaokrouhlení DPH. Řeší [#82](https://github.com/radekhulan/myinvoice/issues/82).

@@ -253,6 +253,61 @@ final class IdokladClient
         } while ($hasMore);
     }
 
+    /** @var array<int, array<int,string>>  supplier_id → (iDoklad CurrencyId → ISO kód) */
+    private array $currencyCodeCache = [];
+    /** @var array<int, array<int,string>>  supplier_id → (iDoklad CountryId → ISO2) */
+    private array $countryCodeCache = [];
+
+    /**
+     * Mapa iDoklad CurrencyId → ISO kód (CZK, EUR, …). Cachováno per supplier.
+     *
+     * NUTNÉ, protože list endpointy (IssuedInvoices/ReceivedInvoices/CreditNotes) vrací
+     * jen `CurrencyId` (int), NE `CurrencyCode` ani nested `Currency.Code`. Bez téhle mapy
+     * skončily všechny importované doklady v CZK bez ohledu na reálnou měnu (viz #80 audit).
+     *
+     * @return array<int,string>
+     */
+    public function currencyCodeMap(int $supplierId): array
+    {
+        if (isset($this->currencyCodeCache[$supplierId])) return $this->currencyCodeCache[$supplierId];
+        $map = [];
+        try {
+            foreach ($this->getAll($supplierId, 'Currencies') as $c) {
+                $id = (int) ($c['Id'] ?? 0);
+                $code = strtoupper(trim((string) ($c['Code'] ?? '')));
+                if ($id > 0 && $code !== '') $map[$id] = $code;
+            }
+        } catch (\Throwable $e) {
+            $this->logger->info('iDoklad currencyCodeMap failed', ['supplier_id' => $supplierId, 'error' => $e->getMessage()]);
+        }
+        return $this->currencyCodeCache[$supplierId] = $map;
+    }
+
+    /**
+     * Mapa iDoklad CountryId → ISO2 kód (CZ, SK, DE, …). Cachováno per supplier.
+     *
+     * List endpoint Contacts vrací jen `CountryId` (int), NE nested `Country.Code` — bez
+     * téhle mapy dostali všichni kontakti zemi CZ, což navíc rozbíjelo detekci reverse-charge
+     * u zahraničních dodavatelů (viz #80 audit).
+     *
+     * @return array<int,string>
+     */
+    public function countryCodeMap(int $supplierId): array
+    {
+        if (isset($this->countryCodeCache[$supplierId])) return $this->countryCodeCache[$supplierId];
+        $map = [];
+        try {
+            foreach ($this->getAll($supplierId, 'Countries') as $c) {
+                $id = (int) ($c['Id'] ?? 0);
+                $code = strtoupper(trim((string) ($c['Code'] ?? '')));
+                if ($id > 0 && $code !== '') $map[$id] = $code;
+            }
+        } catch (\Throwable $e) {
+            $this->logger->info('iDoklad countryCodeMap failed', ['supplier_id' => $supplierId, 'error' => $e->getMessage()]);
+        }
+        return $this->countryCodeCache[$supplierId] = $map;
+    }
+
     /**
      * Stáhne PDF pro vydanou fakturu (rendered iDoklad PDF). Endpoint:
      *   GET /v3/IssuedInvoices/{id}/Document  (application/pdf bytes).
@@ -273,33 +328,22 @@ final class IdokladClient
     /**
      * List attachments pro přijatou fakturu (PDF originály od dodavatele).
      *
-     * @return list<array<string,mixed>>  [{Id, FileName, ContentType, ...}]
+     * iDoklad v3 endpoint: GET /v3/Attachments/{documentId}/{documentType}/{compressed}
+     * documentType = `ReceivedInvoice` (enum 5). Odpověď nese bajty inline jako
+     * base64 `FileBytes` — žádný separátní download request.
+     * (Starý endpoint /ReceivedInvoices/{id}/Attachments vracel 404 → žádné PDF, viz #80.)
+     *
+     * @return list<array<string,mixed>>  [{Id, FileName, FileBytes(base64)}]
      */
     public function listReceivedAttachments(int $supplierId, int $idokladInvoiceId): array
     {
         try {
-            $r = $this->get($supplierId, 'ReceivedInvoices/' . $idokladInvoiceId . '/Attachments', 1, 100);
+            $r = $this->get($supplierId, 'Attachments/' . $idokladInvoiceId . '/ReceivedInvoice/false', 1, 100);
             return $r['Items'];
         } catch (\Throwable $e) {
             $this->logger->info('iDoklad listReceivedAttachments failed', ['invoice_id' => $idokladInvoiceId, 'error' => $e->getMessage()]);
             return [];
         }
-    }
-
-    /**
-     * Stáhne raw bytes konkrétního attachmentu pro přijatou fakturu.
-     */
-    public function downloadReceivedAttachment(int $supplierId, int $attachmentId): ?string
-    {
-        $token = $this->getToken($supplierId);
-        $url = self::API_BASE . '/ReceivedInvoices/Attachments/' . $attachmentId . '/Download';
-        $this->throttle($supplierId);
-        $resp = $this->http->get($url, [
-            'headers' => ['Authorization' => 'Bearer ' . $token],
-        ]);
-        if ($resp->getStatusCode() !== 200) return null;
-        $body = (string) $resp->getBody();
-        return $body !== '' ? $body : null;
     }
 
     /**
