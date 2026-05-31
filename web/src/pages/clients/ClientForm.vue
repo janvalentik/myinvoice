@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { clientsApi, type ClientPayload, type Client } from '@/api/clients'
@@ -176,6 +176,16 @@ onMounted(async () => {
   } else if (props.embedded && props.defaults) {
     Object.assign(form.value, props.defaults)
   }
+})
+
+// Při přepnutí mezi „Klient" (/clients/new) a „Dodavatel" (/clients/new?role=vendor)
+// se komponenta recykluje (stejná route) → setup neproběhne znovu. Bez tohoto watcheru
+// by zůstala role z prvního otevření. Reagujeme jen v režimu nového záznamu.
+watch(() => route.query.role, (role) => {
+  if (isEdit.value || props.embedded) return
+  const vendor = role === 'vendor'
+  form.value.is_vendor = vendor
+  form.value.is_customer = !vendor
 })
 
 function sanitize(c: Client): Partial<ClientPayload> {
