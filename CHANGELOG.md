@@ -5,11 +5,24 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.9.3] — 2026-06-01
+
+Per-faktura příznak „Osvobozeno od daně z příjmů" pro doklady mimo základ daně z příjmů (§ 4 ZDP / přefakturace) a sada vylepšení navigace — rychlé vytváření dokladů z horní lišty i bočního menu, předvyplnění zálohové faktury z odkazu a zpřehlednění dashboardu.
+
+### Added
+
+- **Příznak „Osvobozeno od daně z příjmů" na vydané faktuře ([#77](https://github.com/radekhulan/myinvoice/issues/77)).** Pro doklady, které nejsou základem daně z příjmů, ale pro DPH zůstávají běžným zdanitelným plněním — typicky prodej movité věci osvobozený dle § 4 odst. 1 písm. c) ZDP (vozidlo > 1 rok od nabytí) nebo přefakturace / průběžné položky (§ 23 odst. 4 ZDP). Příznak vyloučí částku ze základu daně z příjmů (výkaz DPFO/DPPO i daňový optimalizátor) a u OSVČ tím i z vyměřovacího základu SP/ZP (odvozen z dílčího základu § 7); ve výkazu se ukáže řádek „z toho osvobozeno". **DPH, kontrolní hlášení ani tržby/obrat nejsou dotčeny** (osvobození od daně z příjmů ≠ od DPH). Checkbox se v editoru nabízí jen u OSVČ — u s.r.o. § 4 neplatí a prodej majetku je vždy zdanitelný výnos.
+- **Rychlé vytváření z navigace.** V horní liště přibylo decentní tlačítko „+ Vytvořit" s menu (vydaná i zálohová faktura, pravidelná fakturace, klient, dodavatel, přijatá faktura) a v bočním menu nenápadné „+" u příslušných položek (objeví se po najetí myší). Dostupné jen pro uživatele s právem zápisu.
+- **Předvyplnění zálohové faktury z odkazu.** `/invoices/new?type=proforma` otevře editor rovnou jako zálohovou fakturu (lze kombinovat s `&client_id=`).
+
+### Changed
+
+- **Zpřehlednění dashboardu.** Odebrána redundantní akční tlačítka (přesunuta do „+ Vytvořit" v liště) i uvítací text a nadpis, aby stránka začínala rovnou daty.
 
 ### Fixed
 
 - **ISDOC export — odběratel bez IČO.** Když klient nemá vyplněné IČO (typicky B2C / fyzická osoba), posílal se fiktivní `<ID>0</ID>`. Nově se vyzařuje prázdný `<ID></ID>` (XSD validní), takže účetní software nedostává neexistující identifikátor.
+- **Přepínání role Klient ⇄ Dodavatel při zakládání.** Přechod mezi „Nový klient" a „Nový dodavatel" (stejná stránka, jen jiný parametr) nepřeklopil roli formuláře, takže záznam mohl vzniknout se špatnou rolí. Role se nyní správně mění i bez znovunačtení stránky.
 
 ## [4.9.2] — 2026-05-31
 
