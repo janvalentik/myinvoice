@@ -37,6 +37,13 @@ const submitting = ref(false)
 const loadedRate = ref<{ rate: number; date: string; currency: string } | null>(null)
 const error = ref('')
 const isForce = computed(() => route.query.force === '1')
+
+// Předvolba typu dokladu z URL (`/invoices/new?type=proforma`). Whitelist — nesmí
+// projít nic jiného než povolené typy, jinak fallback na běžnou vydanou fakturu.
+const queryDocType = computed<'proforma' | 'credit_note' | null>(() => {
+  const q = route.query.type
+  return q === 'proforma' || q === 'credit_note' ? q : null
+})
 const editedStatus = ref<string>('draft')
 const editedVarsymbol = ref<string | null>(null)
 // Náhled čísla, které dostane faktura při Vystavení (pokud user nezadá ruční override).
@@ -312,6 +319,15 @@ watch(() => form.value.issue_date, (newIssue) => {
   }
 })
 
+// Přepnutí „Vydaná faktura" (/invoices/new) ⇄ „Zálohová faktura" (?type=proforma) z menu je
+// stejná route → komponenta se recykluje, onMounted už neproběhne. Bez tohoto watcheru by typ
+// zůstal z prvního otevření. Jen v režimu nového dokladu (edit netknutý). Promítne se i do
+// titulku, čísla dokladu (loadVarsymbolPreview) a skrytí DUZP u proformy.
+watch(() => route.query.type, () => {
+  if (isEdit.value) return
+  form.value.invoice_type = queryDocType.value ?? 'invoice'
+})
+
 // Při přepnutí typu na credit_note převrať množství všech existujících položek na záporná.
 watch(() => form.value.invoice_type, (newType, oldType) => {
   if (newType === 'credit_note' && oldType !== 'credit_note') {
@@ -398,6 +414,8 @@ onMounted(async () => {
     if (editedStatus.value === 'draft') await loadVarsymbolPreview()
   } else {
     // New invoice — pre-select from query
+    // Typ dokladu z URL (?type=proforma → zálohová faktura), jinak zůstává 'invoice'.
+    if (queryDocType.value) form.value.invoice_type = queryDocType.value
     // Výchozí režim cen z nastavení dodavatele (0 = bez DPH; 1 = ceny s DPH).
     form.value.prices_include_vat = supplierStore.currentSupplier?.default_prices_include_vat ?? false
     if (route.query.client_id) {
