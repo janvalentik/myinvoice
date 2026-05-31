@@ -46,7 +46,8 @@
   /* ─── Semantic (pastel) ─── */
   --color-success-50:  #ECF6F0;
   --color-success-500: #4CAF7A;   /* soft sage */
-  --color-success-600: #3B9665;
+  --color-success-600: #3B9665;   /* primary „go/potvrdit" button (Vystavit, Zaplaceno…) */
+  --color-success-700: #2E7B53;   /* hover plného success tlačítka */
   --color-warning-50:  #FDF6E9;
   --color-warning-500: #E8A547;   /* soft amber */
   --color-warning-600: #C68A30;
@@ -116,6 +117,11 @@
   --color-success-50: #16261D;
   --color-warning-50: #2A2113;
   --color-danger-50:  #2C1717;
+  /* Zelená (Upravit — outline: border + text + ikona). V dark mírně svítivější
+     pro čitelnost na tmavém podkladu, ale ne neonová. */
+  --color-success-500: #56A98A;   /* border Upravit */
+  --color-success-600: #46A074;   /* text + ikona Upravit (a ostatní success text) */
+  --color-success-700: #2A6446;   /* hover bg tint */
   --color-accent-50:  #122231;
   /* accent-100 (soft pill bg — badge Proforma) — bez tohoto override by zůstal
      světlý #D7E8F6 a v dark módu zářil. Laděno k ostatním -50 stavům. */
