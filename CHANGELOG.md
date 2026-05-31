@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.2] — 2026-05-31
+
+Oprava importu dobropisů z iDokladu a čitelnější PDF přijaté faktury v režimu cen s DPH.
+
+### Fixed
+
+- **iDoklad import dobropisů padal na HTTP 404 (#80)** — volal se neexistující endpoint `IssuedInvoiceCorrections`, takže celý import vydaných dokladů spadl. Dle oficiálního iDoklad SDK je správný endpoint **`/v3/CreditNotes`** a odkaz na původní fakturu je **`CreditedInvoiceId`** (ne `ParentDocumentId`). Opraveno volání i mapování vazby na původní fakturu. *(Pozn.: pokud import nachází jen pár dokladů, jsou API credentials pravděpodobně vytvořené pod jinou/demo agendou iDokladu — ověř ve firmě, ke které patří.)*
+
+### Changed
+
+- **PDF přijaté faktury v režimu cen s DPH** ukazuje na řádku „Celkem s DPH" (brutto) místo „Celkem bez DPH". Jednotková cena (Cena/j) zůstává **bez DPH** (netto). Řádek je tak standardní a bez redundance dvou stejných netto čísel: *cena/j bez DPH + sazba + celkem s DPH*. Spodní rekapitulace (bez DPH / DPH / k úhradě) i běžný režim a PDF vydané faktury beze změny.
+
 ## [4.7.1] — 2026-05-31
 
 Doladění režimu cen „s DPH": jednotková cena se všude zobrazuje jako skutečné netto a editor už nepřepíná režim faktury za zády uživatele.
