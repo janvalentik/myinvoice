@@ -21,6 +21,7 @@ const auth = useAuthStore()
 const supplierStore = useSupplierStore()
 
 const mobileOpen = ref(false)
+const quickOpen = ref(false)
 
 async function logout() {
   await auth.logout()
@@ -33,6 +34,8 @@ interface NavItem {
   icon: string
   /** True = externí odkaz (otevře se v novém tabu, ne RouterLink). Např. /manual. */
   external?: boolean
+  /** Cílová route pro rychlé „+" (vytvořit nový) vpravo u položky. Jen pro zapisující. */
+  newTo?: string
 }
 interface NavSection {
   /** Hlavička sekce; pokud chybí, položky jsou bez visual grouping */
@@ -55,6 +58,7 @@ const ACCENT_CLASSES: Record<NonNullable<NavSection['accent']>, string> = {
 const ICONS = {
   dashboard:  'M3 12l9-9 9 9M5 10v10h14V10',
   invoices:   'M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z',
+  proforma:   'M2.25 8.25h19.5M2.25 9v6.75A2.25 2.25 0 0 0 4.5 18h15a2.25 2.25 0 0 0 2.25-2.25V9A2.25 2.25 0 0 0 19.5 6.75h-15A2.25 2.25 0 0 0 2.25 9zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
   recurring:  'M4 4v5h5M4 9a8 8 0 0 1 14.13-4.06M20 20v-5h-5M20 15a8 8 0 0 1-14.13 4.06',
   purchase:   'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-8 2a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
   bank:       'M3 9l9-7 9 7m-2 0v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9m4 11V13h4v7',
@@ -100,9 +104,9 @@ const navSections = computed<NavSection[]>(() => {
       title: t('nav.section_sales'),
       accent: 'primary',
       items: [
-        { to: '/invoices',         label: t('nav.invoices'),   icon: ICONS.invoices },
-        { to: '/recurring',        label: t('nav.recurring'),  icon: ICONS.recurring },
-        { to: '/clients',          label: t('nav.clients'),    icon: ICONS.clients },
+        { to: '/invoices',         label: t('nav.invoices'),   icon: ICONS.invoices,  newTo: '/invoices/new' },
+        { to: '/recurring',        label: t('nav.recurring'),  icon: ICONS.recurring, newTo: '/recurring/new' },
+        { to: '/clients',          label: t('nav.clients'),    icon: ICONS.clients,   newTo: '/clients/new' },
         { to: '/projects',         label: t('nav.projects'),   icon: ICONS.projects },
         ...(isAdmin ? [{ to: '/admin/approvals',          label: t('nav.approvals'),         icon: ICONS.approvals }] : []),
         // Export vidí všichni vč. readonly (export dat = čtení), daňové výkazy taktéž (sekce Daně níže).
@@ -114,8 +118,8 @@ const navSections = computed<NavSection[]>(() => {
       title: t('nav.section_purchase'),
       accent: 'warning',
       items: [
-        { to: '/purchase-invoices',          label: t('nav.purchase_invoices'),  icon: ICONS.purchase },
-        { to: '/clients?role=vendors',       label: t('nav.vendors'),            icon: ICONS.suppliers },
+        { to: '/purchase-invoices',          label: t('nav.purchase_invoices'),  icon: ICONS.purchase, newTo: '/purchase-invoices/new' },
+        { to: '/clients?role=vendors',       label: t('nav.vendors'),            icon: ICONS.suppliers, newTo: '/clients/new?role=vendor' },
         { to: '/purchase-invoices/export',   label: t('nav.purchase_export'),    icon: ICONS.exports },
         ...(isAdmin ? [{ to: '/admin/import?tab=purchase',  label: t('nav.imports_purchase'), icon: ICONS.imports }] : []),
         ...(isAdmin ? [{ to: '/admin/integrations?tab=ai',  label: t('nav.ai_import'),        icon: ICONS.ai }] : []),
@@ -184,6 +188,16 @@ const navSections = computed<NavSection[]>(() => {
   return sections
 })
 
+/** Rychlé zkratky v topbaru (desktop) — ikony navazují na menu (ICONS). */
+const quickActions = computed(() => [
+  { to: '/invoices/new',          label: t('nav.quick_invoice'),   icon: ICONS.invoices },
+  { to: '/invoices/new?type=proforma', label: t('nav.quick_proforma'), icon: ICONS.proforma },
+  { to: '/recurring/new',         label: t('nav.quick_recurring'), icon: ICONS.recurring },
+  { to: '/clients/new',           label: t('nav.quick_client'),    icon: ICONS.clients },
+  { to: '/clients/new?role=vendor', label: t('nav.quick_vendor'), icon: ICONS.suppliers },
+  { to: '/purchase-invoices/new', label: t('nav.quick_purchase'), icon: ICONS.purchase },
+])
+
 /** Ploché položky menu pro globální search (našeptávač skáče přímo na body menu). */
 const flatNavItems = computed(() =>
   navSections.value.flatMap(s => s.items.map(it => ({ to: it.to, label: it.label, icon: it.icon, external: it.external })))
@@ -241,8 +255,8 @@ function isActive(to: string): boolean {
   return true
 }
 
-// Zavři mobile drawer po navigaci
-watch(() => route.path, () => { mobileOpen.value = false })
+// Zavři mobile drawer + rychlé menu po navigaci
+watch(() => route.path, () => { mobileOpen.value = false; quickOpen.value = false })
 
 const versionInfo = ref<PublicVersion | null>(null)
 onMounted(async () => {
@@ -266,6 +280,45 @@ onMounted(async () => {
 
         <!-- Pravá strana topbaru -->
         <div class="flex items-center gap-2 text-sm">
+          <!-- Rychlé vytvoření (desktop, jen pro zapisující) — jedno decentní tlačítko s menu -->
+          <div v-if="auth.canWrite" class="relative hidden lg:block">
+            <button
+              type="button" @click="quickOpen = !quickOpen"
+              class="cursor-pointer inline-flex items-center gap-1.5 h-8 pl-2 pr-2.5 text-sm rounded-md border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-primary-700 transition-colors"
+              :class="{ 'bg-neutral-50 text-primary-700': quickOpen }"
+              :aria-expanded="quickOpen" :aria-label="t('nav.quick_new')"
+            >
+              <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
+              </svg>
+              <span>{{ t('nav.quick_new') }}</span>
+              <svg class="w-3 h-3 ml-0.5 transition" :class="{ 'rotate-180': quickOpen }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <transition
+              enter-active-class="transition duration-100 ease-out"
+              enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100"
+              leave-active-class="transition duration-75 ease-in"
+              leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95"
+            >
+              <div v-if="quickOpen" class="absolute right-0 mt-1 w-52 bg-surface border border-neutral-200 rounded-lg shadow-lg py-1 z-40">
+                <RouterLink
+                  v-for="s in quickActions" :key="s.to" :to="s.to" @click="quickOpen = false"
+                  class="flex items-center gap-2.5 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 hover:text-primary-700"
+                >
+                  <svg class="w-4 h-4 shrink-0 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="s.icon" />
+                  </svg>
+                  <span>{{ s.label }}</span>
+                </RouterLink>
+              </div>
+            </transition>
+            <div v-if="quickOpen" @click="quickOpen = false" class="fixed inset-0 z-10" aria-hidden="true"></div>
+          </div>
+          <!-- Jemný předěl, aby „Vytvořit" nebylo nalepené na jméně uživatele -->
+          <span v-if="auth.canWrite" class="hidden lg:inline-block w-px h-5 bg-neutral-200 mx-1" aria-hidden="true"></span>
+
           <!-- Jméno uživatele (desktop) — link na profil (heslo + 2FA v záložkách). -->
           <RouterLink
             to="/profile/password"
@@ -407,21 +460,37 @@ onMounted(async () => {
                   <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                 </svg>
               </a>
-              <RouterLink
-                v-else
-                :to="item.to"
-                active-class=""
-                exact-active-class=""
-                class="flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm transition-colors leading-tight"
-                :class="isActive(item.to)
-                  ? 'bg-primary-50 text-primary-700 font-medium'
-                  : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'"
-              >
-                <svg class="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
-                </svg>
-                {{ item.label }}
-              </RouterLink>
+              <div v-else class="relative group">
+                <RouterLink
+                  :to="item.to"
+                  active-class=""
+                  exact-active-class=""
+                  class="flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-sm transition-colors leading-tight"
+                  :class="[
+                    isActive(item.to)
+                      ? 'bg-primary-50 text-primary-700 font-medium'
+                      : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100',
+                    item.newTo && auth.canWrite ? 'pr-8' : '',
+                  ]"
+                >
+                  <svg class="w-[15px] h-[15px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" :d="item.icon" />
+                  </svg>
+                  {{ item.label }}
+                </RouterLink>
+                <!-- Rychlé „+" (vytvořit nový) — skryté, odhalí se až při hoveru nad položkou -->
+                <RouterLink
+                  v-if="item.newTo && auth.canWrite"
+                  :to="item.newTo"
+                  :title="t('nav.quick_new')"
+                  :aria-label="t('nav.quick_new')"
+                  class="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded-md text-neutral-400 hover:text-primary-700 hover:bg-primary-100 transition-all opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus:opacity-100"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v8m4-4H8M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+                  </svg>
+                </RouterLink>
+              </div>
             </template>
           </template>
         </nav>
@@ -523,6 +592,9 @@ onMounted(async () => {
             </svg>
             <span>GitHub</span>
           </a>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/radekhulan/myinvoice#podpora-autora" target="_blank" rel="noopener"
+             class="hover:text-neutral-700">{{ t('nav.support_dev') }}</a>
         </footer>
       </div>
     </div>

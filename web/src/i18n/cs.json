@@ -124,7 +124,9 @@
     "log": "Log", "cron_jobs": "Plánované úlohy", "exports": "Export vystavených", "imports": "Importy", "imports_issued": "Import vystavených", "imports_purchase": "Import přijatých", "ai_import": "AI import", "integrations": "Externí integrace", "crm": "CRM", "reports_dph": "DPH přiznání", "reports_kh": "Kontrolní hlášení", "reports_dph_book": "Kniha DPH", "reports_shv": "Souhrnné hlášení", "reports_income_tax": "Daň z příjmů", "reports_submissions": "Archiv podání", "reports_monthly_export": "Měsíční export", "tax_optimizer": "Daňový optimalizátor", "email_templates": "Email šablony", "approvals": "Schvalování", "updates": "Aktualizace", "api_tokens": "API tokeny", "recurring": "Pravidelné fakturace", "help": "Nápověda", "logout": "Odhlásit",
     "section_sales": "Prodej", "section_purchase": "Nákup", "section_finance": "Finance", "section_clients": "Klienti",
     "section_documents": "Dokumenty", "documents": "Dokumenty",
-    "purchase_invoices": "Přijaté faktury", "purchase_export": "Export přijatých", "vendors": "Dodavatelé"
+    "purchase_invoices": "Přijaté faktury", "purchase_export": "Export přijatých", "vendors": "Dodavatelé",
+    "support_dev": "Podpořte rozvoj",
+    "quick_new": "Vytvořit", "quick_invoice": "Vydaná faktura", "quick_proforma": "Zálohová faktura", "quick_recurring": "Pravidelná fakturace", "quick_client": "Klient", "quick_vendor": "Dodavatel", "quick_purchase": "Přijatá faktura"
   },
   "purchase_invoice": {
     "title": "Přijaté faktury",

@@ -99,25 +99,6 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
 
 <template>
   <div>
-    <div class="flex items-start justify-between gap-3 mb-6 flex-wrap">
-      <div>
-        <h1 class="text-2xl font-semibold mb-1">{{ t('dashboard.title') }}</h1>
-        <p class="text-sm text-neutral-500">
-          {{ t('dashboard.welcome_back', { name: auth.user?.name }) }}
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <RouterLink v-if="auth.canWrite" to="/invoices/new"
-          class="inline-flex items-center h-9 px-4 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-md shadow-sm">
-          {{ t('invoice.new') }}
-        </RouterLink>
-        <RouterLink v-if="auth.canWrite" to="/clients/new"
-          class="inline-flex items-center h-9 px-4 border border-primary-500/40 bg-surface hover:bg-primary-50 text-primary-700 text-sm font-medium rounded-md">
-          {{ t('client.new') }}
-        </RouterLink>
-      </div>
-    </div>
-
     <div v-if="loading" class="text-center text-neutral-500 py-12">{{ t('dashboard.loading_data') }}</div>
 
     <div v-else-if="error" class="rounded-md bg-danger-50 border border-danger-500/40 px-3 py-2 text-sm text-danger-500">

@@ -124,7 +124,9 @@
     "log": "Activity log", "cron_jobs": "Scheduled jobs", "exports": "Issued exports", "imports": "Imports", "imports_issued": "Imports (issued)", "imports_purchase": "Imports (purchase)", "ai_import": "AI import", "integrations": "External integrations", "crm": "CRM", "reports_dph": "VAT return", "reports_kh": "Control statement", "reports_dph_book": "VAT ledger", "reports_shv": "Recapitulative statement", "reports_income_tax": "Income tax", "reports_submissions": "Submission archive", "reports_monthly_export": "Monthly export", "tax_optimizer": "Tax optimizer", "email_templates": "Email templates", "approvals": "Approvals", "updates": "Updates", "api_tokens": "API tokens", "recurring": "Recurring invoices", "help": "Help", "logout": "Sign out",
     "section_sales": "Sales", "section_purchase": "Purchases", "section_finance": "Finance", "section_clients": "Clients",
     "section_documents": "Documents", "documents": "Documents",
-    "purchase_invoices": "Received invoices", "purchase_export": "Received exports", "vendors": "Vendors"
+    "purchase_invoices": "Received invoices", "purchase_export": "Received exports", "vendors": "Vendors",
+    "support_dev": "Support development",
+    "quick_new": "Create", "quick_invoice": "Issued invoice", "quick_proforma": "Proforma invoice", "quick_recurring": "Recurring invoice", "quick_client": "Client", "quick_vendor": "Vendor", "quick_purchase": "Received invoice"
   },
   "purchase_invoice": {
     "title": "Received invoices",
