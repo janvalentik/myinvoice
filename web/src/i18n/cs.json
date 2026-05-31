@@ -988,7 +988,7 @@
     "language": "Jazyk",
     "reverse_charge": "Reverse charge",
     "prices_include_vat": "Ceny zadávám včetně DPH",
-    "prices_include_vat_hint": "Ceny položek jsou s DPH (brutto); DPH se počítá shora. Zadáním částky do sloupce „Celkem s DPH“ se režim zapne automaticky.",
+    "prices_include_vat_hint": "Ceny položek jsou s DPH (brutto); DPH se počítá shora koeficientem, takže celek sedí na haléř.",
     "advance_paid": "Odečet zálohy",
     "note_above": "Poznámka nad položkami",
     "note_below": "Poznámka pod položkami",

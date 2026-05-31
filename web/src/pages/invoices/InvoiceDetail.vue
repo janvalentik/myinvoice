@@ -34,6 +34,17 @@ const wrModalOpen = ref(false)
 const loading = ref(true)
 const busy = ref<string | null>(null)
 
+// V režimu „ceny s DPH" nese unit_price_without_vat brutto (kvůli haléřově přesnému
+// výpočtu DPH koeficientem). Pro zobrazení proto ukazujeme skutečné NETTO dopočtené
+// z uloženého řádkového základu (total_without_vat / množství). V běžném režimu je
+// unit_price_without_vat už netto → vracíme ho beze změny.
+function displayUnitPriceNet(item: { quantity: number; unit_price_without_vat: number; total_without_vat?: number }): number {
+  if (invoice.value?.prices_include_vat && Number(item.quantity)) {
+    return Math.round(((item.total_without_vat ?? 0) / Number(item.quantity)) * 100) / 100
+  }
+  return item.unit_price_without_vat
+}
+
 // Cancel modal state
 const cancelOpen = ref(false)
 const cancelMode = ref<'internal' | 'credit_note' | 'delete'>('credit_note')
@@ -1012,7 +1023,7 @@ async function updateApprovalStatus() {
             <td class="px-4 py-2.5 whitespace-pre-wrap">{{ item.description }}</td>
             <td class="px-4 py-2.5 text-right font-mono">{{ item.item_kind === 'discount' ? '' : item.quantity }}</td>
             <td class="px-4 py-2.5 text-neutral-600">{{ item.item_kind === 'discount' ? '' : item.unit }}</td>
-            <td class="px-4 py-2.5 text-right font-mono">{{ item.item_kind === 'discount' ? '' : formatMoney(item.unit_price_without_vat, invoice.currency) }}</td>
+            <td class="px-4 py-2.5 text-right font-mono">{{ item.item_kind === 'discount' ? '' : formatMoney(displayUnitPriceNet(item), invoice.currency) }}</td>
             <td v-if="supplierIsVatPayer" class="px-4 py-2.5 text-center text-xs">{{ formatPercent(item.vat_rate_snapshot ?? 0) }}</td>
             <td v-if="supplierIsVatPayer" class="px-4 py-2.5 text-right font-mono">{{ formatMoney(item.total_without_vat ?? 0, invoice.currency) }}</td>
             <td class="px-4 py-2.5 text-right font-mono font-medium">{{ formatMoney(supplierIsVatPayer ? (item.total_with_vat ?? 0) : (item.total_without_vat ?? 0), invoice.currency) }}</td>
@@ -1030,7 +1041,7 @@ async function updateApprovalStatus() {
               <span class="font-mono text-neutral-700">{{ item.quantity }}</span>
               <span class="ml-1">{{ item.unit }}</span>
               <span class="text-neutral-400 mx-1.5">·</span>
-              <span class="font-mono">{{ formatMoney(item.unit_price_without_vat, invoice.currency) }}</span>
+              <span class="font-mono">{{ formatMoney(displayUnitPriceNet(item), invoice.currency) }}</span>
               <template v-if="supplierIsVatPayer">
                 <span class="text-neutral-400 mx-1.5">·</span>
                 <span>{{ formatPercent(item.vat_rate_snapshot ?? 0) }}</span>

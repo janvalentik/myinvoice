@@ -248,6 +248,39 @@ final class InvoiceMathTest extends TestCase
         self::assertSame(1000.00, $r['totals']['with_vat']);
     }
 
+    public function testTopDownDisplayNetUnitPriceDerivation(): void
+    {
+        // DUALITA ZOBRAZENÍ: v režimu „ceny s DPH" nese unit_price_without_vat brutto,
+        // ale UI/PDF/exporty ukazují NETTO jednotkovou cenu = round(řádkový base / množství).
+        // Tento test fixuje invariant, na kterém ta zobrazení stojí.
+        // 2 ks × 605 Kč s DPH @21 % → řádkový gross 1210, base 1000, DPH 210.
+        $r = InvoiceMath::compute([
+            ['quantity' => 2, 'unit_price_without_vat' => 605.00, 'vat_rate_snapshot' => 21],
+        ], pricesIncludeVat: true);
+
+        self::assertSame(1000.00, $r['items'][0]['base']);
+        self::assertSame(210.00,  $r['items'][0]['vat']);
+        self::assertSame(1210.00, $r['items'][0]['with']);
+
+        // Netto jednotková cena pro zobrazení = base / množství = 500,00.
+        $qty = 2.0;
+        $displayNetUnit = round($r['items'][0]['base'] / $qty, 2);
+        self::assertSame(500.00, $displayNetUnit);
+        // A zpětně: netto × množství × (1+sazba) musí dát přesně řádkový gross.
+        self::assertSame(1210.00, round($displayNetUnit * $qty * 1.21, 2));
+    }
+
+    public function testDisplayNetUnitPriceEqualsRawInBottomUpMode(): void
+    {
+        // V běžném režimu (zdola) je unit_price_without_vat už netto → zobrazení musí být
+        // identické s uloženou jednotkovou cenou (base/qty == unit_price).
+        $r = InvoiceMath::compute([
+            ['quantity' => 3, 'unit_price_without_vat' => 333.33, 'vat_rate_snapshot' => 21],
+        ]);
+        $displayNetUnit = round($r['items'][0]['base'] / 3.0, 2);
+        self::assertSame(333.33, $displayNetUnit);
+    }
+
     public function testBottomUpUnchangedWhenFlagFalse(): void
     {
         // Regrese: stejná data zdola (default) vs. shora dají RŮZNÝ základ/daň —

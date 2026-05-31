@@ -19,6 +19,17 @@ const invoice = ref<PurchaseInvoice | null>(null)
 const loading = ref(true)
 const error = ref('')
 const acting = ref(false)
+
+// V režimu „ceny s DPH" nese unit_price_without_vat brutto (kvůli haléřově přesnému
+// výpočtu DPH koeficientem). Pro zobrazení proto ukazujeme skutečné NETTO dopočtené
+// z uloženého řádkového základu (total_without_vat / množství). V běžném režimu je
+// unit_price_without_vat už netto → vracíme ho beze změny.
+function displayUnitPriceNet(it: { quantity: number; unit_price_without_vat: number; total_without_vat?: number }): number {
+  if (invoice.value?.prices_include_vat && Number(it.quantity)) {
+    return Math.round(((it.total_without_vat ?? 0) / Number(it.quantity)) * 100) / 100
+  }
+  return it.unit_price_without_vat
+}
 const pdfPreviewOpen = ref(false) // default collapsed — user explicitně otevře (Edge blokuje attachment inline)
 const dismissingWarning = ref(false)
 
@@ -496,7 +507,7 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
             <td class="py-2 px-5">{{ it.description }}</td>
             <td class="py-2 px-2 text-right font-mono">{{ it.quantity }}</td>
             <td class="py-2 px-2">{{ it.unit }}</td>
-            <td class="py-2 px-2 text-right font-mono">{{ formatMoney(it.unit_price_without_vat, invoice.currency) }}</td>
+            <td class="py-2 px-2 text-right font-mono">{{ formatMoney(displayUnitPriceNet(it), invoice.currency) }}</td>
             <td class="py-2 px-2 text-right">{{ it.vat_rate_snapshot }}%</td>
             <td class="py-2 px-5 text-right font-mono">{{ formatMoney(it.total_with_vat, invoice.currency) }}</td>
           </tr>

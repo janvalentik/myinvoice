@@ -78,8 +78,9 @@ Souhrn dole se přepočítá automaticky po každé změně.
 > 💡 **Ceny „s DPH" (brutto režim)** *(od v4.7.0)* — přepínačem **Ceny zadávám
 > s DPH** (u DPH v hlavičce) lze zadat položky **včetně DPH** (typicky účtenka /
 > paragon), takže celková částka sedí na haléř. DPH se pak počítá „shora"
-> koeficientovou metodou (§37 ZDP); zadáním ceny do sloupce „Celkem s DPH" se režim
-> zapne automaticky. Funguje stejně jako u vystavených faktur — viz
+> koeficientovou metodou (§37 ZDP). Zadání ceny do sloupce „Celkem s DPH" respektuje
+> aktuální režim (nepřepíná ho); jednotková cena se v detailu i PDF zobrazuje jako
+> netto. Funguje stejně jako u vystavených faktur — viz
 > [§ 11.2.6](11_Faktura_editor.md#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim).
 > AI import účtenek režim nastaví sám.
 

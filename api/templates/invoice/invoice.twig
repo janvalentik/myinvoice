@@ -201,7 +201,9 @@
       {% else %}
       <td class="num nowrap">{{ item.quantity|number_format(item.quantity == item.quantity|round(0) ? 0 : 3, decimal_sep, thousand_sep) }}</td>
       <td>{{ item.unit }}</td>
-      <td class="num nowrap">{{ item.unit_price_without_vat|number_format(2, decimal_sep, thousand_sep) }}</td>
+      {# V režimu „ceny s DPH" nese unit_price_without_vat brutto; pro zobrazení dopočítáme
+         skutečné netto z řádkového základu (total_without_vat / množství). #}
+      <td class="num nowrap">{{ (invoice.prices_include_vat and item.quantity != 0 ? item.total_without_vat / item.quantity : item.unit_price_without_vat)|number_format(2, decimal_sep, thousand_sep) }}</td>
       {% endif %}
       {% if supplier.is_vat_payer %}
       <td class="center nowrap">{{ item.vat_rate_snapshot|number_format(item.vat_rate_snapshot == item.vat_rate_snapshot|round(0) ? 0 : 2, decimal_sep, thousand_sep) }}&nbsp;%</td>

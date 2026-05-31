@@ -57,15 +57,27 @@ final class PurchaseInvoicePdfRenderer
             'with_vat'    => $invoice['total_with_vat'] ?? 0,
         ];
 
+        // V režimu „ceny s DPH" nese unit_price_without_vat brutto (kvůli haléřově přesnému
+        // výpočtu DPH koeficientem); pro zobrazení dopočítáme skutečné NETTO z řádkového
+        // základu (total_without_vat / množství). V běžném režimu je už netto.
+        $pricesIncludeVat = !empty($invoice['prices_include_vat']);
+
         // Map items na shape co Twig očekává
-        $itemsNorm = array_map(fn ($it) => [
-            'description'            => $it['description'] ?? '',
-            'quantity'               => (float) ($it['quantity'] ?? 1),
-            'unit'                   => $it['unit'] ?? 'ks',
-            'unit_price_without_vat' => (float) ($it['unit_price_without_vat'] ?? 0),
-            'vat_rate'               => (float) ($it['vat_rate_snapshot'] ?? $it['vat_rate'] ?? 0),
-            'total_without_vat'      => (float) ($it['total_without_vat'] ?? 0),
-        ], $items);
+        $itemsNorm = array_map(function ($it) use ($pricesIncludeVat) {
+            $qty  = (float) ($it['quantity'] ?? 1);
+            $base = (float) ($it['total_without_vat'] ?? 0);
+            $unitNet = ($pricesIncludeVat && $qty != 0.0)
+                ? round($base / $qty, 2)
+                : (float) ($it['unit_price_without_vat'] ?? 0);
+            return [
+                'description'            => $it['description'] ?? '',
+                'quantity'               => $qty,
+                'unit'                   => $it['unit'] ?? 'ks',
+                'unit_price_without_vat' => $unitNet,
+                'vat_rate'               => (float) ($it['vat_rate_snapshot'] ?? $it['vat_rate'] ?? 0),
+                'total_without_vat'      => $base,
+            ];
+        }, $items);
 
         $locale = $invoice['language'] ?? 'cs';
         $docTypeLabel = $this->docTypeLabel($invoice['document_kind'] ?? 'invoice', $locale);

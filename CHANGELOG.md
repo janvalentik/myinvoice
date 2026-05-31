@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.7.1] — 2026-05-31
+
+Doladění režimu cen „s DPH": jednotková cena se všude zobrazuje jako skutečné netto a editor už nepřepíná režim faktury za zády uživatele.
+
+### Changed
+
+- **Zadání ceny „Celkem s DPH" už nepřepíná celou fakturu do režimu „ceny s DPH"** — v editoru vydaných i přijatých faktur se po vyplnění částky do sloupce „Celkem s DPH" respektuje **aktuální režim dokladu**: v běžném režimu se z brutto dopočítá jednotková cena **bez DPH** (odečtením DPH shora), v režimu „ceny s DPH" se uloží brutto jako dosud. Dřív se tím režim faktury automaticky zapínal, což bylo matoucí.
+
+### Fixed
+
+- **Jednotková cena „bez DPH" se v režimu cen s DPH zobrazovala jako brutto** — v tomto režimu nese pole `unit_price_without_vat` z technických důvodů cenu **s DPH** (aby DPH koeficientem seděla na haléř), takže se pod hlavičkou „Cena/MJ bez DPH" ukazovala částka s DPH. Nově se **všude** dopočítává a zobrazuje skutečné **netto** (z uloženého řádkového základu): detail vydané i přijaté faktury (desktop i mobil), **PDF** vydané i přijaté faktury, exporty **ISDOC** (`UnitPrice`/`UnitPriceTaxInclusive`) a **Pohoda XML** (`unitPrice`) i souhrn na detailu **pravidelné fakturace**. Daňové částky (základ, DPH, celkem) byly po celou dobu správné — šlo čistě o zobrazení jednotkové ceny; do přiznání DPH / kontrolního hlášení `unit_price_without_vat` nevstupuje (daň jede z uložených řádkových totálů).
+- **Souhrn na detailu pravidelné fakturace v režimu cen s DPH** počítal základ a DPH zdola (jako by ceny byly bez DPH), takže přepočítával celkovou částku. Nově respektuje koeficient (shora), stejně jako generovaná faktura.
+
 ## [4.7.0] — 2026-05-31
 
 Import faktur a účtenek z fotek, režim cen „s DPH" (brutto) napříč doklady a daňově korektní zacházení s dodavateli neplátci DPH.

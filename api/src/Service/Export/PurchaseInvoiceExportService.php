@@ -88,6 +88,9 @@ final class PurchaseInvoiceExportService
             'currency'        => $pi['currency'] ?? 'CZK',
             'exchange_rate'   => $pi['exchange_rate'] ?? null,
             'reverse_charge'  => $pi['reverse_charge'] ?? false,
+            // Aby exporter dopočítal netto jednotkovou cenu z řádkového základu (v tomto
+            // režimu nese unit_price_without_vat brutto).
+            'prices_include_vat' => !empty($pi['prices_include_vat']),
             'language'        => $pi['language'] ?? 'cs',
             // **Inverted roles**:
             //   - Vystavená: supplier=náš tenant, client=zákazník

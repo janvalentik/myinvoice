@@ -253,12 +253,21 @@ final class IsdocExporter
             // InvoiceLine řadí <…Curr> PŘED base sourozence (viz XSD sekvence).
             // UnitPrice/UnitPriceTaxInclusive/LineExtensionTaxAmount Curr variantu
             // nemají — dle standardu jsou vždy v lokální měně.
-            $unitPrice = (float) $item['unit_price_without_vat'];
+            // UnitPrice je BEZ DPH. V režimu „ceny s DPH" nese unit_price_without_vat brutto,
+            // proto jednotkové ceny dopočítáme z řádkových totálů (netto z base, s DPH z tot).
+            $qtyItem = (float) $item['quantity'];
+            $pricesInclVat = !empty($invoice['prices_include_vat']);
+            $unitPrice = ($pricesInclVat && $qtyItem != 0.0)
+                ? round($base / $qtyItem, 2)
+                : (float) $item['unit_price_without_vat'];
+            $unitPriceInclVat = ($pricesInclVat && $qtyItem != 0.0)
+                ? round($tot / $qtyItem, 2)
+                : $unitPrice * (1 + ((float) ($item['vat_rate_snapshot'] ?? 0)) / 100);
             $this->elAmountCurr($dom, $line, 'LineExtensionAmount', $base, true);
             $this->elAmountCurr($dom, $line, 'LineExtensionAmountTaxInclusive', $tot, true);
             $this->elAmount($dom, $line, 'LineExtensionTaxAmount', $vat);
             $this->elAmount($dom, $line, 'UnitPrice', $unitPrice);
-            $this->elAmount($dom, $line, 'UnitPriceTaxInclusive', $unitPrice * (1 + ((float) ($item['vat_rate_snapshot'] ?? 0)) / 100));
+            $this->elAmount($dom, $line, 'UnitPriceTaxInclusive', $unitPriceInclVat);
 
             // Na úrovni řádky je správný název <ClassifiedTaxCategory>
             // (na úrovni TaxSubTotal se používá <TaxCategory> — pozor na rozdíl).

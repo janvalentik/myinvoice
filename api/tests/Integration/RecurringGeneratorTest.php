@@ -344,6 +344,165 @@ final class RecurringGeneratorTest extends TestCase
         $this->assertNotContains('0.00', $snap->fetchAll(PDO::FETCH_COLUMN), 'Položky musí mít reálný vat_rate_snapshot, ne 0');
     }
 
+    /**
+     * Přenos šablony s `prices_include_vat=true` do VYDANÉ faktury: režim se musí
+     * propsat, DPH se počítá koeficientem (na haléř), unit_price_without_vat nese
+     * brutto, ale uložený řádkový základ + zobrazené netto sedí na haléř.
+     */
+    public function testGeneratorPricesIncludeVatInvoiceUsesCoefficientAndKeepsGrossUnitPrice(): void
+    {
+        $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $stmt = $this->db->pdo()->prepare('SELECT rate_percent FROM vat_rates WHERE id = ?');
+        $stmt->execute([$this->vatRateId]);
+        $rate = (float) $stmt->fetchColumn();
+        if ($rate <= 0.0) {
+            $this->markTestSkipped('Default sazba je 0 % — koeficient nelze ověřit.');
+        }
+
+        $tplId = $this->repo->create([
+            'supplier_id'      => $this->supplierId,
+            'client_id'        => $this->clientId,
+            'name'             => 'TEST recurring s DPH (PHPUnit)',
+            'frequency'        => 'monthly',
+            'end_of_month'     => false,
+            'anchor_date'      => $today,
+            'next_run_date'    => $today,
+            'invoice_type'     => 'invoice',
+            'currency_id'      => $this->currencyId,
+            'language'         => 'cs',
+            'payment_method'   => 'bank_transfer',
+            'reverse_charge'   => false,
+            'prices_include_vat' => true,
+            'payment_due_days' => 14,
+            'increment_month_in_descriptions' => false,
+            'auto_issue'       => false,
+            'auto_send_email'  => false,
+        ], $this->userId);
+        $this->createdTemplateIds[] = $tplId;
+
+        // 2 ks × 605 Kč S DPH → řádkový gross 1210.
+        $this->repo->replaceItems($tplId, [[
+            'description' => 'Paušál s DPH',
+            'quantity' => 2.0,
+            'unit' => 'ks',
+            'unit_price_without_vat' => 605.00, // v režimu s DPH = cena včetně DPH
+            'vat_rate_id' => $this->vatRateId,
+            'order_index' => 0,
+        ]]);
+
+        $result = $this->generator->generate($tplId, $today, $this->userId, '127.0.0.1', 'phpunit');
+        $this->createdInvoiceIds[] = $result['invoice_id'];
+
+        // Očekávané hodnoty koeficientem z grossu 1210.
+        $gross = 1210.00;
+        $expVat  = round($gross * $rate / (100.0 + $rate), 2);
+        $expBase = round($gross - $expVat, 2);
+
+        $inv = $this->db->pdo()->prepare(
+            'SELECT prices_include_vat, total_without_vat, total_vat, total_with_vat FROM invoices WHERE id = ?'
+        );
+        $inv->execute([$result['invoice_id']]);
+        $invRow = $inv->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame(1, (int) $invRow['prices_include_vat'], 'Režim ceny s DPH se musí propsat do faktury');
+        $this->assertEqualsWithDelta($gross, (float) $invRow['total_with_vat'], 0.001, 'Celek s DPH musí sedět přesně na zadaný gross');
+        $this->assertEqualsWithDelta($expVat, (float) $invRow['total_vat'], 0.001);
+        $this->assertEqualsWithDelta($expBase, (float) $invRow['total_without_vat'], 0.001);
+
+        // Položka: unit_price_without_vat nese BRUTTO (605), ale řádkový základ je netto.
+        $it = $this->db->pdo()->prepare(
+            'SELECT quantity, unit_price_without_vat, total_without_vat, total_with_vat FROM invoice_items WHERE invoice_id = ?'
+        );
+        $it->execute([$result['invoice_id']]);
+        $itRow = $it->fetch(PDO::FETCH_ASSOC);
+        $this->assertEqualsWithDelta(605.00, (float) $itRow['unit_price_without_vat'], 0.001, 'V režimu s DPH drží unit_price brutto');
+        $this->assertEqualsWithDelta($expBase, (float) $itRow['total_without_vat'], 0.001);
+        $this->assertEqualsWithDelta($gross, (float) $itRow['total_with_vat'], 0.001);
+
+        // Zobrazené NETTO jednotkové ceny = base / množství; zpětně × množství × (1+sazba) = gross.
+        $displayNetUnit = round((float) $itRow['total_without_vat'] / (float) $itRow['quantity'], 2);
+        $this->assertEqualsWithDelta($gross, round($displayNetUnit * (float) $itRow['quantity'] * (1 + $rate / 100), 2), 0.02);
+
+        // ISDOC export: UnitPrice musí být NETTO (ne brutto), UnitPriceTaxInclusive brutto/ks.
+        try {
+            $isdoc = Bootstrap::buildApp()->getContainer()->get(\MyInvoice\Service\Export\IsdocExporter::class);
+        } catch (\Throwable $e) {
+            return; // exporter nedostupný v DI — zbytek testu stačí
+        }
+        $repoInv = Bootstrap::buildApp()->getContainer()->get(\MyInvoice\Repository\InvoiceRepository::class)->find($result['invoice_id']);
+        $xml = $isdoc->buildXml($repoInv);
+        $dom = new \DOMDocument();
+        $dom->loadXML($xml);
+        $unitPrice = $dom->getElementsByTagNameNS('*', 'UnitPrice')->item(0);
+        $unitPriceVat = $dom->getElementsByTagNameNS('*', 'UnitPriceTaxInclusive')->item(0);
+        $this->assertNotNull($unitPrice, 'ISDOC má UnitPrice');
+        $this->assertEqualsWithDelta($displayNetUnit, (float) $unitPrice->nodeValue, 0.02, 'ISDOC UnitPrice musí být NETTO');
+        $this->assertEqualsWithDelta(605.00, (float) $unitPriceVat->nodeValue, 0.02, 'ISDOC UnitPriceTaxInclusive = brutto/ks');
+    }
+
+    /**
+     * Stejný režim s DPH, ale invoice_type=proforma — musí se chovat identicky
+     * (přenos příznaku + koeficient).
+     */
+    public function testGeneratorPricesIncludeVatProformaPreservesFlagAndTotals(): void
+    {
+        $today = (new \DateTimeImmutable('today'))->format('Y-m-d');
+        $stmt = $this->db->pdo()->prepare('SELECT rate_percent FROM vat_rates WHERE id = ?');
+        $stmt->execute([$this->vatRateId]);
+        $rate = (float) $stmt->fetchColumn();
+        if ($rate <= 0.0) {
+            $this->markTestSkipped('Default sazba je 0 % — koeficient nelze ověřit.');
+        }
+
+        $tplId = $this->repo->create([
+            'supplier_id'      => $this->supplierId,
+            'client_id'        => $this->clientId,
+            'name'             => 'TEST recurring proforma s DPH (PHPUnit)',
+            'frequency'        => 'monthly',
+            'end_of_month'     => false,
+            'anchor_date'      => $today,
+            'next_run_date'    => $today,
+            'invoice_type'     => 'proforma',
+            'currency_id'      => $this->currencyId,
+            'language'         => 'cs',
+            'payment_method'   => 'bank_transfer',
+            'reverse_charge'   => false,
+            'prices_include_vat' => true,
+            'payment_due_days' => 14,
+            'increment_month_in_descriptions' => false,
+            'auto_issue'       => false,
+            'auto_send_email'  => false,
+        ], $this->userId);
+        $this->createdTemplateIds[] = $tplId;
+
+        // 1 ks × 1000 Kč S DPH.
+        $this->repo->replaceItems($tplId, [[
+            'description' => 'Záloha s DPH',
+            'quantity' => 1.0,
+            'unit' => 'ks',
+            'unit_price_without_vat' => 1000.00,
+            'vat_rate_id' => $this->vatRateId,
+            'order_index' => 0,
+        ]]);
+
+        $result = $this->generator->generate($tplId, $today, $this->userId, '127.0.0.1', 'phpunit');
+        $this->createdInvoiceIds[] = $result['invoice_id'];
+
+        $gross = 1000.00;
+        $expVat  = round($gross * $rate / (100.0 + $rate), 2);
+        $expBase = round($gross - $expVat, 2);
+
+        $inv = $this->db->pdo()->prepare(
+            'SELECT invoice_type, prices_include_vat, total_without_vat, total_vat, total_with_vat FROM invoices WHERE id = ?'
+        );
+        $inv->execute([$result['invoice_id']]);
+        $invRow = $inv->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('proforma', $invRow['invoice_type']);
+        $this->assertSame(1, (int) $invRow['prices_include_vat']);
+        $this->assertEqualsWithDelta($gross, (float) $invRow['total_with_vat'], 0.001);
+        $this->assertEqualsWithDelta($expVat, (float) $invRow['total_vat'], 0.001);
+        $this->assertEqualsWithDelta($expBase, (float) $invRow['total_without_vat'], 0.001);
+    }
+
     public function testGenerateForceDraftLeavesDraftDespiteAutoIssue(): void
     {
         // „Vygenerovat koncept" u at_issue šablony s auto_issue=true → přesto draft.

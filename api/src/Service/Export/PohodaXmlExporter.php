@@ -226,7 +226,13 @@ final class PohodaXmlExporter
                 // Pohoda dopočítá CZK z kurzu uvedeného v summary)
                 $blockName = $isForeign ? 'inv:foreignCurrency' : 'inv:homeCurrency';
                 $block = $dom->createElementNS(self::NS_INV, $blockName);
-                $this->el($dom, $block, self::NS_TYP, 'typ:unitPrice', $this->fmt((float) $item['unit_price_without_vat']));
+                // payVAT=false → unitPrice musí být BEZ DPH. V režimu „ceny s DPH" nese
+                // unit_price_without_vat brutto, proto dopočítáme netto z řádkového základu.
+                $qtyItem = (float) $item['quantity'];
+                $unitPriceNet = (!empty($invoice['prices_include_vat']) && $qtyItem != 0.0)
+                    ? round(((float) ($item['total_without_vat'] ?? 0)) / $qtyItem, 2)
+                    : (float) $item['unit_price_without_vat'];
+                $this->el($dom, $block, self::NS_TYP, 'typ:unitPrice', $this->fmt($unitPriceNet));
                 $this->el($dom, $block, self::NS_TYP, 'typ:price',     $this->fmt((float) ($item['total_without_vat'] ?? 0)));
                 $this->el($dom, $block, self::NS_TYP, 'typ:priceVAT',  $this->fmt((float) ($item['total_vat'] ?? 0)));
                 $this->el($dom, $block, self::NS_TYP, 'typ:priceSum',  $this->fmt((float) ($item['total_with_vat'] ?? 0)));

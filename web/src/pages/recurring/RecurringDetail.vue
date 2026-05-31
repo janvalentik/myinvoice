@@ -62,16 +62,36 @@ function round2(n: number): number {
 const totals = computed(() => {
   if (!tpl.value?.items?.length) return { base: 0, vat: 0, total: 0 }
   const reverseCharge = tpl.value.reverse_charge
+  // V režimu „ceny s DPH" nese unit_price_without_vat brutto → DPH se počítá shora
+  // koeficientem (jako InvoiceMath / RecurringForm), jinak zdola ze základu.
+  const pricesIncl = tpl.value.prices_include_vat
   let base = 0
   let vat = 0
   for (const it of tpl.value.items) {
-    const lineBase = round2((Number(it.quantity) || 0) * (Number(it.unit_price_without_vat) || 0))
+    const amount = round2((Number(it.quantity) || 0) * (Number(it.unit_price_without_vat) || 0))
     const ratePct = reverseCharge ? 0 : (Number(it.vat_rate_percent) || 0)
-    base += lineBase
-    vat += round2(lineBase * (ratePct / 100))
+    if (pricesIncl) {
+      const lineVat = round2(amount * ratePct / (100 + ratePct))
+      base += round2(amount - lineVat)
+      vat += lineVat
+    } else {
+      base += amount
+      vat += round2(amount * (ratePct / 100))
+    }
   }
   return { base: round2(base), vat: round2(vat), total: round2(base + vat) }
 })
+
+// V režimu „ceny s DPH" nese unit_price_without_vat brutto; pro zobrazení ukážeme
+// netto dopočtené koeficientem (u šablon nemáme uložené řádkové základy).
+function displayUnitPriceNet(it: { unit_price_without_vat: number; vat_rate_percent?: number }): number {
+  const gross = Number(it.unit_price_without_vat) || 0
+  if (tpl.value?.prices_include_vat) {
+    const rate = tpl.value.reverse_charge ? 0 : (Number(it.vat_rate_percent) || 0)
+    return round2(gross * 100 / (100 + rate))
+  }
+  return gross
+}
 
 function statusBadgeClass(s: RecurringStatus) {
   return {
@@ -306,7 +326,7 @@ async function removeAction() {
               <td class="px-4 py-2">{{ it.description }}</td>
               <td class="px-4 py-2 text-right font-mono">{{ it.quantity }}</td>
               <td class="px-4 py-2">{{ it.unit }}</td>
-              <td class="px-4 py-2 text-right font-mono">{{ formatMoney(it.unit_price_without_vat, tpl.currency ?? '') }}</td>
+              <td class="px-4 py-2 text-right font-mono">{{ formatMoney(displayUnitPriceNet(it), tpl.currency ?? '') }}</td>
               <td class="px-4 py-2 text-center text-neutral-600">{{ Number(it.vat_rate_percent) > 0 ? it.vat_rate_percent + ' %' : '—' }}</td>
             </tr>
           </tbody>

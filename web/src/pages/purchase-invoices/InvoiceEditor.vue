@@ -415,18 +415,25 @@ function itemTotal(it: PurchaseInvoiceItem) {
 }
 function round2(n: number) { return Math.round(n * 100) / 100 }
 
-// Zadání částky s DPH → zpětný dopočet jednotkové ceny bez DPH (gross / (1+sazba) / množství).
-// Podporuje i výrazy (evalMath: "1210", "1000*1.21", desetinná čárka).
+// Zadání částky s DPH na řádku „Celkem s DPH" → dopočet jednotkové ceny.
+// Přepínač „ceny s DPH" záměrně NEpřepínáme — respektujeme aktuální režim faktury:
+//  • režim „ceny s DPH" zapnutý → unit_price nese gross → ulož gross / množství,
+//  • režim vypnutý (běžný) → z gross odečti DPH shora a ulož netto / množství.
+// Podporuje i výrazy (evalMath: "1210", "1000*1.21", desetinná čárka). Server přepočítá přesně.
 function setItemGross(it: PurchaseInvoiceItem, raw: string): void {
   const gross = evalMath(raw)
   if (gross === null) return
   const qty = Number(it.quantity) || 0
   if (qty === 0) return
-  // Zadání ceny s DPH → přepni celou fakturu do režimu "ceny s DPH" a ulož gross
-  // jako jednotkovou cenu (v tomto režimu unit_price_without_vat nese cenu s DPH).
-  // DPH se počítá shora; server přepočítá přesně.
-  form.value.prices_include_vat = true
-  it.unit_price_without_vat = round2(gross / qty)
+  if (form.value.prices_include_vat) {
+    // unit_price_without_vat nese cenu S DPH → ulož gross jako jednotkovou cenu.
+    it.unit_price_without_vat = round2(gross / qty)
+    return
+  }
+  // Běžný režim: dopočti netto odečtením DPH shora (u reverse-charge je sazba 0).
+  const rate = form.value.reverse_charge ? 0 : (vatRates.value.find(v => v.id === it.vat_rate_id)?.rate_percent || 0)
+  const net = gross / (1 + rate / 100)
+  it.unit_price_without_vat = round2(net / qty)
 }
 
 // Záhlaví sloupce jednotkové ceny — v režimu „ceny s DPH" je to cena včetně DPH.

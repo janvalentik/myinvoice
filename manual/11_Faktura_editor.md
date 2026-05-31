@@ -92,8 +92,13 @@ faktury **sedí na haléř** — např. 33 Kč s DPH @ 21 % → základ **27,27*
 součet daně přesně odpovídá dani z celkového brutto — **detail faktury, PDF i
 DPH výkazy (přiznání, kontrolní hlášení, kniha DPH) ukazují stejné číslo.**
 
-- **Auto-přepnutí:** jakmile zadáš cenu do sloupce „Celkem s DPH", editor sám
-  přepne fakturu do režimu „s DPH" (abys nemusel myslet na přepínač).
+- **Zadání „Celkem s DPH":** editor **respektuje aktuální režim** dokladu (nepřepíná
+  ho za tebe). V běžném režimu „bez DPH" se z brutto **dopočítá jednotková cena bez
+  DPH** (odečtením DPH shora); v režimu „s DPH" se uloží brutto. Režim přepínáš jen
+  ručně přepínačem nahoře.
+- **Zobrazení jednotkové ceny:** v detailu, PDF i exportech (ISDOC, Pohoda) se „Cena/MJ"
+  vždy ukazuje jako **netto** (bez DPH) — i v režimu „s DPH", kde se netto dopočítá z
+  řádkového základu.
 - **Předvyplnění per dodavatel:** výchozí režim nové faktury nastavíš v
   **Nastavení → Můj dodavatel → Ceny s DPH** (viz [§ 18.3](18_Multi_supplier.md#183-co-je-per-dodavatel-izolované)).
 - **Zpětná kompatibilita:** výchozí stav je „bez DPH" a všechny existující
@@ -114,7 +119,7 @@ Tabulka řádků faktury. Tlačítko **+ Přidat položku** přidá nový řáde
 | Cena/jed. | Jednotková cena (v režimu „bez DPH" netto, v režimu „s DPH" brutto — viz [§ 11.2.6](#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim)) |
 | DPH | Sazba — `21 %`, `12 %`, `0 %` (osvobozeno), `RC` (reverse charge) |
 | Celkem | Auto-počítáno (množství × cena/jed.) |
-| Celkem s DPH | Cena řádku včetně DPH. Zadáním do tohoto sloupce se faktura přepne do režimu „s DPH" a cena bez DPH se dopočte zpětně — viz [§ 11.2.6](#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim). |
+| Celkem s DPH | Cena řádku včetně DPH. Zadání respektuje aktuální režim: v režimu „bez DPH" se z brutto zpětně dopočte cena bez DPH, v režimu „s DPH" se uloží brutto — viz [§ 11.2.6](#1126-ceny-s-dph-vs-bez-dph-brutto--netto-režim). |
 
 ### 11.3.1 Drag & drop pořadí
 
