@@ -5,6 +5,19 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.4] — 2026-06-01
+
+Oprava vystavování faktur v režimu přenesení daňové povinnosti (reverse charge), zachování poznámky pod položkami při vzniku daňového dokladu ze zálohy a odolnost ukládání faktur vůči neproběhlé migraci.
+
+### Changed
+
+- **Reverse charge je volbou na faktuře, ne jen vlastností odběratele.** Checkbox „přenesení daňové povinnosti (DPH 0 %)" se v editoru vydané faktury nově nabízí vždy, když je dodavatel plátce DPH — dosud se zobrazil jen u klienta, který měl příznak `reverse_charge` ve svém profilu. Příznak v profilu klienta nadále funguje jako výchozí předvyplnění při výběru klienta, ale uživatel ho může na konkrétním dokladu přepnout (typicky tuzemský PDP u stavebních prací § 92e ZDPH). RC checkbox zůstává skrytý jen u neplátce DPH, který RC vystavit nemůže.
+
+### Fixed
+
+- **Daňový doklad ze zaplacené zálohy nepřenášel poznámku pod položkami.** Při vzniku finální faktury ze zaplacené zálohové faktury se kopírovala jen poznámka nad položkami (nahrazená textem „Daňový doklad k zálohové faktuře …"); spodní poznámka uživatele se ztrácela. Nově se `note_below_items` ze zálohy zachová napříč všemi cestami vzniku (ruční vystavení, bankovní auto-match).
+- **Ukládání faktury selhalo na instalaci pozadu s migracemi.** Po nasazení kódu se sloupci `income_tax_exempt` (migrace 0087), ale bez spuštění migrace, končilo každé uložení vydané faktury chybou „Unknown column 'income_tax_exempt'". Repozitář nyní existenci sloupce detekuje a fakturu uloží (jen bez příznaku osvobození), dokud migrace neproběhne.
+
 ## [4.9.3] — 2026-06-01
 
 Per-faktura příznak „Osvobozeno od daně z příjmů" pro doklady mimo základ daně z příjmů (§ 4 ZDP / přefakturace) a sada vylepšení navigace — rychlé vytváření dokladů z horní lišty i bočního menu, předvyplnění zálohové faktury z odkazu a zpřehlednění dashboardu.

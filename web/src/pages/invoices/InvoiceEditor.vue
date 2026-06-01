@@ -123,15 +123,11 @@ const showIncomeTaxExemptUI = computed(
   () => supplierStore.currentSupplier?.taxpayer_type === 'fo' || form.value.income_tax_exempt,
 )
 
-// RC zobrazit jen když:
-//   - dodavatel je plátce DPH (neplátce nemůže RC vystavit) A
-//   - klient není vybraný NEBO má RC povolenou v profilu
-const showReverseChargeUI = computed(() => {
-  if (!supplierIsVatPayer.value) return false
-  if (!form.value.client_id) return true
-  const c = clients.value.find(c => c.id === form.value.client_id)
-  return !!c?.reverse_charge
-})
+// RC je volba na konkrétním plnění (přenesení daň. povinnosti), ne natvrdo vlastnost
+// odběratele → checkbox zobrazíme vždy, když je dodavatel plátce DPH (neplátce RC
+// vystavit nemůže). Příznak `reverse_charge` v profilu klienta slouží jen jako default
+// předvyplnění při výběru klienta (viz onClientChange), uživatel ho může přepnout.
+const showReverseChargeUI = computed(() => supplierIsVatPayer.value)
 
 const form = ref<{
   invoice_type: 'invoice' | 'proforma' | 'credit_note'

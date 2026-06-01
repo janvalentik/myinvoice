@@ -19,6 +19,23 @@ final class InvoiceRepository
 {
     public function __construct(private readonly Connection $db) {}
 
+    /**
+     * Cache existence sloupce income_tax_exempt (migrace 0087). Instalace nasazená
+     * s kódem ≥ v4.9.3, ale pozadu s migracemi, sloupce nemá → bez této detekce
+     * by každé uložení faktury spadlo na PDOException. S detekcí se faktura uloží
+     * (jen bez příznaku osvobození), dokud migrace 0087 neproběhne.
+     */
+    private ?bool $hasIncomeTaxExempt = null;
+
+    private function supportsIncomeTaxExempt(): bool
+    {
+        if ($this->hasIncomeTaxExempt === null) {
+            $col = $this->db->pdo()->query("SHOW COLUMNS FROM invoices LIKE 'income_tax_exempt'")->fetch();
+            $this->hasIncomeTaxExempt = $col !== false;
+        }
+        return $this->hasIncomeTaxExempt;
+    }
+
     public function find(int $id): ?array
     {
         $pdo = $this->db->pdo();
@@ -621,16 +638,19 @@ final class InvoiceRepository
             $paymentMethod = 'bank_transfer';
         }
 
+        $hasExempt = $this->supportsIncomeTaxExempt();
         $sql = 'INSERT INTO invoices
             (invoice_type, parent_invoice_id, client_id, project_id, supplier_id,
              issue_date, tax_date, due_date, currency_id, reverse_charge, prices_include_vat, language,
              note_above_items, note_below_items, advance_paid_amount, discount_percent, varsymbol,
-             payment_method, status, vat_classification_code, revenue_category, revenue_category_id,
-             income_tax_exempt, income_tax_exempt_reason, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?, ?, ?)';
+             payment_method, status, vat_classification_code, revenue_category, revenue_category_id,'
+            . ($hasExempt ? ' income_tax_exempt, income_tax_exempt_reason,' : '')
+            . ' created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?,'
+            . ($hasExempt ? ' ?, ?,' : '')
+            . ' ?)';
 
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
+        $params = [
             (string) ($data['invoice_type'] ?? 'invoice'),
             isset($data['parent_invoice_id']) ? (int) $data['parent_invoice_id'] : null,
             $clientId,
@@ -652,10 +672,14 @@ final class InvoiceRepository
             !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
             !empty($data['revenue_category']) ? (string) $data['revenue_category'] : null,
             $revenueCategoryId,
-            !empty($data['income_tax_exempt']) ? 1 : 0,
-            self::normalizeExemptReason($data['income_tax_exempt_reason'] ?? null),
-            $userId,
-        ]);
+        ];
+        if ($hasExempt) {
+            $params[] = !empty($data['income_tax_exempt']) ? 1 : 0;
+            $params[] = self::normalizeExemptReason($data['income_tax_exempt_reason'] ?? null);
+        }
+        $params[] = $userId;
+
+        $pdo->prepare($sql)->execute($params);
 
         return (int) $pdo->lastInsertId();
     }
@@ -689,14 +713,16 @@ final class InvoiceRepository
         $hasType = array_key_exists('invoice_type', $data)
             && in_array((string) $data['invoice_type'], ['invoice', 'proforma', 'credit_note'], true);
 
+        $hasExempt = $this->supportsIncomeTaxExempt();
+
         $sql = 'UPDATE invoices SET
                 client_id = ?, project_id = ?,
                 issue_date = ?, tax_date = ?, due_date = ?,
                 currency_id = ?, reverse_charge = ?, prices_include_vat = ?, language = ?,
                 note_above_items = ?, note_below_items = ?,
                 advance_paid_amount = ?, discount_percent = ?,
-                vat_classification_code = ?, revenue_category = ?, revenue_category_id = ?,
-                income_tax_exempt = ?, income_tax_exempt_reason = ?'
+                vat_classification_code = ?, revenue_category = ?, revenue_category_id = ?'
+              . ($hasExempt ? ', income_tax_exempt = ?, income_tax_exempt_reason = ?' : '')
               . ($hasVarsymbol ? ', varsymbol = ?' : '')
               . ($hasPaymentMethod ? ', payment_method = ?' : '')
               . ($hasType ? ', invoice_type = ?' : '')
@@ -719,9 +745,11 @@ final class InvoiceRepository
             !empty($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
             !empty($data['revenue_category']) ? (string) $data['revenue_category'] : null,
             isset($data['revenue_category_id']) && $data['revenue_category_id'] ? (int) $data['revenue_category_id'] : null,
-            !empty($data['income_tax_exempt']) ? 1 : 0,
-            self::normalizeExemptReason($data['income_tax_exempt_reason'] ?? null),
         ];
+        if ($hasExempt) {
+            $params[] = !empty($data['income_tax_exempt']) ? 1 : 0;
+            $params[] = self::normalizeExemptReason($data['income_tax_exempt_reason'] ?? null);
+        }
         if ($hasVarsymbol) $params[] = $manualVarsymbol;
         if ($hasPaymentMethod) $params[] = $paymentMethod;
         if ($hasType) $params[] = (string) $data['invoice_type'];
