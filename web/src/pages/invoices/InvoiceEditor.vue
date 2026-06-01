@@ -185,6 +185,16 @@ const form = ref<{
   items: [],
 })
 
+// Per-faktura přepínač automatických upomínek má smysl jen když je posílá dodavatel
+// i klient (cron je AND přes všechny tři úrovně, viz cron-send-reminders.php). Jakmile
+// je kterákoli z těch dvou vypnutá, faktuře se auto-upomínky stejně neodešlou → přepínač
+// by nic nedělal, proto ho v takovém případě skryjeme. Ruční odeslání funguje vždy.
+const remindersAvailable = computed(() =>
+  (supplierStore.currentSupplier?.auto_send_reminders ?? true)
+  && !!form.value.client_id
+  && (clients.value.find(c => c.id === form.value.client_id)?.auto_send_reminders ?? true),
+)
+
 function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -1322,7 +1332,7 @@ async function deleteDraft() {
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('invoice.due_date') }} *</label>
               <input v-model="form.due_date" type="date" required class="w-full h-10 px-3 border border-neutral-300 rounded-md" />
             </div>
-            <div v-if="form.invoice_type !== 'credit_note'">
+            <div v-if="form.invoice_type !== 'credit_note' && remindersAvailable">
               <label class="flex items-center gap-2 text-sm text-neutral-700">
                 <input v-model="form.auto_send_reminders" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
                 <span>{{ t('invoice.auto_send_reminders') }}</span>
