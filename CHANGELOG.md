@@ -5,6 +5,22 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.12.0] — 2026-06-02
+
+Velká novinka: **elektronické podpisy**. Vydané faktury a výkazy práce lze podepisovat certifikátem (**PAdES**) a odchozí e-maily přes **S/MIME** — vše přes nové podpisové profily s konfigurací per výstup. K tomu oprava daňově korektní AI extrakce přijatých dokladů a několik UX vylepšení.
+
+### Added
+
+- **Elektronický podpis PDF certifikátem (PAdES) ([#44](https://github.com/radekhulan/myinvoice/issues/44)).** Vydané faktury a samostatné výkazy práce lze podepsat certifikátem přes nové **podpisové profily** (firemní profil dodavatele i osobní profily uživatelů). Per-výstup **Konfigurace podpisů** (zda a odkud se bere profil), per-doklad výběr na detailu faktury, **PAdES-B** / **PAdES-T** s časovým razítkem (RFC 3161 TSA), politika hesla k certifikátu (šifrované uložení / passphrase file), volba chování při chybě (`fallback_unsigned` / `fail_closed` / `skip_when_unconfigured`) a kompletní audit. Vlastní admin stránka **Systém → Elektronické podpisy**; RBAC pro admina, účetního i readonly. Měkký fallback: když podpis selže nebo není nakonfigurovaný, doklad se vydá nepodepsaný (pokud není nastaveno tvrdé selhání). Detailní postup v [manuálu, kapitola 28](manual/28_Elektronicke_podpisy.md).
+- **S/MIME podepisování odchozích e-mailů ([#45](https://github.com/radekhulan/myinvoice/issues/45)).** Odesílané faktury, upomínky, schvalovací e-maily i poděkování za úhradu lze podepsat S/MIME přes tytéž podpisové profily (jednotný certifikát profilu pro PDF i e-mail). Opt-in a fail-open — selhání podpisu nikdy nezablokuje doručení e-mailu (mimo explicitní `fail_closed`).
+- **AI extrakce — plocha „Extrahovat z PDF" nad konfigurací ([#97](https://github.com/radekhulan/myinvoice/issues/97)).** Když je AI už nakonfigurované, je opakovaná akce (nahrání dokladu) primární a jde nahoru; konfigurace (API klíč + model) se sbalí do sekce „Nastavení AI".
+- **Faktura PDF — tlačítko „Stáhnout PDF" + indikace podpisu ([#92](https://github.com/radekhulan/myinvoice/issues/92)).** Přejmenované tlačítko (sjednoceno s manuálem) a pravdivý badge **„Podepsáno"**, který se ukáže jen když se daný doklad skutečně podepíše (zapnutý výstup + profil s certifikátem), plus tooltip že se PDF po úpravě automaticky přegeneruje a podepíše.
+
+### Fixed
+
+- **Daňově korektní AI extrakce přijatých dokladů ([#99](https://github.com/radekhulan/myinvoice/issues/99)).** Účtenky za PHM, kde je „cena/litr" ve skutečnosti brutto, se už nepřepočítávají na vlastní (mírně odlišný) základ s **uměle dopočítaným zaokrouhlením**. Když doklad obsahuje vnitřně konzistentní rekapitulaci DPH, eviduje se **verbatim přesně dle dokladu** (§ 73 odst. 6 / § 30 / § 100 ZDPH); jinak se dopočítá shora z celkové částky. Přijatý doklad je záznam, ne výsledek kalkulačky.
+- **Vlastní e-mailová šablona renderuje proměnné v předmětu ([#98](https://github.com/radekhulan/myinvoice/issues/98)).** Předmět vlastní DB šablony se nyní renderuje stejným sandboxovaným Twigem jako tělo e-mailu — místo literálu `{{ invoice.varsymbol }}` se doplní skutečné hodnoty.
+
 ## [4.11.1] — 2026-06-01
 
 Oprava: pravidelná fakturace u **neplátce DPH** nově nevyplňuje DPH — chová se stejně jako jednorázové vystavení faktury.
