@@ -165,20 +165,25 @@ final class EmailSigningServiceTest extends TestCase
      */
     private function p12Fixture(string $password): array
     {
+        // Některé prostředí (typicky Windows PHP bez OPENSSL_CONF) nemá nakonfigurovaný
+        // openssl.cnf, takže openssl_pkey_new() vrací false. Config si dohledáme sami
+        // (PHP root: extras/ssl/openssl.cnf), ať fixture funguje lokálně i v CI/Dockeru.
+        $config = $this->opensslConfigArgs();
+
         $key = openssl_pkey_new([
             'private_key_type' => OPENSSL_KEYTYPE_RSA,
             'private_key_bits' => 2048,
-        ]);
-        self::assertNotFalse($key);
+        ] + $config);
+        self::assertNotFalse($key, 'openssl_pkey_new selhal — chybí openssl.cnf? ' . $this->opensslErrors());
 
         $dn = [
             'commonName' => 'Unit Test',
             'emailAddress' => 'signer@example.test',
             'countryName' => 'CZ',
         ];
-        $csr = openssl_csr_new($dn, $key, ['digest_alg' => 'sha256']);
+        $csr = openssl_csr_new($dn, $key, ['digest_alg' => 'sha256'] + $config);
         self::assertNotFalse($csr);
-        $cert = openssl_csr_sign($csr, null, $key, 2, ['digest_alg' => 'sha256']);
+        $cert = openssl_csr_sign($csr, null, $key, 2, ['digest_alg' => 'sha256'] + $config);
         self::assertNotFalse($cert);
 
         $p12 = '';
@@ -190,5 +195,48 @@ final class EmailSigningServiceTest extends TestCase
         $this->tempFiles[] = $path;
 
         return ['path' => $path];
+    }
+
+    /**
+     * Vrátí ['config' => cesta] pro openssl_* volání, pokud najdeme openssl.cnf;
+     * jinak prázdné pole (prostředí má config v defaultu, např. Linux/CI).
+     *
+     * @return array{config?:string}
+     */
+    private function opensslConfigArgs(): array
+    {
+        foreach ($this->opensslConfigCandidates() as $cnf) {
+            if ($cnf !== '' && is_file($cnf)) {
+                return ['config' => $cnf];
+            }
+        }
+        return [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function opensslConfigCandidates(): array
+    {
+        $candidates = [];
+        $env = getenv('OPENSSL_CONF');
+        if (is_string($env) && $env !== '') {
+            $candidates[] = $env;
+        }
+        if (defined('PHP_BINARY') && PHP_BINARY !== '') {
+            $phpDir = dirname(PHP_BINARY);
+            // PHP Windows build: <php>/extras/ssl/openssl.cnf
+            $candidates[] = $phpDir . DIRECTORY_SEPARATOR . 'extras' . DIRECTORY_SEPARATOR . 'ssl' . DIRECTORY_SEPARATOR . 'openssl.cnf';
+        }
+        return $candidates;
+    }
+
+    private function opensslErrors(): string
+    {
+        $errors = [];
+        while (($e = openssl_error_string()) !== false) {
+            $errors[] = $e;
+        }
+        return implode('; ', $errors);
     }
 }
