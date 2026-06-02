@@ -10,7 +10,7 @@ odcházejí z firmy. Oproti vystaveným fakturám:
 | Směr peněz | Klient → my (příjem) | My → dodavatel (výdaj) |
 | Protistrana | Zákazník (`is_customer=1`) | Dodavatel (`is_vendor=1`) — stejná tabulka klientů, jiný flag |
 | DPH role | Sbíráme od klientů (výstupní DPH) | Odečítáme z dodavatelských (vstupní DPH) |
-| Číslování | Naše `2605001` | Číslo dodavatele (na originálu) + naše interní `PF-202605-NNNN` |
+| Číslování | Naše `2605001` | Číslo dodavatele (na originálu) + naše interní `PF2605001` (dle daňového typu, viz 10.2.4) |
 | Status flow | draft → issued → sent → paid | draft → received → booked → paid |
 | Schvalování / odesílání | Ano, klient potvrdí | Ne, doklad jen evidujeme |
 
@@ -102,6 +102,16 @@ V boxu **Klasifikace** jsou dva nezávislé příznaky řídící, jak faktura v
 - **Daňově uznatelný náklad** — řídí pouze daň z příjmů: když je vypnuto, náklad se nezahrne do orientačního hospodářského výsledku (DPFO/DPPO). S DPH to nesouvisí (faktura může mít odpočitatelné DPH a být daňově neuznatelná, i naopak).
 
 Oba příznaky jsou vidět i v **detailu** přijaté faktury (box Měna/DPH).
+
+> 💡 **Interní číslo se řídí daňovým typem.** Prefix automaticky generovaného
+> interního čísla (viz 10.2.2) odpovídá těmto dvěma příznakům — **PF/PN** plný
+> nárok (uznatelný/ne), **KU/KN** krácený §75, **NU/NN** bez nároku. Když u už
+> očíslované faktury daňové uplatnění **změníš**, přepíše se jen **prefix**
+> (`PF2602001` → `NN2602001`); číselná řada `{YYMM}{CCC}` i ručně zadaná čísla
+> zůstanou. Počítadlo je **sdílené per dodavatel a měsíc napříč všemi prefixy**,
+> takže čísla jsou v rámci měsíce souvislá bez ohledu na daňový typ; případné
+> mezery po smazaných konceptech jsou u interního označení neškodné (na rozdíl
+> od vystavených faktur se u přijatých dokladů souvislá řada nevyžaduje).
 
 #### Rekapitulace DPH dle dokladu (§ 73 ZDPH)
 
