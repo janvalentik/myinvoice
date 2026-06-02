@@ -564,7 +564,7 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
           </button>
         </header>
 
-        <div class="overflow-x-auto">
+        <div class="hidden md:block overflow-x-auto">
           <table class="w-full text-sm table-sticky-first">
             <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
               <tr>
@@ -608,6 +608,36 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Mobile: karty -->
+        <div class="md:hidden divide-y divide-neutral-100">
+          <div v-if="currencies.length === 0" class="px-4 py-4 text-sm text-neutral-500">{{ t('bank_accounts.currencies_empty') }}</div>
+          <div v-for="c in currencies" :key="`m-${c.id}`" class="p-3 space-y-1.5">
+            <div class="flex items-baseline gap-2 min-w-0">
+              <span class="font-mono font-semibold">{{ c.code }}</span>
+              <span class="text-xs text-neutral-500">{{ c.symbol }}</span>
+              <span class="text-xs text-neutral-500 truncate">· {{ c.label }}</span>
+            </div>
+            <div class="font-mono text-xs text-neutral-600 break-all">
+              <span v-if="c.account_number">{{ c.account_number }}<span v-if="c.bank_code"> / {{ c.bank_code }}</span></span>
+              <span v-else-if="c.iban">{{ c.iban }}</span>
+              <span v-else class="text-neutral-400">—</span>
+              <span v-if="c.bic" class="text-neutral-400"> · {{ c.bic }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-2 text-xs">
+              <span>
+                <span v-if="c.is_default" class="text-primary-600">✓ {{ t('bank_accounts.th_default') }}</span>
+                <span v-if="c.is_default && c.is_active" class="text-neutral-400 mx-1.5">·</span>
+                <span v-if="c.is_active" class="text-success-600">✓ {{ t('bank_accounts.th_active') }}</span>
+              </span>
+              <div class="flex gap-2">
+                <button type="button" @click="startEditCurrency(c)" class="cursor-pointer h-8 px-3 text-xs border border-primary-500/40 text-primary-700 hover:bg-primary-50 rounded">{{ t('common.edit') }}</button>
+                <button v-if="(c.invoices_count ?? 0) === 0" type="button" @click="removeCurrency(c)"
+                  class="cursor-pointer h-8 px-3 text-xs border border-danger-500/40 text-danger-500 hover:bg-danger-50 rounded">{{ t('common.delete') }}</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="px-5 py-3 border-t border-neutral-200 bg-neutral-50 text-xs text-neutral-600">
