@@ -54,7 +54,7 @@ Limity:
 |---|---|
 | **Dodavatel** | Vyber z dropdownu (autocomplete). Pokud chybí, klikni „+ Vytvořit nového dodavatele" — využije ARES lookup podle IČO. |
 | **Číslo dokladu dodavatele** | Tak jak je vytištěno na originálu (např. `FA-2026-001`). Max 50 znaků. Unique per (dodavatel, datum vystavení) — nelze importovat 2× stejnou. |
-| **Naše interní číslo** | Volitelné. Pokud necháš prázdné, vygeneruje se automaticky `{PP}{YYMM}{CCC}` (např. `PF2602001`) při přechodu na stav Přijatá. Prefix `PP` odpovídá daňovému typu (viz 10.2.4): **PF/PN** plný nárok (uznatelný/ne), **KU/KN** krácený, **NU/NN** bez nároku. Počítadlo `CCC` je per měsíc (přeteče na 4+ místa nad 999 dokladů). |
+| **Naše interní číslo** | Volitelné. Pokud necháš prázdné, vygeneruje se automaticky podle **šablony** při přechodu na stav Přijatá. Výchozí šablona je `{PP}{YY}{MM}{CCC}` (např. `PF2602001`), prefix `{PP}` odpovídá daňovému typu (viz 10.2.4): **PF/PN** plný nárok (uznatelný/ne), **KU/KN** krácený, **NU/NN** bez nároku. Počítadlo je per měsíc (přeteče na 4+ místa nad 999 dokladů). Šablonu lze změnit v **Nastavení → Číslování faktur → Šablona pro přijatou fakturu** (např. legacy `PF-{YYYY}{MM}-{CCCC}` → `PF-202605-0001`). Při ručním zadání čísla systém hlídá kolize (nepovolí duplicitu) a auto-generátor obsazená čísla přeskakuje. |
 | **Typ dokladu** | Faktura / Doklad o úhradě / Dobropis / Záloha (pro filtrování v seznamu). |
 | **Datum vystavení** | Z faktury. |
 | **DUZP (datum uskutečnění zdanitelného plnění)** | Klíčové pro DPH období. Default = datum vystavení. |

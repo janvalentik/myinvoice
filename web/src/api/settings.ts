@@ -43,6 +43,9 @@ export interface Supplier {
   invoice_number_format: string | null
   proforma_number_format: string | null
   credit_note_number_format: string | null
+  // Šablona interního čísla přijaté faktury (migrace 0095). null = vestavěný
+  // default '{PP}{YY}{MM}{CCC}'. {PP} = daňový prefix (PF/PN/KU/KN/NU/NN).
+  purchase_invoice_number_format: string | null
   invoice_number_period: 'year' | 'month' | 'none'
   // Per-supplier email branding (migrace 0016)
   email_branding_enabled: boolean
@@ -80,6 +83,7 @@ export interface Supplier {
     invoice: string
     proforma: string
     credit_note: string
+    purchase: string
   }
 }
 

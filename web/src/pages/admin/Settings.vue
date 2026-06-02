@@ -145,6 +145,8 @@ const proformaPreview       = computed(() => validateAndPreview(supplier.value?.
 const proformaFormatError   = computed(() => validateAndPreview(supplier.value?.proforma_number_format ?? null).error)
 const creditNotePreview     = computed(() => validateAndPreview(supplier.value?.credit_note_number_format ?? null).preview)
 const creditNoteFormatError = computed(() => validateAndPreview(supplier.value?.credit_note_number_format ?? null).error)
+const purchasePreview       = computed(() => validateAndPreview(supplier.value?.purchase_invoice_number_format ?? null).preview)
+const purchaseFormatError   = computed(() => validateAndPreview(supplier.value?.purchase_invoice_number_format ?? null).error)
 
 async function load() {
   loading.value = true
@@ -203,6 +205,7 @@ async function saveSupplier() {
       invoice_number_format: supplier.value.invoice_number_format,
       proforma_number_format: supplier.value.proforma_number_format,
       credit_note_number_format: supplier.value.credit_note_number_format,
+      purchase_invoice_number_format: supplier.value.purchase_invoice_number_format,
       invoice_number_period: supplier.value.invoice_number_period,
       email_branding_enabled: supplier.value.email_branding_enabled,
       email_accent_color: supplier.value.email_accent_color,
@@ -562,6 +565,7 @@ async function removeCurrency(c: CurrencyAccount) {
             <li><code class="bg-neutral-100 px-1 rounded">{YY}</code> &mdash; {{ t('settings.numbering_hint_yy') }} <span class="text-neutral-400">(26)</span></li>
             <li><code class="bg-neutral-100 px-1 rounded">{MM}</code> &mdash; {{ t('settings.numbering_hint_mm') }} <span class="text-neutral-400">(05)</span></li>
             <li><code class="bg-neutral-100 px-1 rounded">{CC}</code>, <code class="bg-neutral-100 px-1 rounded">{CCC}</code>&hellip; &mdash; {{ t('settings.numbering_hint_c') }} <span class="text-neutral-400">(01, 001…)</span></li>
+            <li><code class="bg-neutral-100 px-1 rounded">{PP}</code> &mdash; {{ t('settings.numbering_hint_pp') }} <span class="text-neutral-400">(PF/PN/KU/KN/NU/NN)</span></li>
           </ul>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
@@ -608,6 +612,19 @@ async function removeCurrency(c: CurrencyAccount) {
                 {{ t('settings.numbering_preview') }}: <code class="font-mono font-semibold">{{ creditNotePreview }}</code>
               </p>
               <p v-else class="text-xs text-neutral-400 mt-1">{{ t('settings.numbering_preview') }}: {{ t('settings.numbering_preview_fallback') }}</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-neutral-700 mb-1">{{ t('settings.purchase_invoice_number_format') }}</label>
+              <input v-model="supplier.purchase_invoice_number_format" type="text"
+                :placeholder="supplier.cfg_varsymbol_fallback?.purchase || '{PP}{YY}{MM}{CCC}'" maxlength="60"
+                class="w-full h-9 px-3 border rounded-md text-sm font-mono"
+                :class="purchaseFormatError ? 'border-danger-500 bg-danger-50' : 'border-neutral-300'" />
+              <p v-if="purchaseFormatError" class="text-xs text-danger-500 mt-1">{{ purchaseFormatError }}</p>
+              <p v-else-if="purchasePreview" class="text-xs text-success-600 mt-1">
+                {{ t('settings.numbering_preview') }}: <code class="font-mono font-semibold">{{ purchasePreview }}</code>
+              </p>
+              <p v-else class="text-xs text-neutral-400 mt-1">{{ t('settings.numbering_preview') }}: {{ t('settings.numbering_preview_fallback') }}</p>
+              <p class="text-xs text-neutral-400 mt-1">{{ t('settings.purchase_invoice_number_format_hint') }}</p>
             </div>
           </div>
         </div>

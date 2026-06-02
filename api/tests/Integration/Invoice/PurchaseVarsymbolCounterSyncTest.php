@@ -33,6 +33,7 @@ final class PurchaseVarsymbolCounterSyncTest extends TestCase
     /** @var int[] */
     private array $created = [];
     private int $seq = 0;
+    private ?string $origTemplate = null;
 
     protected function setUp(): void
     {
@@ -59,6 +60,10 @@ final class PurchaseVarsymbolCounterSyncTest extends TestCase
             $this->markTestSkipped('Chybí vendor/CZK currency/user.');
         }
 
+        // Záloha per-supplier šablony (testy ji dočasně mění) → obnova v tearDown.
+        $col = $pdo->query("SELECT purchase_invoice_number_format FROM supplier WHERE id = {$this->supplierId}")->fetchColumn();
+        $this->origTemplate = $col === false || $col === null ? null : (string) $col;
+
         $this->cleanup();
     }
 
@@ -66,7 +71,18 @@ final class PurchaseVarsymbolCounterSyncTest extends TestCase
     {
         if (isset($this->db)) {
             $this->cleanup();
+            $this->setTemplate($this->origTemplate);
+            // Uvolni MySQL spojení (container se staví per test → jinak se kumulují
+            // a narazí na max_connections). Viz Connection::close().
+            $this->db->close();
         }
+    }
+
+    /** Nastaví (nebo vynuluje na default) per-supplier šablonu interního čísla. */
+    private function setTemplate(?string $tpl): void
+    {
+        $this->db->pdo()->prepare('UPDATE supplier SET purchase_invoice_number_format = ? WHERE id = ?')
+            ->execute([$tpl, $this->supplierId]);
     }
 
     private function cleanup(): void
@@ -134,5 +150,48 @@ final class PurchaseVarsymbolCounterSyncTest extends TestCase
 
         $vs = $this->repo->nextVarsymbol($this->supplierId, $this->period, 'PF');
         self::assertSame('PF9906051', $vs, 'Skok musí zohlednit i čísla s jiným prefixem.');
+    }
+
+    public function testLegacyTemplateRendersDashedFormat(): void
+    {
+        // Per-supplier legacy šablona (bez {PP}, plný rok, pomlčky).
+        $this->setTemplate('PF-{YYYY}{MM}-{CCCC}');
+        $vs = $this->repo->nextVarsymbol($this->supplierId, $this->period, 'PF');
+        self::assertSame('PF-209906-0001', $vs);
+    }
+
+    public function testCustomTemplateSelfHeals(): void
+    {
+        // Self-heal funguje i pod custom šablonou: obsadíme 0001 → další musí být 0002.
+        $this->setTemplate('PF-{YYYY}{MM}-{CCCC}');
+        $this->insertPurchase('PF-209906-0001');
+        $vs = $this->repo->nextVarsymbol($this->supplierId, $this->period, 'PF');
+        self::assertSame('PF-209906-0002', $vs);
+    }
+
+    public function testYearlyScopeTemplateWithoutMonth(): void
+    {
+        // Šablona bez {MM} → roční řada; dvě po sobě jdoucí čísla rostou v rámci roku.
+        $this->setTemplate('{PP}{YYYY}-{CCCC}');
+        $first  = $this->repo->nextVarsymbol($this->supplierId, $this->period, 'PF');
+        // Druhé generování v jiném měsíci téhož roku musí navázat (roční čítač).
+        $second = $this->repo->nextVarsymbol($this->supplierId, '209907', 'PF');
+        self::assertSame('PF2099-0001', $first);
+        self::assertSame('PF2099-0002', $second, 'Roční řada navazuje napříč měsíci.');
+    }
+
+    public function testTemplateWithoutPpPrefixIsNotReprefixed(): void
+    {
+        // Legacy šablona bez {PP} → reprefix nesmí přepsat pevný prefix.
+        $this->setTemplate('PF-{YYYY}{MM}-{CCCC}');
+        $this->insertPurchase('PF-209906-0007');
+        $id = (int) end($this->created);
+        // Změň daňové uplatnění na bez nároku + neuznatelný (jinak by to dalo NN).
+        $this->db->pdo()->prepare(
+            "UPDATE purchase_invoices SET vat_deduction='none', tax_deductible=0 WHERE id = ?"
+        )->execute([$id]);
+        $this->repo->reprefixVarsymbol($id, $this->supplierId);
+        $vs = (string) $this->db->pdo()->query("SELECT varsymbol FROM purchase_invoices WHERE id = $id")->fetchColumn();
+        self::assertSame('PF-209906-0007', $vs, 'Šablona bez {PP} → prefix se nepřepisuje.');
     }
 }
