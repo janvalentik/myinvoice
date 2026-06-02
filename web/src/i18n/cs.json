@@ -1739,6 +1739,8 @@
     "delete_account_confirm": "Smazat účet {label}?",
     "default_account_label": "{code} - bankovní účet",
     "bank_lookup_pick": "Vybrat jiný účet z registru:",
+    "new_currency_hint": "Nová měna se zakládá v Číselníku.",
+    "open_codebook": "Otevřít Číselník (Měny)",
     "edit_account_title": "Upravit {label}",
     "currency": "Měna",
     "account_label": "Název účtu",

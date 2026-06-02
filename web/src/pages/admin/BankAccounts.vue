@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   settingsApi,
@@ -75,8 +76,9 @@ interface RegexProviderDraft {
   normalizer_config_json: string
 }
 const providerDraft = reactive<RegexProviderDraft>(defaultRegexProviderDraft())
+// Jen měny, které dodavatel reálně má (nová měna se zakládá v Číselníku).
 const availableCurrencyCodes = computed(() => {
-  const codes = new Set(['CZK', 'EUR', 'USD', 'GBP'])
+  const codes = new Set<string>()
   for (const currency of currencies.value) codes.add(currency.code)
   return [...codes].sort()
 })
@@ -203,7 +205,8 @@ async function saveCurrency() {
   await load()
 }
 
-function startNewCurrencyAccount(code = 'CZK') {
+function startNewCurrencyAccount(preferred?: string) {
+  const code = preferred ?? availableCurrencyCodes.value[0] ?? 'CZK'
   const isFirstForCode = !currencies.value.some(c => c.code === code)
   bankDraftMsg.value = null
   bankDraftAccounts.value = []
@@ -1007,6 +1010,10 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
               class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm">
               <option v-for="code in availableCurrencyCodes" :key="code" :value="code">{{ code }}</option>
             </select>
+            <p class="text-xs text-neutral-500 mt-1">
+              {{ t('bank_accounts.new_currency_hint') }}
+              <RouterLink to="/admin/codebooks" class="text-primary-600 hover:underline">{{ t('bank_accounts.open_codebook') }}</RouterLink>
+            </p>
           </div>
           <div v-else>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.currency') }}</label>
