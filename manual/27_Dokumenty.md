@@ -8,8 +8,6 @@ v menu hned **před sekcí Daně**.
 Vše je odděleně **per dodavatel** (firma/IČO) — co nahraješ pod jednou firmou,
 nevidíš pod jinou.
 
-![Dokumenty](img/26_dokumenty.webp)
-
 ## Organizace — složky, vazby a tagy
 
 Dokumenty organizuješ třemi způsoby, které se doplňují:
