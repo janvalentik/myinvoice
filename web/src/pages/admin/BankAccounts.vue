@@ -182,6 +182,10 @@ function startEditCurrency(c: CurrencyAccount) {
 async function saveCurrency() {
   const payload: Partial<CurrencyAccount> = {
     label: currencyDraft.label,
+    symbol: currencyDraft.symbol,
+    name_cs: currencyDraft.name_cs,
+    name_en: currencyDraft.name_en,
+    decimals: currencyDraft.decimals,
     is_active: currencyDraft.is_active,
     is_default: currencyDraft.is_default,
     account_number: currencyDraft.account_number || null,
@@ -190,22 +194,23 @@ async function saveCurrency() {
     iban: currencyDraft.iban || null,
     bic: currencyDraft.bic || null,
   }
-  if (editingCurrency.value !== null) {
-    await settingsApi.updateCurrency(editingCurrency.value, payload)
-    toast.success(t('bank_accounts.account_saved'))
-  } else {
-    await settingsApi.createCurrency({
-      ...payload,
-      code: String(currencyDraft.code || '').toUpperCase(),
-      symbol: currencyDraft.symbol,
-      name_cs: currencyDraft.name_cs,
-      name_en: currencyDraft.name_en,
-      decimals: currencyDraft.decimals,
-    })
-    toast.success(t('bank_accounts.account_added'))
+  if (editingCurrency.value === null && String(currencyDraft.code || '').trim().length !== 3) {
+    toast.error(t('bank_accounts.currency_code_invalid'))
+    return
   }
-  closeCurrencyForm()
-  await load()
+  try {
+    if (editingCurrency.value !== null) {
+      await settingsApi.updateCurrency(editingCurrency.value, payload)
+      toast.success(t('bank_accounts.account_saved'))
+    } else {
+      await settingsApi.createCurrency({ ...payload, code: String(currencyDraft.code || '').toUpperCase() })
+      toast.success(t('bank_accounts.account_added'))
+    }
+    closeCurrencyForm()
+    await load()
+  } catch (e) {
+    toast.error(apiErrorMessage(e, t('common.error')))
+  }
 }
 
 function startNewCurrencyAccount() {
@@ -286,21 +291,29 @@ async function loadBankToDraft() {
 
 async function removeCurrency(c: CurrencyAccount) {
   if (!window.confirm(t('bank_accounts.delete_account_confirm', { label: c.label }))) return
-  await settingsApi.deleteCurrency(c.id)
-  toast.success(t('bank_accounts.account_deleted'))
-  await load()
+  try {
+    await settingsApi.deleteCurrency(c.id)
+    toast.success(t('bank_accounts.account_deleted'))
+    await load()
+  } catch (e) {
+    toast.error(apiErrorMessage(e, t('common.error')))
+  }
 }
 
 async function saveMappings() {
-  await settingsApi.updateBankEmailMappings(mappings.value.map(m => ({
-    currency_id: m.currency_id,
-    imap_account_id: m.imap_account_id === 0 ? null : m.imap_account_id,
-    provider_id: m.provider_id,
-    enabled: m.imap_account_id === 0 ? false : m.enabled,
-    amount_tolerance: m.amount_tolerance,
-  })))
-  toast.success(t('bank_accounts.mappings_saved'))
-  await load()
+  try {
+    await settingsApi.updateBankEmailMappings(mappings.value.map(m => ({
+      currency_id: m.currency_id,
+      imap_account_id: m.imap_account_id === 0 ? null : m.imap_account_id,
+      provider_id: m.provider_id,
+      enabled: m.imap_account_id === 0 ? false : m.enabled,
+      amount_tolerance: m.amount_tolerance,
+    })))
+    toast.success(t('bank_accounts.mappings_saved'))
+    await load()
+  } catch (e) {
+    toast.error(apiErrorMessage(e, t('common.error')))
+  }
 }
 
 function normalizeMappingForUi(mapping: BankEmailAccountMapping): BankEmailAccountMapping {
@@ -529,16 +542,24 @@ async function saveProvider() {
 async function removeProvider(provider: BankEmailProvider) {
   if (provider.supplier_id === null) return
   if (!window.confirm(t('bank_accounts.delete_provider_confirm', { name: provider.name }))) return
-  await settingsApi.deleteBankEmailProvider(provider.id)
-  toast.success(t('bank_accounts.provider_deleted'))
-  await load()
+  try {
+    await settingsApi.deleteBankEmailProvider(provider.id)
+    toast.success(t('bank_accounts.provider_deleted'))
+    await load()
+  } catch (e) {
+    toast.error(apiErrorMessage(e, t('common.error')))
+  }
 }
 
 async function deleteMessage(m: BankEmailProcessedMessage) {
   if (!window.confirm(t('bank_accounts.delete_message_confirm', { id: m.id }))) return
-  await settingsApi.deleteBankEmailMessage(m.id)
-  toast.success(t('bank_accounts.message_deleted'))
-  messages.value = await settingsApi.listBankEmailMessages()
+  try {
+    await settingsApi.deleteBankEmailMessage(m.id)
+    toast.success(t('bank_accounts.message_deleted'))
+    messages.value = await settingsApi.listBankEmailMessages()
+  } catch (e) {
+    toast.error(apiErrorMessage(e, t('common.error')))
+  }
 }
 </script>
 
@@ -1058,41 +1079,36 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
       <div class="bg-surface rounded-xl shadow-lg max-w-md w-full p-5">
         <h3 class="text-lg font-semibold mb-3">{{ editingCurrency === null ? t('bank_accounts.new_account') : t('bank_accounts.edit_account_title', { label: editingCurrencyLabel }) }}</h3>
         <div class="space-y-3">
-          <template v-if="editingCurrency === null">
-            <div class="grid grid-cols-3 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.currency_code') }} *</label>
-                <input v-model="currencyDraft.code" type="text" maxlength="3"
-                  class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono uppercase" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.symbol') }}</label>
-                <input v-model="currencyDraft.symbol" type="text"
-                  class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.decimals') }}</label>
-                <input v-model.number="currencyDraft.decimals" type="number" min="0" max="6"
-                  class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.currency_code') }} <span v-if="editingCurrency === null">*</span></label>
+              <input v-if="editingCurrency === null" v-model="currencyDraft.code" type="text" maxlength="3"
+                class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono uppercase" />
+              <div v-else class="h-10 px-3 flex items-center bg-neutral-50 border border-neutral-200 rounded-md text-sm font-mono">
+                {{ currencyDraft.code }}
               </div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.name_cs') }}</label>
-                <input v-model="currencyDraft.name_cs" type="text"
-                  class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.name_en') }}</label>
-                <input v-model="currencyDraft.name_en" type="text"
-                  class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
-              </div>
+            <div>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.symbol') }}</label>
+              <input v-model="currencyDraft.symbol" type="text"
+                class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
-          </template>
-          <div v-else>
-            <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.currency') }}</label>
-            <div class="h-10 px-3 flex items-center bg-neutral-50 border border-neutral-200 rounded-md text-sm font-mono">
-              {{ currencyDraft.code }}
+            <div>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.decimals') }}</label>
+              <input v-model.number="currencyDraft.decimals" type="number" min="0" max="6"
+                class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.name_cs') }}</label>
+              <input v-model="currencyDraft.name_cs" type="text"
+                class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.name_en') }}</label>
+              <input v-model="currencyDraft.name_en" type="text"
+                class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm" />
             </div>
           </div>
           <div class="flex items-center justify-end">
