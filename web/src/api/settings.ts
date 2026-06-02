@@ -114,6 +114,8 @@ export interface BankEmailImapSettings {
   port: number
   encryption: 'ssl' | 'tls' | 'none'
   validate_cert: boolean
+  require_email_auth: boolean
+  email_auth_serv_id: string | null
   username: string
   folder: string
   max_messages_per_run: number

@@ -86,6 +86,8 @@ function defaultImapDraft(): Partial<BankEmailImapSettings> & { password?: strin
     port: 993,
     encryption: 'ssl',
     validate_cert: true,
+    require_email_auth: false,
+    email_auth_serv_id: '',
     username: '',
     password: '',
     folder: 'INBOX',
@@ -824,6 +826,19 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
               <input v-model="imapDraft.validate_cert" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
               {{ t('bank_accounts.validate_cert') }}
             </label>
+            <label class="flex items-start gap-2 text-sm mt-7 md:col-span-2">
+              <input v-model="imapDraft.require_email_auth" type="checkbox" class="mt-0.5 rounded border-neutral-300 text-primary-600" />
+              <span>
+                {{ t('bank_accounts.require_email_auth') }}
+                <span class="block text-xs text-neutral-500">{{ t('bank_accounts.require_email_auth_hint') }}</span>
+              </span>
+            </label>
+            <div v-if="imapDraft.require_email_auth" class="md:col-span-3">
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.email_auth_serv_id') }}</label>
+              <input v-model="imapDraft.email_auth_serv_id" type="text" placeholder="mx.mojefirma.cz"
+                class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
+              <p class="text-xs text-neutral-500 mt-1">{{ t('bank_accounts.email_auth_serv_id_hint') }}</p>
+            </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.on_success') }}</label>
               <select v-model="imapDraft.success_action" class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm">
@@ -961,6 +976,7 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
             matched: scanSummary.matched ?? 0,
             known: scanSummary.known_skipped ?? 0,
             old: scanSummary.old_skipped ?? 0,
+            rejected: scanSummary.security_rejected ?? 0,
             errors: scanSummary.errors ?? 0,
           }) }}
         </div>

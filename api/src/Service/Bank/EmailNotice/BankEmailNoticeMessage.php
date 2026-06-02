@@ -6,6 +6,10 @@ namespace MyInvoice\Service\Bank\EmailNotice;
 
 final class BankEmailNoticeMessage
 {
+    /**
+     * @param list<string> $authResults Hodnoty hlaviček Authentication-Results shora dolů
+     *                                   (nejnovější hop = přijímací server = index 0).
+     */
     public function __construct(
         public readonly ?int $uid,
         public readonly ?string $messageId,
@@ -14,6 +18,7 @@ final class BankEmailNoticeMessage
         public readonly string $subject,
         public readonly string $text,
         public readonly string $raw,
+        public readonly array $authResults = [],
     ) {}
 
     public function fallbackHash(): string

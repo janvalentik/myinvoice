@@ -15,6 +15,7 @@ final class BankEmailNoticeScanner
         private readonly BankEmailNoticeParserRepository $parsers,
         private readonly ImapMailboxClientInterface $imap,
         private readonly StatementMatcher $matcher,
+        private readonly EmailAuthenticationVerifier $authVerifier = new EmailAuthenticationVerifier(),
     ) {}
 
     /**
@@ -37,6 +38,7 @@ final class BankEmailNoticeScanner
             'matched' => 0,
             'known_skipped' => 0,
             'old_skipped' => 0,
+            'security_rejected' => 0,
             'errors' => 0,
             'postprocess_errors' => 0,
             'accounts' => [],
@@ -45,7 +47,7 @@ final class BankEmailNoticeScanner
         foreach ($accounts as $settings) {
             $accountSummary = $this->scanAccount($supplierId, $settings, $limitOverride);
             $summary['accounts'][] = $accountSummary;
-            foreach (['fetched', 'processed', 'matched', 'known_skipped', 'old_skipped', 'errors', 'postprocess_errors'] as $key) {
+            foreach (['fetched', 'processed', 'matched', 'known_skipped', 'old_skipped', 'security_rejected', 'errors', 'postprocess_errors'] as $key) {
                 $summary[$key] += (int) ($accountSummary[$key] ?? 0);
             }
         }
@@ -75,6 +77,7 @@ final class BankEmailNoticeScanner
                     'matched' => 0,
                     'known_skipped' => 0,
                     'old_skipped' => 0,
+                    'security_rejected' => 0,
                     'errors' => 1,
                     'postprocess_errors' => 0,
                     'details' => [],
@@ -95,6 +98,7 @@ final class BankEmailNoticeScanner
             'matched' => 0,
             'known_skipped' => 0,
             'old_skipped' => 0,
+            'security_rejected' => 0,
             'errors' => 0,
             'postprocess_errors' => 0,
             'details' => [],
@@ -116,6 +120,8 @@ final class BankEmailNoticeScanner
                     $summary['known_skipped']++;
                 } elseif ($status === 'skipped_old') {
                     $summary['old_skipped']++;
+                } elseif ($status === 'security_rejected') {
+                    $summary['security_rejected']++;
                 } else {
                     $summary['errors']++;
                 }
@@ -169,6 +175,29 @@ final class BankEmailNoticeScanner
                 'imap_account_id' => $imapAccountId,
                 'known_id' => (int) $known['id'],
             ];
+        }
+
+        // Možnost A: ověření autenticity z hlavičky Authentication-Results (DKIM/DMARC).
+        // Fail-open: kontrola se spustí jen když ji admin u účtu zapnul.
+        if (!empty($settings['require_email_auth'])) {
+            $auth = $this->authVerifier->verify(
+                $message->authResults,
+                $this->authVerifier->domainFromSender($message->sender),
+                isset($settings['email_auth_serv_id']) ? (string) $settings['email_auth_serv_id'] : null,
+            );
+            if (!$auth['pass']) {
+                $this->repo->recordMessage($base + [
+                    'status' => 'security_rejected',
+                    'error_message' => 'E-mail neprošel ověřením autenticity (DKIM/DMARC): ' . $auth['detail'],
+                ]);
+                $this->safePostProcess($settings, $message, 'failure');
+                return [
+                    'status' => 'security_rejected',
+                    'message_id' => $messageId,
+                    'imap_account_id' => $imapAccountId,
+                    'reason' => $auth['detail'],
+                ];
+            }
         }
 
         try {

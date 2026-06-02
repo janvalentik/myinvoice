@@ -38,6 +38,7 @@ final class WebklexImapMailboxClient implements ImapMailboxClientInterface
                     subject: $this->decodeMimeHeader((string) $message->getSubject()),
                     text: $this->normalizer->normalize($body),
                     raw: $rawBody,
+                    authResults: $this->authenticationResults($message),
                 );
             }
             return $out;
@@ -175,6 +176,37 @@ final class WebklexImapMailboxClient implements ImapMailboxClientInterface
             }
         }
         return $value;
+    }
+
+    /**
+     * Vytáhne hodnoty hlaviček Authentication-Results z raw hlaviček zprávy.
+     * Pořadí v raw = shora dolů = nejnovější hop (přijímací server) první.
+     *
+     * @return list<string>
+     */
+    private function authenticationResults(object $message): array
+    {
+        try {
+            $header = method_exists($message, 'getHeader') ? $message->getHeader() : null;
+            $raw = is_object($header) && isset($header->raw) ? (string) $header->raw : '';
+        } catch (\Throwable) {
+            $raw = '';
+        }
+        if (trim($raw) === '') {
+            return [];
+        }
+        // Hlavička může být zalomená na víc řádků (pokračování začíná mezerou/tabem).
+        if (preg_match_all('/^Authentication-Results:[ \t]*(.*(?:\r?\n[ \t]+.*)*)/mi', $raw, $m) < 1) {
+            return [];
+        }
+        $out = [];
+        foreach ($m[1] as $value) {
+            $value = trim((string) preg_replace('/\s+/', ' ', $value));
+            if ($value !== '') {
+                $out[] = $value;
+            }
+        }
+        return $out;
     }
 
     private function messageDate(object $message): ?\DateTimeImmutable

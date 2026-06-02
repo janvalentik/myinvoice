@@ -90,6 +90,8 @@ final class BankEmailNoticeRepository
             'port' => max(1, min(65535, (int) ($body['port'] ?? 993))),
             'encryption' => in_array($body['encryption'] ?? 'ssl', ['ssl', 'tls', 'none'], true) ? (string) $body['encryption'] : 'ssl',
             'validate_cert' => array_key_exists('validate_cert', $body) ? (int) (bool) $body['validate_cert'] : 1,
+            'require_email_auth' => !empty($body['require_email_auth']) ? 1 : 0,
+            'email_auth_serv_id' => $this->nullable($body['email_auth_serv_id'] ?? null),
             'username' => trim((string) ($body['username'] ?? '')),
             'password_enc' => $passwordEnc,
             'folder' => trim((string) ($body['folder'] ?? 'INBOX')) ?: 'INBOX',
@@ -109,7 +111,8 @@ final class BankEmailNoticeRepository
             $data['id'] = $id;
             $sql = 'UPDATE bank_email_imap_settings
                        SET name = :name, enabled = :enabled, host = :host, port = :port, encryption = :encryption,
-                           validate_cert = :validate_cert, username = :username, password_enc = :password_enc,
+                           validate_cert = :validate_cert, require_email_auth = :require_email_auth,
+                           email_auth_serv_id = :email_auth_serv_id, username = :username, password_enc = :password_enc,
                            folder = :folder, max_messages_per_run = :max_messages_per_run,
                            process_from_date = :process_from_date, success_action = :success_action,
                            success_flag = :success_flag, success_move_folder = :success_move_folder,
@@ -122,11 +125,13 @@ final class BankEmailNoticeRepository
         }
 
         $sql = 'INSERT INTO bank_email_imap_settings
-                  (supplier_id, name, enabled, host, port, encryption, validate_cert, username, password_enc, folder,
+                  (supplier_id, name, enabled, host, port, encryption, validate_cert, require_email_auth, email_auth_serv_id,
+                   username, password_enc, folder,
                    max_messages_per_run, process_from_date, success_action, success_flag, success_move_folder,
                    failure_action, failure_flag, failure_move_folder, retry_failed, max_attempts)
                 VALUES
-                  (:supplier_id, :name, :enabled, :host, :port, :encryption, :validate_cert, :username, :password_enc, :folder,
+                  (:supplier_id, :name, :enabled, :host, :port, :encryption, :validate_cert, :require_email_auth, :email_auth_serv_id,
+                   :username, :password_enc, :folder,
                    :max_messages_per_run, :process_from_date, :success_action, :success_flag, :success_move_folder,
                    :failure_action, :failure_flag, :failure_move_folder, :retry_failed, :max_attempts)';
         $this->db->pdo()->prepare($sql)->execute($data);
@@ -531,6 +536,8 @@ final class BankEmailNoticeRepository
             'port' => 993,
             'encryption' => 'ssl',
             'validate_cert' => true,
+            'require_email_auth' => false,
+            'email_auth_serv_id' => null,
             'username' => '',
             'folder' => 'INBOX',
             'max_messages_per_run' => 50,
@@ -583,6 +590,7 @@ final class BankEmailNoticeRepository
         $row['enabled'] = (bool) $row['enabled'];
         $row['port'] = (int) $row['port'];
         $row['validate_cert'] = (bool) $row['validate_cert'];
+        $row['require_email_auth'] = (bool) ($row['require_email_auth'] ?? false);
         $row['max_messages_per_run'] = (int) $row['max_messages_per_run'];
         $row['retry_failed'] = (bool) $row['retry_failed'];
         $row['max_attempts'] = (int) $row['max_attempts'];
