@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MyInvoice\Action\PurchaseInvoice;
 
+use MyInvoice\Action\Invoice\HandlesVarsymbolDuplicate;
 use MyInvoice\Http\Json;
 use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Middleware\AuthMiddleware;
@@ -29,6 +30,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  */
 final class TransitionPurchaseInvoiceStatusAction
 {
+    use HandlesVarsymbolDuplicate;
+
     private const TRANSITIONS = [
         // Forward flow (typical lifecycle): draft → received → booked → paid
         'draft'    => ['received', 'cancelled'],
@@ -90,6 +93,13 @@ final class TransitionPurchaseInvoiceStatusAction
         if ($currentStatus === 'draft' && $target === 'received' && empty($existing['varsymbol'])) {
             try {
                 $this->repo->ensureVarsymbol($id, $supplierId);
+            } catch (\PDOException $e) {
+                // Race na unique indexu (uq_pi_supplier_varsymbol) — generátor se kolizím
+                // vyhýbá, tohle je poslední pojistka proti souběžnému přijetí.
+                if ($dupMsg = self::varsymbolDuplicateMessage($e, null)) {
+                    return Json::error($response, 'varsymbol_duplicate', $dupMsg, 409);
+                }
+                throw $e;
             } catch (\RuntimeException $e) {
                 return Json::error($response, 'internal_error', 'Nepodařilo se vygenerovat varsymbol', 500);
             }

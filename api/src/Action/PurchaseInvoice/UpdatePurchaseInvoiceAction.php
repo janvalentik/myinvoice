@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MyInvoice\Action\PurchaseInvoice;
 
+use MyInvoice\Action\Invoice\HandlesVarsymbolDuplicate;
 use MyInvoice\Http\Json;
 use MyInvoice\Http\SupplierGuard;
 use MyInvoice\Middleware\AuthMiddleware;
@@ -26,6 +27,8 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  */
 final class UpdatePurchaseInvoiceAction
 {
+    use HandlesVarsymbolDuplicate;
+
     public function __construct(
         private readonly PurchaseInvoiceRepository $repo,
         private readonly ClientRepository $clients,
@@ -92,6 +95,12 @@ final class UpdatePurchaseInvoiceAction
             $this->repo->updateDraft($id, $body, $supplierId);
         } catch (\InvalidArgumentException $e) {
             return Json::error($response, 'integrity_violation', $e->getMessage(), 400);
+        } catch (\PDOException $e) {
+            // Ruční interní číslo koliduje s existujícím (uq_pi_supplier_varsymbol) → 409.
+            if ($dupMsg = self::varsymbolDuplicateMessage($e, $body['varsymbol'] ?? null)) {
+                return Json::error($response, 'varsymbol_duplicate', $dupMsg, 409);
+            }
+            throw $e;
         }
         $this->repo->replaceItems($id, (array) ($body['items'] ?? []));
         // Ruční rekapitulace DPH dle dokladu (§ 73) — uložit PŘED recompute, aby ji

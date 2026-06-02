@@ -963,34 +963,127 @@ final class PurchaseInvoiceRepository
         return $id !== false ? (int) $id : null;
     }
 
+    /** Maximální počet pokusů přeskočit obsazené interní číslo (poslední pojistka). */
+    private const MAX_VARSYMBOL_SKIP = 1000;
+
     /**
      * Vygeneruje další varsymbol {PP}{YYMM}{CCC} (např. PF2602001) pro tenant + období.
-     * Atomicky inkrementuje counter (FOR UPDATE / INSERT … ON DUPLICATE KEY).
+     * Atomicky inkrementuje counter (INSERT … ON DUPLICATE KEY).
+     *
+     * Samoopravné (paralela k vydaným, #85/#103): když je counter pozadu za již
+     * použitými čísly (ruční číslo „dopředu", import, úprava v DB), vygenerované
+     * číslo nevezme — skočí za nejvyšší skutečně použité číslo dané řady (období,
+     * napříč všemi prefixy) a najde první volné. Unique index `uq_pi_supplier_varsymbol`
+     * je definitivní pojistka proti race.
      */
     public function nextVarsymbol(int $supplierId, ?string $period = null, string $prefix = 'PF'): string
     {
         $period = $period ?? date('Ym');
-        $pdo = $this->db->pdo();
+        // Formát {PP}{YYMM}{CCC} bez oddělovačů, např. PF2602001. Counter key je
+        // YYYYMM (period), ve varsymbolu se používá jen dvojčíslí roku (YY).
+        // %03d = min. 3 místa; nad 999 dokladů počítadlo přirozeně přeleze na 4+ místa.
+        $prefix = preg_match('/^[A-Z]{2}$/', $prefix) ? $prefix : 'PF';
+        $yymm   = substr($period, 2, 4);
 
-        // Atomický increment přes INSERT … ON DUPLICATE KEY UPDATE.
-        // Pro MariaDB platí, že LAST_INSERT_ID(expr) vrátí nově nastavenou hodnotu.
-        // Counter je sdílený per (supplier, období) napříč prefixy — číslo je tedy
-        // souvislé přes všechny přijaté doklady období, prefix jen značí daňový typ.
-        $stmt = $pdo->prepare(
+        // Counter je sdílený per (supplier, období) napříč prefixy — číslo je souvislé
+        // přes všechny přijaté doklady období, prefix jen značí daňový typ.
+        $n        = $this->bumpPurchaseCounter($supplierId, $period);
+        $rendered = sprintf('%s%s%03d', $prefix, $yymm, $n);
+
+        // Happy path: counter sedí, číslo je volné.
+        if (!$this->purchaseVarsymbolExists($supplierId, $rendered)) {
+            return $rendered;
+        }
+
+        // Counter pozadu → skoč rovnou za nejvyšší použité číslo období, pak dolaď mezery.
+        $highest = $this->highestUsedPurchaseCounter($supplierId, $period);
+        if ($highest >= $n) {
+            $n        = $this->liftPurchaseCounterTo($supplierId, $period, $highest + 1);
+            $rendered = sprintf('%s%s%03d', $prefix, $yymm, $n);
+        }
+
+        $attempts = 0;
+        while ($this->purchaseVarsymbolExists($supplierId, $rendered)) {
+            if (++$attempts > self::MAX_VARSYMBOL_SKIP) {
+                throw new \RuntimeException(
+                    'Nepodařilo se najít volné interní číslo přijaté faktury ani po '
+                    . self::MAX_VARSYMBOL_SKIP . " pokusech (období {$period}). Zadej číslo ručně."
+                );
+            }
+            $n        = $this->bumpPurchaseCounter($supplierId, $period);
+            $rendered = sprintf('%s%s%03d', $prefix, $yymm, $n);
+        }
+
+        return $rendered;
+    }
+
+    /** Atomický increment counteru období; vrací novou hodnotu (≥1). */
+    private function bumpPurchaseCounter(int $supplierId, string $period): int
+    {
+        $pdo = $this->db->pdo();
+        // LAST_INSERT_ID(expr) vrátí nově nastavenou hodnotu i při UPDATE větvi (MariaDB).
+        $pdo->prepare(
             'INSERT INTO purchase_invoice_counters (supplier_id, period, last_number)
              VALUES (?, ?, 1)
              ON DUPLICATE KEY UPDATE last_number = LAST_INSERT_ID(last_number + 1)'
-        );
-        $stmt->execute([$supplierId, $period]);
+        )->execute([$supplierId, $period]);
         $n = (int) $pdo->lastInsertId();
-        if ($n === 0) $n = 1;
+        return $n === 0 ? 1 : $n;
+    }
 
-        // Formát {PP}{YYMM}{CCC} bez oddělovačů, např. PF2602001. Counter key je
-        // YYYYMM (period), ve varsymbolu se používá jen dvojčíslí roku (YY).
-        // %03d = min. 3 místa; když by měsíc měl >999 dokladů, počítadlo přirozeně
-        // přeleze na 4+ místa (PF26021000…) — pořadí zůstane korektní.
-        $prefix = preg_match('/^[A-Z]{2}$/', $prefix) ? $prefix : 'PF';
-        return sprintf('%s%s%03d', $prefix, substr($period, 2, 4), $n);
+    private function purchaseVarsymbolExists(int $supplierId, string $varsymbol): bool
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT 1 FROM purchase_invoices WHERE supplier_id = ? AND varsymbol = ? LIMIT 1'
+        );
+        $stmt->execute([$supplierId, $varsymbol]);
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Nejvyšší counter mezi přijatými fakturami období, jejichž varsymbol odpovídá
+     * formátu {PP}{YYMM}{CCC} (libovolný 2písmenný prefix). 0 = žádná shoda.
+     * Legacy formát PF-YYYYMM-NNNN sem nespadá; korektnost stejně garantuje
+     * exact-match smyčka v nextVarsymbol(), tohle je jen zrychlý skok.
+     */
+    private function highestUsedPurchaseCounter(int $supplierId, string $period): int
+    {
+        $yymm = substr($period, 2, 4);
+        // LIKE '__YYMM%' = 2 znaky prefix + YYMM + zbytek (zúží sken).
+        $like = '__' . $yymm . '%';
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT varsymbol FROM purchase_invoices
+              WHERE supplier_id = ? AND varsymbol IS NOT NULL AND varsymbol <> '' AND varsymbol LIKE ?"
+        );
+        $stmt->execute([$supplierId, $like]);
+
+        $re  = '/^[A-Z]{2}' . preg_quote($yymm, '/') . '(\d+)$/';
+        $max = 0;
+        while (($vs = $stmt->fetchColumn()) !== false) {
+            if (preg_match($re, (string) $vs, $m)) {
+                $val = (int) $m[1];
+                if ($val > $max) {
+                    $max = $val;
+                }
+            }
+        }
+        return $max;
+    }
+
+    /** Zvedne counter období na minimálně $value (GREATEST, nikdy nesnižuje); vrací výslednou hodnotu. */
+    private function liftPurchaseCounterTo(int $supplierId, string $period, int $value): int
+    {
+        $pdo = $this->db->pdo();
+        $pdo->prepare(
+            'INSERT INTO purchase_invoice_counters (supplier_id, period, last_number)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE last_number = GREATEST(last_number, VALUES(last_number))'
+        )->execute([$supplierId, $period, $value]);
+        $sel = $pdo->prepare(
+            'SELECT last_number FROM purchase_invoice_counters WHERE supplier_id = ? AND period = ?'
+        );
+        $sel->execute([$supplierId, $period]);
+        return (int) $sel->fetchColumn();
     }
 
     /**
