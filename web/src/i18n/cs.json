@@ -2742,6 +2742,7 @@
     },
     "ai": {
       "tab": "AI extrakce",
+      "settings_title": "Nastavení AI (API klíč a model)",
       "credentials_title": "Anthropic Claude API",
       "credentials_hint": "BYOK — vytvoř si vlastní API klíč na console.anthropic.com a vlož sem. AI extrahuje data z PDF faktur bez ISDOC.",
       "privacy_title": "Upozornění: zpracování PDF na cizím serveru",

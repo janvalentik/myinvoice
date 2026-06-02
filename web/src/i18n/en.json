@@ -2742,6 +2742,7 @@
     },
     "ai": {
       "tab": "AI extraction",
+      "settings_title": "AI settings (API key & model)",
       "credentials_title": "Anthropic Claude API",
       "credentials_hint": "BYOK — create your own API key at console.anthropic.com and paste it here. AI extracts data from PDF invoices without ISDOC.",
       "privacy_title": "Notice: PDF processing on a third-party server",
