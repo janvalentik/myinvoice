@@ -5,6 +5,31 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.13.0] — 2026-06-02
+
+Velká novinka: **automatické párování plateb z bankovních e-mailových avíz přes IMAP** ([#104](https://github.com/radekhulan/myinvoice/issues/104)). K tomu sjednocení správy měn a bankovních účtů do jedné stránky, nová sekce **E-maily** v menu a řada oprav.
+
+### Added
+
+- **Bankovní e-mailová avíza přes IMAP ([#104](https://github.com/radekhulan/myinvoice/issues/104)).** Příchozí platby se umí spárovat na faktury z bankovních e-mailových avíz. Read-only IMAP polling (zprávy se neoznačují jako přečtené), **registr parserů** (předkonfigurovaný Raiffeisenbank „Pohyb na účtě" + univerzální **regex parser** s vlastními poli), mapování **bankovní účet → IMAP účet → parser** s tolerancí částky, deduplikace zpráv a log zpracování. Více IMAP schránek (každá banka vlastní), akce po zpracování (flag / přesun / označit přečtené). Konfigurace na nové stránce **Systém → Bankovní účty**, cron `cron-bank-email-notices` (každých 30 min). Hesla schránek šifrovaná (AES‑256‑GCM).
+- **Ověření autenticity avíz (DKIM/DMARC).** Volitelně per IMAP účet: zpracují se jen e-maily, které přijímací server označil v hlavičce `Authentication-Results` jako `dkim`/`dmarc=pass` se správnou doménou odesílatele — ostatní se zamítnou (`security_rejected`). Volitelné připnutí důvěryhodného `authserv-id` proti podvržení hlavičky. Brání podvržení falešného avíza vedoucímu k automatickému označení faktury jako zaplacené.
+- **Sekce „E-maily" v menu (Systém).** Záložky **Odeslané e-maily**, **E-mail šablony** a **Elektronické podpisy** sloučené pod jednu položku (vzor Číselníků).
+
+### Changed
+
+- **Sjednocení správy měn a bankovních účtů.** Měny i bankovní účty se nově spravují výhradně na stránce **Bankovní účty** (přesun z Nastavení a z Číselníku — tab „Měny" v Číselníku odebrán). Editor účtu je plnohodnotný (kód, symbol, desetinná místa) včetně načtení účtu z registru plátců DPH (zobrazí se jen když má dodavatel vyplněné DIČ).
+- **Reorganizace menu Systém.** „E-maily" za „Uživatelé", „Externí integrace" přesunuta za „Log".
+- **Sjednocení „e-mail" v celém UI** (dříve místy „email").
+- **`reset.php` maže databázi dynamicky.** Místo zastaralého napevno psaného seznamu maže všechny tabulky kromě keep-listu (globální číselníky + schéma) — nezaostává za schématem a vyčistí i nové tabulky včetně citlivých dat (IMAP hesla, podpisové certifikáty). Globální seedy (klasifikace DPH, výchozí parser) zůstávají.
+
+### Fixed
+
+- **Správné počítání použití měny.** Smazání měny se nově blokuje, pokud je použita na **kterémkoli** dokladu (vydané i přijaté faktury, zakázky, pravidelné fakturace) — dřív se počítaly jen vydané faktury a smazání pak selhalo až na úrovni databáze. Friendly hláška místo holé chyby.
+- **Chybové hlášky u operací s měnami/avízy.** Operace, které dřív při chybě selhaly tiše (uživatel nic neviděl), teď zobrazí konkrétní hlášku z backendu.
+- **Mobilní zobrazení Bankovních účtů.** Tabulka účtů má mobilní karty; hlavičky sekcí se zalomí a tlačítka nepřetékají.
+- **Admin-only přístup ke čtecím endpointům bankovních avíz** (dříve jen přes frontend guard).
+- **S/MIME test na Windows.** Testovací fixtura si dohledá `openssl.cnf`, takže neselhává mimo CI.
+
 ## [4.12.2] — 2026-06-02
 
 Číslování interních čísel přijatých faktur je nově **konfigurovatelné per dodavatel** a dotažené ošetření kolizí (obdoba vydaných faktur). Plus oprava ověření DIČ u českých OSVČ. Navázáno na [#103](https://github.com/radekhulan/myinvoice/issues/103).
