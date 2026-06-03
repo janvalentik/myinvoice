@@ -5,6 +5,24 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.13.1] — 2026-06-03
+
+Nové systémové parsery bankovních e-mailových avíz **UniCredit Bank** a **ČSOB** (díky [@blondak](https://github.com/blondak), [#106](https://github.com/radekhulan/myinvoice/pull/106), navazuje na [#58](https://github.com/radekhulan/myinvoice/issues/58)) + zpevnění celé parser registry.
+
+### Added
+
+- **Systémové parsery UniCredit Bank („Informace o pohybu na účtu") a ČSOB („Moje info - Avízo") ([#106](https://github.com/radekhulan/myinvoice/pull/106)).** Vedle Raiffeisenbank a České spořitelny tak avíza fungují out-of-the-box pro čtyři banky. Registr parserů je nově **typovaný a rozšiřitelný přes `cfg.php`** (`bank_email.notice_parsers` — slot lze vypnout `null`/`false`), systémové parsery dodávají svůj provider z kódu bez DB řádku a v UI se vybírají přes jednotnou referenci (`system:<kód>` / `db:<id>`). Unit testy parserů, migrace `parser_type` ENUM → VARCHAR.
+
+### Changed
+
+- **Test parseru umí explicitně otestovat i vypnutý provider** (ladění konfigurace před zapnutím); automatický výběr i scan používají dál jen zapnuté.
+- **Výběr parseru v mapování účtů nabízí jen zapnuté providery**; aktuálně vybraný vypnutý zůstává viditelný se suffixem „vypnutý".
+
+### Fixed
+
+- **Přísnější ověření odesílatele u systémových parserů.** Doména se kontroluje na konci adresy (vč. subdomén) místo pouhého výskytu v textu — `attacker@csob.cz.evil.com` už neprojde.
+- **Validace `system:` referencí v mapování** proti registru parserů — neznámý kód degraduje na automatický výběr místo slepého uložení.
+
 ## [4.13.0] — 2026-06-02
 
 Velká novinka: **automatické párování plateb z bankovních e-mailových avíz přes IMAP** ([#104](https://github.com/radekhulan/myinvoice/issues/104)). K tomu sjednocení správy měn a bankovních účtů do jedné stránky, nová sekce **E-maily** v menu a řada oprav.
