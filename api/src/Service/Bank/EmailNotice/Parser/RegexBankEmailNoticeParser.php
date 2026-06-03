@@ -59,6 +59,12 @@ final class RegexBankEmailNoticeParser implements BankEmailNoticeParserInterface
             }
         }
 
+        // Některé banky (např. Česká spořitelna) datum platby v těle avíza neuvádějí —
+        // jako fallback použij datum doručení e-mailu, ať povinné pole nechybí.
+        if (trim((string) ($data['posted_at'] ?? '')) === '' && $message->date instanceof \DateTimeImmutable) {
+            $data['posted_at'] = $message->date->format('d.m.Y H:i');
+        }
+
         foreach (['variable_symbol', 'amount', 'currency', 'posted_at', 'recipient_account'] as $required) {
             if (trim((string) ($data[$required] ?? '')) === '') {
                 throw new \RuntimeException("Parser nenašel povinné pole {$required}.");
@@ -70,8 +76,8 @@ final class RegexBankEmailNoticeParser implements BankEmailNoticeParserInterface
 
         return new ParsedBankEmailNotice(
             variableSymbol: preg_replace('/\D+/', '', (string) $data['variable_symbol']) ?? (string) $data['variable_symbol'],
-            amount: $this->parseAmount((string) $data['amount']),
-            currency: strtoupper((string) $data['currency']),
+            amount: $this->applyDirection($this->parseAmount((string) $data['amount']), (string) ($data['direction'] ?? '')),
+            currency: $this->normalizeCurrency((string) $data['currency']),
             postedAt: $postedAt,
             recipientAccount: $this->normalizeAccount((string) $data['recipient_account']),
             counterpartyAccount: $cpAccount,
@@ -100,6 +106,51 @@ final class RegexBankEmailNoticeParser implements BankEmailNoticeParserInterface
             }
         }
         return false;
+    }
+
+    /**
+     * Sjednotí měnu na ISO kód. Banky často píší symbol „Kč" / „€" místo „CZK" / „EUR".
+     */
+    private function normalizeCurrency(string $value): string
+    {
+        $v = trim($value);
+        $upper = mb_strtoupper($v, 'UTF-8');
+        $map = [
+            'KČ' => 'CZK', 'KC' => 'CZK', 'CZK' => 'CZK',
+            '€' => 'EUR', 'EUR' => 'EUR',
+            '$' => 'USD', 'USD' => 'USD',
+            '£' => 'GBP', 'GBP' => 'GBP',
+            'ZŁ' => 'PLN', 'ZL' => 'PLN', 'PLN' => 'PLN',
+        ];
+        if (isset($map[$upper])) {
+            return $map[$upper];
+        }
+        if (isset($map[$v])) {
+            return $map[$v];
+        }
+        // Ponech jen písmena (odstraní tečky/mezery); 3-písmenný ISO kód vrať jak je.
+        $letters = preg_replace('/[^A-ZÁ-Ž]/u', '', $upper) ?? $upper;
+        if (isset($map[$letters])) {
+            return $map[$letters];
+        }
+        return $letters !== '' ? mb_substr($letters, 0, 3, 'UTF-8') : $upper;
+    }
+
+    /**
+     * Česká spořitelna nerozlišuje příjem/výdej znaménkem, ale řádkem
+     * „Směr platby: příchozí/odchozí". Odchozí platbu ulož se záporným znaménkem
+     * (konzistentní s GPC), ať se nepáruje proti pohledávkám.
+     */
+    private function applyDirection(float $amount, string $direction): float
+    {
+        $direction = mb_strtolower(trim($direction), 'UTF-8');
+        if ($direction === '') {
+            return $amount;
+        }
+        if (preg_match('/odchoz|výdej|vydej|debet|odepsán|odepsan|outgoing/u', $direction) === 1) {
+            return -abs($amount);
+        }
+        return abs($amount);
     }
 
     private function parseAmount(string $value): float
