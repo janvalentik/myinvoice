@@ -5,6 +5,16 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.13.2] — 2026-06-04
+
+Opravy z hlášení komunity: ztráta PDF přijatých faktur při Docker updatu ([#115](https://github.com/radekhulan/myinvoice/issues/115)), špatné číslo dokladu dodavatele u importu z Fakturoidu ([#113](https://github.com/radekhulan/myinvoice/issues/113)) a robustnější parser avíz České spořitelny ([#110](https://github.com/radekhulan/myinvoice/issues/110)).
+
+### Fixed
+
+- **PDF přijatých faktur přežijí Docker image update ([#115](https://github.com/radekhulan/myinvoice/issues/115)).** Dokumentovaný produkční deploy (bind-mount `cfg.docker.php` z `cfg.sample.php`) směroval archiv originálních PDF přijatých faktur do vrstvy kontejneru místo do `/data` volume — při každém `docker compose pull && up` soubory zmizely (vydané faktury a Dokumenty byly v pořádku). Cesty `purchase_invoice.archive_storage` a `invoice.import_archive_storage` se nově při nastaveném `MYINVOICE_DATA_DIR` vždy přepíší pod data volume, stejně jako ostatní `storage.*` cesty. Soubory nahrané od posledního recreate kontejneru lze před updatem zachránit: `docker compose cp app:/var/www/html/storage/purchase-invoices ./pi-backup` a po updatu nakopírovat do `/data/storage/purchase-invoices` (metadata v DB zůstala, doklady budou zase stažitelné).
+- **Import nákladů z Fakturoidu ukládá skutečné číslo dokladu dodavatele ([#113](https://github.com/radekhulan/myinvoice/issues/113)).** Pole „číslo dokladu dodavatele" se plnilo interním číslem přiděleným Fakturoidem (`number`) místo čísla původního dokladu (`original_number`). Priorita prohozena; interní číslo se použije jen jako fallback, když originál chybí. Už naimportované doklady se zpětně nemění (číslo lze upravit ručně v detailu).
+- **E-mailová avíza: záchranný fallback pro vlastní účet ([#110](https://github.com/radekhulan/myinvoice/issues/110)).** Avízo České spořitelny „Odešla platba" nemusí obsahovat řádek „Číslo účtu:" a zpracování pak končilo chybou `parse_failed`. Když konfigurovaný vzor pole `recipient_account` nic nenajde, vytáhne se vlastní účet z úvodní věty avíza („z účtu … odešla platba" / „na účet … dorazila platba"). Přesné doladění vzorů odchozí šablony čeká na anonymizovaný vzorek (issue zůstává otevřené).
+
 ## [4.13.1] — 2026-06-03
 
 Nové systémové parsery bankovních e-mailových avíz **UniCredit Bank** a **ČSOB** (díky [@blondak](https://github.com/blondak), [#106](https://github.com/radekhulan/myinvoice/pull/106), navazuje na [#58](https://github.com/radekhulan/myinvoice/issues/58)) + zpevnění celé parser registry.
