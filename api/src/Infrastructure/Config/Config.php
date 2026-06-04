@@ -155,6 +155,11 @@ final class Config
             'storage.sessions_dir'        => 'storage' . $sep . 'sessions',
             'storage.cache_dir'           => 'storage' . $sep . 'cache',
             'cron.backup.output_dir'      => 'storage' . $sep . 'backup',
+            // #115: archiv PDF přijatých faktur — cfg.sample.php má `__DIR__ . '/storage/...'`,
+            // což v Dockeru míří do vrstvy kontejneru (NE do /data volume) → soubory
+            // zmizely při každém image updatu. Musí žít pod data dir jako ostatní storage.
+            'purchase_invoice.archive_storage' => 'storage' . $sep . 'purchase-invoices',
+            'invoice.import_archive_storage'   => 'storage' . $sep . 'invoices-imported',
             'smtp.dkim.private_key_path'  => 'private' . $sep . 'dkim' . $sep . 'myinvoice.pem',
             'smtp.dkim.public_key_path'   => 'private' . $sep . 'dkim' . $sep . 'myinvoice.pub',
             'smtp.dkim.dns_doc_path'      => 'private' . $sep . 'dkim' . $sep . 'dns.txt',

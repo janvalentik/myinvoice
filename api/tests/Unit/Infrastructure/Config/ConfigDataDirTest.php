@@ -75,6 +75,10 @@ final class ConfigDataDirTest extends TestCase
                 'cache_dir'    => '/x/cache',
             ],
             'cron' => ['backup' => ['output_dir' => '/x/backup']],
+            // #115: archiv PDF přijatých faktur z cfg.sample.php (`__DIR__ . '/storage/...'`)
+            // mířil mimo /data volume → ztráta souborů při Docker image updatu.
+            'purchase_invoice' => ['archive_storage' => '/x/purchase-invoices'],
+            'invoice' => ['import_archive_storage' => '/x/invoices-imported'],
             'smtp' => ['dkim' => [
                 'private_key_path' => '/x/dkim/key.pem',
                 'public_key_path'  => '/x/dkim/key.pub',
@@ -93,6 +97,8 @@ final class ConfigDataDirTest extends TestCase
         self::assertSame($this->dataDir . $sep . 'storage' . $sep . 'sessions', $config->get('storage.sessions_dir'));
         self::assertSame($this->dataDir . $sep . 'storage' . $sep . 'cache',    $config->get('storage.cache_dir'));
         self::assertSame($this->dataDir . $sep . 'storage' . $sep . 'backup',   $config->get('cron.backup.output_dir'));
+        self::assertSame($this->dataDir . $sep . 'storage' . $sep . 'purchase-invoices', $config->get('purchase_invoice.archive_storage'));
+        self::assertSame($this->dataDir . $sep . 'storage' . $sep . 'invoices-imported', $config->get('invoice.import_archive_storage'));
         self::assertSame($this->dataDir . $sep . 'private' . $sep . 'dkim' . $sep . 'myinvoice.pem', $config->get('smtp.dkim.private_key_path'));
         self::assertSame($this->dataDir . $sep . 'private' . $sep . 'dkim' . $sep . 'myinvoice.pub', $config->get('smtp.dkim.public_key_path'));
         self::assertSame($this->dataDir . $sep . 'private' . $sep . 'dkim' . $sep . 'dns.txt',       $config->get('smtp.dkim.dns_doc_path'));
