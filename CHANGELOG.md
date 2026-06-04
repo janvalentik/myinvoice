@@ -5,6 +5,18 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.14.0] — 2026-06-04
+
+Novinka: **placeholdery období v pravidelné fakturaci** ([#108](https://github.com/radekhulan/myinvoice/issues/108), díky [@blondak](https://github.com/blondak) za návrh) + oprava párování GPC výpisů cizoměnových účtů evidovaných IBANem ([#109](https://github.com/radekhulan/myinvoice/issues/109)).
+
+### Added
+
+- **Placeholdery období v popisech položek a poznámkách šablon pravidelné fakturace ([#108](https://github.com/radekhulan/myinvoice/issues/108), část 1).** Tokeny se při každém vygenerování faktury nahradí podle DUZP (u proformy podle data vystavení): `{YYYY}`/`{YY}` (rok, posun po letech `{YYYY+1}`), `{M}`/`{MM}` (měsíc, posun po měsících vč. přetečení roku), `{MMMM}` (název měsíce dle jazyka dokladu), `{Q}` (čtvrtletí), `{D}`/`{DD}` (den), `{DATE}` s datovou aritmetikou `±N` `D`/`M`/`Y` (`{DATE+1Y-1D}`) a `{BOM}`/`{EOM}` (začátek/konec měsíce, posun po měsících). Typický use case: `Prodloužení domény example.cz na období {DATE} - {DATE+1Y-1D}`. Posun po měsících/letech je clampovaný na poslední den cílového měsíce (31. 1. `{DATE+1M}` → 28. 2., jako MySQL `DATE_ADD`). Nerozpoznané tokeny zůstávají netknuté — stávající šablony fungují beze změny; dosavadní synchronizace `M/YYYY` s DUZP zůstává samostatnou volbou. Rozbalovací nápověda přímo v editoru šablony, dokumentace v manuálu § 15.2.3. (Část 2 — ceníkové položky — zůstává otevřená v issue.)
+
+### Fixed
+
+- **Párování GPC výpisů cizoměnových účtů evidovaných IBANem ([#109](https://github.com/radekhulan/myinvoice/issues/109)).** GPC výpis nese domácí číslo účtu, ale cizoměnové účty (typicky EUR) se v Bankovních účtech evidují často jen IBANem — výpis se pak nepřiřadil k účtu: zůstal bez měny (UI ho zobrazilo v Kč) a transakce se nepárovaly (`unknown_supplier_for_account`). Import výpisu i matcher nově porovnávají i domácí část českého IBANu (funguje i IBAN omylem vepsaný do pole „Číslo účtu"); kód banky se umí vzít z IBANu. Po updatu stačí výpis smazat a naimportovat znovu.
+
 ## [4.13.2] — 2026-06-04
 
 Opravy z hlášení komunity: ztráta PDF přijatých faktur při Docker updatu ([#115](https://github.com/radekhulan/myinvoice/issues/115)), špatné číslo dokladu dodavatele u importu z Fakturoidu ([#113](https://github.com/radekhulan/myinvoice/issues/113)) a robustnější parser avíz České spořitelny ([#110](https://github.com/radekhulan/myinvoice/issues/110)).
