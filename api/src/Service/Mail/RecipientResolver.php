@@ -103,7 +103,21 @@ final class RecipientResolver
             }
         }
 
-        return $this->buckets($resolved);
+        $out = $this->buckets($resolved);
+
+        // Pojistka: žádný TO příjemce (např. kontakty jen s rolí cc/bcc — „kopie
+        // účtárně, hlavní příjemce zůstává jednatel") → doplň main_email jako TO.
+        // Jen pokud už nefiguruje v cc/bcc (tam ho uživatel zařadil vědomě).
+        if ($out['to'] === [] && $mainEmail !== '' && filter_var($mainEmail, FILTER_VALIDATE_EMAIL)) {
+            $key = mb_strtolower($mainEmail);
+            $present = array_map(static fn (array $r) => mb_strtolower($r['email']), $out['resolved']);
+            if (!in_array($key, $present, true)) {
+                $entry = ['email' => $mainEmail, 'recipient' => 'to', 'source' => 'main_email', 'usage' => null, 'label' => null];
+                $out['to'][] = $mainEmail;
+                array_unshift($out['resolved'], $entry);
+            }
+        }
+        return $out;
     }
 
     /**
