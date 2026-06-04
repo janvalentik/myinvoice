@@ -1,10 +1,14 @@
 import { api } from './client'
 import type { ListResponse } from './clients'
 
+export type ProjectEmailUsage = 'documents' | 'reminders' | 'approvals'
+
 export interface BillingEmail {
   position: 1 | 2 | 3
   email: string
   label?: string | null
+  /** Typy zpráv, pro které se e-mail použije (#86); null = všechny (default). */
+  usages?: ProjectEmailUsage[] | null
 }
 
 export interface Project {

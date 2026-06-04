@@ -69,6 +69,7 @@ kam se má kromě hlavního klienta posílat každá vystavená faktura — typi
 | Pozice | 1 / 2 / 3 (řazení) |
 | E-mail | Povinný |
 | Popisek | Volitelný — „účetní", „PM", „asistentka" |
+| Účely *(od v4.15.0)* | **Doklady / Upomínky / Schvalování** — pro které typy zpráv se e-mail použije. Vše zaškrtnuté (= nic neomezeno) je výchozí a odpovídá dosavadnímu chování |
 
 Při odesílání faktury jdou kopie na: `klient.hlavni_email + zakazka.fakturacni_emaily[]`.
 Pokud faktura nemá zakázku, jde jen na hlavní e-mail klienta. Má-li klient

@@ -90,7 +90,7 @@ final class RecipientResolverTest extends TestCase
         return $id;
     }
 
-    /** @param list<string> $billingEmails */
+    /** @param list<string|array{0:string,1:?string}> $billingEmails e-mail, nebo [e-mail, usages JSON|null] */
     private function project(int $clientId, array $billingEmails = [], string $mode = 'auto'): int
     {
         $pdo = $this->db->pdo();
@@ -99,9 +99,10 @@ final class RecipientResolverTest extends TestCase
         )->execute([$clientId, 'RR Test zakázka', $this->currencyId, $mode]);
         $id = (int) $pdo->lastInsertId();
         $this->projectIds[] = $id;
-        foreach ($billingEmails as $i => $em) {
-            $pdo->prepare('INSERT INTO project_billing_emails (project_id, email, position) VALUES (?, ?, ?)')
-                ->execute([$id, $em, $i + 1]);
+        foreach ($billingEmails as $i => $entry) {
+            [$em, $usages] = is_array($entry) ? $entry : [$entry, null];
+            $pdo->prepare('INSERT INTO project_billing_emails (project_id, email, position, usages) VALUES (?, ?, ?, ?)')
+                ->execute([$id, $em, $i + 1, $usages]);
         }
         return $id;
     }
@@ -298,6 +299,46 @@ final class RecipientResolverTest extends TestCase
         self::assertSame(['contact', 'project'], $sources);
         self::assertSame('účtárna', $r['resolved'][0]['label']);
         self::assertSame('documents', $r['resolved'][0]['usage']);
+    }
+
+    // ── účely e-mailů zakázky (#86 follow-up) ────────────────────────────
+
+    public function testProjectEmailUsagesFilterByType(): void
+    {
+        $c = $this->client();
+        $p = $this->project($c, [
+            ['jen-doklady@example.cz', '["documents"]'],
+            ['jen-upominky@example.cz', '["reminders"]'],
+            ['vse@example.cz', null],  // NULL = všechny typy (legacy default)
+        ]);
+
+        $docs = $this->resolver->resolve(RecipientResolver::TYPE_DOCUMENTS, $this->invoice($c, $p));
+        self::assertSame(['hlavni@example.cz', 'jen-doklady@example.cz', 'vse@example.cz'], $docs['to']);
+
+        $rem = $this->resolver->resolve(RecipientResolver::TYPE_REMINDERS, $this->invoice($c, $p));
+        self::assertSame(['hlavni@example.cz', 'jen-upominky@example.cz', 'vse@example.cz'], $rem['to']);
+    }
+
+    public function testProjectEmailUsagesApprovalsLegacyReplace(): void
+    {
+        // Approval legacy replace bere jen e-maily s účelem approvals (nebo bez omezení).
+        $c = $this->client();
+        $p = $this->project($c, [
+            ['jen-doklady@example.cz', '["documents"]'],
+            ['pm@example.cz', '["approvals"]'],
+        ]);
+
+        $r = $this->resolver->resolve(RecipientResolver::TYPE_APPROVALS, $this->invoice($c, $p));
+        self::assertSame(['pm@example.cz'], $r['to']);
+    }
+
+    public function testProjectEmailUsagesEmptyArrayMeansAll(): void
+    {
+        $c = $this->client();
+        $p = $this->project($c, [['vse@example.cz', '[]']]);
+
+        $r = $this->resolver->resolve(RecipientResolver::TYPE_REMINDERS, $this->invoice($c, $p));
+        self::assertContains('vse@example.cz', $r['to']);
     }
 
     // ── repository validace ──────────────────────────────────────────────

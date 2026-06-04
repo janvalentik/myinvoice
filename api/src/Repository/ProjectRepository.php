@@ -251,7 +251,7 @@ final class ProjectRepository
     public function billingEmailsFor(int $projectId): array
     {
         $stmt = $this->db->pdo()->prepare(
-            'SELECT position, email, label FROM project_billing_emails WHERE project_id = ? ORDER BY position'
+            'SELECT position, email, label, usages FROM project_billing_emails WHERE project_id = ? ORDER BY position'
         );
         $stmt->execute([$projectId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -259,6 +259,7 @@ final class ProjectRepository
             'position' => (int) $r['position'],
             'email'    => $r['email'],
             'label'    => $r['label'],
+            'usages'   => $this->decodeUsages($r['usages'] ?? null),
         ], $rows);
     }
 
@@ -271,7 +272,7 @@ final class ProjectRepository
         if (!$projectIds) return [];
         $placeholders = implode(',', array_fill(0, count($projectIds), '?'));
         $stmt = $this->db->pdo()->prepare(
-            "SELECT project_id, position, email, label
+            "SELECT project_id, position, email, label, usages
                FROM project_billing_emails
               WHERE project_id IN ($placeholders)
               ORDER BY project_id, position"
@@ -284,9 +285,24 @@ final class ProjectRepository
                 'position' => (int) $r['position'],
                 'email'    => $r['email'],
                 'label'    => $r['label'],
+                'usages'   => $this->decodeUsages($r['usages'] ?? null),
             ];
         }
         return $out;
+    }
+
+    /**
+     * Účely e-mailu zakázky (#86): NULL = všechny typy zpráv (default).
+     * V API reprezentujeme NULL — frontend zobrazí vše zaškrtnuté.
+     *
+     * @return list<string>|null
+     */
+    private function decodeUsages(mixed $raw): ?array
+    {
+        if ($raw === null || $raw === '') return null;
+        $decoded = json_decode((string) $raw, true);
+        if (!is_array($decoded) || $decoded === []) return null;
+        return array_values(array_filter(array_map('strval', $decoded), static fn ($u) => $u !== ''));
     }
 
     private function saveBillingEmails(int $projectId, array $emails): void
@@ -295,8 +311,9 @@ final class ProjectRepository
         $pdo->prepare('DELETE FROM project_billing_emails WHERE project_id = ?')->execute([$projectId]);
 
         $stmt = $pdo->prepare(
-            'INSERT INTO project_billing_emails (project_id, position, email, label) VALUES (?, ?, ?, ?)'
+            'INSERT INTO project_billing_emails (project_id, position, email, label, usages) VALUES (?, ?, ?, ?, ?)'
         );
+        $validUsages = ['documents', 'reminders', 'approvals'];
         foreach ($emails as $entry) {
             if (!is_array($entry)) continue;
             $email = trim((string) ($entry['email'] ?? ''));
@@ -304,7 +321,18 @@ final class ProjectRepository
             if ($email === '' || $position < 1 || $position > 3) continue;
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
             $label = trim((string) ($entry['label'] ?? '')) ?: null;
-            $stmt->execute([$projectId, $position, $email, $label]);
+            // Účely (#86): pole stringů; NULL / prázdné / všechny tři = NULL (všechny typy).
+            $usages = null;
+            if (isset($entry['usages']) && is_array($entry['usages'])) {
+                $filtered = array_values(array_unique(array_filter(
+                    array_map(static fn ($u) => trim((string) $u), $entry['usages']),
+                    static fn ($u) => in_array($u, $validUsages, true),
+                )));
+                if ($filtered !== [] && count($filtered) < count($validUsages)) {
+                    $usages = json_encode($filtered, JSON_UNESCAPED_UNICODE);
+                }
+            }
+            $stmt->execute([$projectId, $position, $email, $label, $usages]);
         }
     }
 

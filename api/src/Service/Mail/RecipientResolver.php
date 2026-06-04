@@ -62,7 +62,7 @@ final class RecipientResolver
         $projectId = !empty($invoice['project_id']) ? (int) $invoice['project_id'] : null;
         $mainEmail = trim((string) ($invoice['client_main_email'] ?? ''));
 
-        [$projectEmails, $mode] = $this->projectEmails($projectId);
+        [$projectEmails, $mode] = $this->projectEmails($projectId, $type);
 
         // Kontakty klienta pro daný účel (upomínky: fallback na doklady).
         $entries = $this->contactEntries($clientId, $type);
@@ -160,9 +160,13 @@ final class RecipientResolver
     }
 
     /**
+     * E-maily zakázky relevantní pro daný typ zprávy. Sloupec `usages` (JSON
+     * pole stringů) omezuje e-mail na typy zpráv; NULL/prázdné = všechny typy
+     * (default, zpětná kompatibilita existujících řádků).
+     *
      * @return array{0: list<array{email:string, label:?string}>, 1: string} [e-maily zakázky, mode]
      */
-    private function projectEmails(?int $projectId): array
+    private function projectEmails(?int $projectId, string $type): array
     {
         if ($projectId === null) {
             return [[], 'auto'];
@@ -176,15 +180,20 @@ final class RecipientResolver
         }
 
         $stmt = $pdo->prepare(
-            'SELECT email, label FROM project_billing_emails WHERE project_id = ? ORDER BY position'
+            'SELECT email, label, usages FROM project_billing_emails WHERE project_id = ? ORDER BY position'
         );
         $stmt->execute([$projectId]);
         $emails = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $em = trim((string) $row['email']);
-            if ($em !== '') {
-                $emails[] = ['email' => $em, 'label' => $row['label'] !== null && $row['label'] !== '' ? (string) $row['label'] : null];
+            if ($em === '') {
+                continue;
             }
+            $usages = $row['usages'] !== null ? json_decode((string) $row['usages'], true) : null;
+            if (is_array($usages) && $usages !== [] && !in_array($type, $usages, true)) {
+                continue; // e-mail omezen na jiné typy zpráv
+            }
+            $emails[] = ['email' => $em, 'label' => $row['label'] !== null && $row['label'] !== '' ? (string) $row['label'] : null];
         }
         return [$emails, $mode];
     }

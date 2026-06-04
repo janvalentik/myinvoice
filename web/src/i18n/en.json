@@ -1306,6 +1306,7 @@
       "active": "Active",
       "inactive": "inactive",
       "no_usage": "no purpose",
+      "limit_reached": "Maximum of {max} contacts",
       "usage": {
         "documents": "Documents",
         "reminders": "Reminders",
@@ -1441,6 +1442,8 @@
     "billing_emails_mode_append": "Always append to client recipients",
     "billing_emails_mode_replace": "Always replace client recipients",
     "billing_emails_mode_hint": "How project billing emails combine with the client's contacts / main email. \"Default\" matches the previous behavior.",
+    "billing_email_no_usage_hint": "nothing selected = used for all message types",
+    "billing_email_all_usages": "all types",
     "note": "Note",
     "edit_title": "Edit project",
     "new_title": "New project",

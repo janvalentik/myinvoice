@@ -124,9 +124,11 @@ const lockVendor   = ref(false)  // true pokud má přijaté faktury
 // (vše na hlavní e-mail + e-maily zakázky). UI: per-kontakt checkboxy účelů
 // + jedna role to/cc/bcc (datový model umí roli per účel, UI drží jednu na kontakt).
 const USAGE_CODES: EmailContactUsageCode[] = ['documents', 'reminders', 'approvals', 'communication']
+const MAX_EMAIL_CONTACTS = 10  // zrcadlí backend ClientEmailContactRepository::MAX_CONTACTS
 const emailContacts = ref<ClientEmailContact[]>([])
 
 function addEmailContact(prefillEmail = '') {
+  if (emailContacts.value.length >= MAX_EMAIL_CONTACTS) return
   emailContacts.value.push({
     email: prefillEmail,
     label: null,
@@ -511,14 +513,19 @@ async function submit() {
               <div class="text-sm font-medium text-neutral-700">{{ t('client.email_contacts.title') }}</div>
               <p class="text-xs text-neutral-500 mt-0.5">{{ t('client.email_contacts.hint') }}</p>
             </div>
-            <div class="flex gap-2 shrink-0">
+            <div class="flex items-center gap-2 shrink-0">
+              <span v-if="emailContacts.length >= MAX_EMAIL_CONTACTS" class="text-xs text-neutral-400">
+                {{ t('client.email_contacts.limit_reached', { max: MAX_EMAIL_CONTACTS }) }}
+              </span>
               <button type="button" @click="addEmailContact(form.main_email)"
                 v-if="form.main_email && !emailContacts.some(c => c.email === form.main_email)"
-                class="cursor-pointer h-8 px-2.5 text-xs border border-neutral-300 rounded-md text-neutral-600 hover:bg-neutral-50">
+                :disabled="emailContacts.length >= MAX_EMAIL_CONTACTS"
+                class="cursor-pointer h-8 px-2.5 text-xs border border-neutral-300 rounded-md text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed">
                 {{ t('client.email_contacts.add_main') }}
               </button>
               <button type="button" @click="addEmailContact()"
-                class="cursor-pointer h-8 px-2.5 text-xs border border-primary-500/40 text-primary-700 rounded-md hover:bg-primary-50 font-medium">
+                :disabled="emailContacts.length >= MAX_EMAIL_CONTACTS"
+                class="cursor-pointer h-8 px-2.5 text-xs border border-primary-500/40 text-primary-700 rounded-md hover:bg-primary-50 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                 + {{ t('client.email_contacts.add') }}
               </button>
             </div>

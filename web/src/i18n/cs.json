@@ -1306,6 +1306,7 @@
       "active": "Aktivní",
       "inactive": "neaktivní",
       "no_usage": "bez účelu",
+      "limit_reached": "Maximum {max} kontaktů",
       "usage": {
         "documents": "Doklady",
         "reminders": "Upomínky",
@@ -1441,6 +1442,8 @@
     "billing_emails_mode_append": "Vždy přidat k příjemcům klienta",
     "billing_emails_mode_replace": "Vždy nahradit příjemce klienta",
     "billing_emails_mode_hint": "Jak se e-maily zakázky kombinují s kontakty / hlavním e-mailem klienta. „Výchozí\" odpovídá dosavadnímu chování.",
+    "billing_email_no_usage_hint": "nic nevybráno = použije se pro všechny typy zpráv",
+    "billing_email_all_usages": "všechny typy",
     "note": "Poznámka",
     "edit_title": "Upravit zakázku",
     "new_title": "Nová zakázka",

@@ -4491,6 +4491,11 @@ components:
         position: { type: integer, minimum: 1, maximum: 3 }
         email: { type: string, format: email }
         label: { type: string, nullable: true, example: "účetní" }
+        usages:
+          type: array
+          nullable: true
+          description: "Typy zpráv, pro které se e-mail použije (#86). NULL / prázdné / všechny tři = všechny typy (default, zpětně kompatibilní)."
+          items: { type: string, enum: [documents, reminders, approvals] }
 
     ProjectBrief:
       type: object

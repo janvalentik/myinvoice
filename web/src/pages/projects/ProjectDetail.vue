@@ -198,9 +198,21 @@ async function deleteProject() {
     <div v-if="project.billing_emails.length" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
       <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500 mb-3">{{ t('project.billing_emails') }}</h3>
       <ul class="space-y-1.5 text-sm">
-        <li v-for="b in project.billing_emails" :key="b.position" class="flex items-center justify-between border-b border-neutral-100 pb-1.5 last:border-b-0">
-          <span class="text-neutral-900">{{ b.email }}</span>
-          <span class="text-xs text-neutral-500">{{ b.label || '—' }}</span>
+        <li v-for="b in project.billing_emails" :key="b.position" class="flex items-center justify-between gap-2 flex-wrap border-b border-neutral-100 pb-1.5 last:border-b-0">
+          <span class="text-neutral-900 break-all">{{ b.email }}</span>
+          <span class="flex items-center gap-1.5 flex-wrap">
+            <!-- Účely (#86): prázdné/null = všechny typy zpráv -->
+            <template v-if="b.usages?.length">
+              <span v-for="u in b.usages" :key="u"
+                class="inline-flex px-1.5 py-0.5 rounded-full bg-primary-50 border border-primary-200 text-primary-700 text-[11px]">
+                {{ t(`client.email_contacts.usage.${u}`) }}
+              </span>
+            </template>
+            <span v-else class="inline-flex px-1.5 py-0.5 rounded-full bg-neutral-100 border border-neutral-200 text-neutral-500 text-[11px]">
+              {{ t('project.billing_email_all_usages') }}
+            </span>
+            <span class="text-xs text-neutral-500">{{ b.label || '—' }}</span>
+          </span>
         </li>
       </ul>
       <p class="text-xs text-neutral-400 mt-2">{{ t('project.client_main_email_note', { email: project.client_main_email }) }}</p>
