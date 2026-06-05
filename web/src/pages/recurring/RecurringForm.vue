@@ -24,6 +24,10 @@ const supplierStore = useSupplierStore()
 // jako u ruční faktury (InvoiceEditor). Backend (RecurringInvoiceGenerator) to navíc
 // vynucuje při generování, takže to platí i pro šablony uložené dřív.
 const supplierIsVatPayer = computed(() => supplierStore.currentSupplier?.is_vat_payer ?? true)
+// Identifikovaná osoba (§ 6g–6l ZDPH, #94) — neplátce s RC u služeb do EU.
+const supplierIsIdentified = computed(() => supplierStore.currentSupplier?.is_identified ?? false)
+// RC checkbox: plátce vždy, IO taky (její hlavní use-case); čistý neplátce ne.
+const showReverseChargeUI = computed(() => supplierIsVatPayer.value || supplierIsIdentified.value)
 
 const isEdit = computed(() => route.params.id !== undefined && route.params.id !== 'new')
 const tplId = computed(() => (isEdit.value ? Number(route.params.id) : null))
@@ -327,6 +331,18 @@ watch(() => form.value.client_id, async (newId) => {
       // Pokud má klient default a zvolí se i zakázka, projektová splatnost níže přebije.
       if (formLoaded.value && typeof c.payment_due_default === 'number') {
         form.value.payment_due_days = c.payment_due_default
+      }
+      // RC default dle klienta — zrcadlí InvoiceEditor.applyClientDefaults:
+      // plátce přebírá klientský flag; identifikovaná osoba (#94) RC zapne
+      // automaticky u EU klienta s DIČ (čl. 196, klasifikace řeší generátor);
+      // čistý neplátce nikdy. Jen po prvotním načtení (edit mód nepřepisovat).
+      if (formLoaded.value) {
+        if (supplierIsVatPayer.value) {
+          form.value.reverse_charge = c.reverse_charge
+        } else {
+          form.value.reverse_charge = supplierIsIdentified.value
+            && !!c.country_is_eu && c.country_iso2 !== 'CZ' && (c.dic || '').trim() !== ''
+        }
       }
     }
     await verifyClientVies(newId)
@@ -807,6 +823,18 @@ async function submit() {
             </dl>
             <p class="text-neutral-500">{{ t('recurring.placeholders_example') }}</p>
           </div>
+        </div>
+        <!-- RC checkbox dřív v šabloně chyběl (flag se přenášel jen „z faktury") —
+             doplněno s IO podporou (#94); generátor RC přenáší do vystavených faktur
+             a auto-klasifikace položek dá EU službám kód 22 (souhrnné hlášení). -->
+        <div v-if="showReverseChargeUI" class="mb-3">
+          <label class="flex items-center gap-2 text-sm text-neutral-700 mb-1">
+            <input v-model="form.reverse_charge" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+            <span>{{ t('invoice.reverse_charge') }} ({{ t('invoice.totals.vat') }} 0 %)</span>
+          </label>
+          <p v-if="!supplierIsVatPayer && form.reverse_charge" class="text-xs text-neutral-500 ml-6">
+            {{ t('invoice.reverse_charge_io_hint') }}
+          </p>
         </div>
         <template v-if="supplierIsVatPayer">
           <label class="flex items-center gap-2 text-sm text-neutral-700 mb-1">

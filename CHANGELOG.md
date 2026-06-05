@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Identifikovaná osoba — § 6g–6l ZDPH ([#94](https://github.com/radekhulan/myinvoice/issues/94), díky @mikolashodan za podnět).** Nový přepínač **Identifikovaná osoba** v nastavení dodavatele (jen pro neplátce; migrace 0103) pokrývá freelancery fakturující služby do EU bez tuzemského plátcovství — žádné přepínání plátce/neplátce: tuzemsko zůstává beze změny (bez DPH), navíc: **(1)** u **EU** klienta s DIČ se v editoru automaticky zapne reverse charge a předvyplní klasifikace 22 (EU služby) — s vysvětlujícím hintem, proč na dokladu není sazba DPH (samovyměří odběratel sazbou své země); klient ze 3. země RC nemá (mimo předmět DPH); sloupec částek se u RC dokladu neplátce/IO jmenuje **„Celkem bez DPH"** (editor i PDF) — částky jsou základ daně; PDF je daňový doklad s DIČ a klauzulí dle **čl. 196 směrnice 2006/112/ES** (tuzemský RC dál cituje § 92a — klauzule je nově country-aware pro všechny); **(2)** **pravidelná fakturace**: šablona má nově RC checkbox (dřív se flag jen přenášel „z faktury") se stejnou auto-logikou pro IO; generované faktury RC nesou a položky se auto-klasifikují kódem 22; **(3)** DPH přiznání se generuje s **`typ_platce='I'`** — jen řádky samovyměření z přeshraničních přijatých plnění (ř. 3–6, 12–13), **bez zrcadlového odpočtu ř. 43** (IO nemá nárok na odpočet), vždy měsíčně, nečekané řádky se vynechají s upozorněním; **(4)** kontrolní hlášení zobrazí upozornění, že IO KH nepodává; souhrnné hlášení funguje (podporovalo IO už dříve). Manuál § 6.1.1 a § 24.
+
 - **Kopie odchozích e-mailů dodavateli — per dodavatel, s volbou CC/BCC.** Dosud globální cfg flagy (`cc_supplier_on_send`, `cc_supplier_on_reminder`, `cc_supplier_on_approval[_reminder]`) lze nově přenastavit v nastavení dodavatele zvlášť pro **odeslání dokladu**, **upomínky** a **schvalování výkazů** (žádost + schvalovací upomínka sdílí jednu volbu — stejné členění účelů jako kontakty klienta z #86): *Dle konfigurace* (default — cfg zůstává živý fallback, efektivní hodnota je ve volbě vidět) / *Neposílat* / *Kopie (CC)* / *Skrytá kopie (BCC)*. Kopie jde přes jednotný `RecipientResolver` — v modalu odeslání je vidět jako chip „kopie dodavateli" a lze ji pro konkrétní e-mail smazat; dedup ji nepřidá, pokud je e-mail dodavatele už mezi příjemci. Manuál § 18.5.4.
 
 ### Changed
@@ -19,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Měsíční export pro role accountant a readonly.** Stránka Daně → Měsíční export byla viditelná všem rolím, ale spuštění exportu vracelo „Pro tuto akci nemáš oprávnění" — workflow background jobu (start/zrušení/smazání) jede přes POST/DELETE, které RBAC middleware propouštěl jen adminovi, přestože export je věcně čtení (readonly = čtení + export). Endpointy měsíčního exportu jsou nově explicitně povolené všem rolím; akce si dál drží vlastní guard.
+- **Změna plátce/neplátce DPH se projeví hned, bez hard refreshe ([#94](https://github.com/radekhulan/myinvoice/issues/94)).** Editor faktur čte plátcovství ze supplier store plněného při startu z `/me` — po uložení nastavení dodavatele se store nově aktualizuje, takže DPH sloupce/sazby v editoru odpovídají okamžitě (dříve až po F5).
 
 ## [4.16.0] — 2026-06-05
 

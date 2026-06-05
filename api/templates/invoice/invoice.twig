@@ -100,12 +100,15 @@
     <td class="meta-label">{{ t('Var. symbol', 'Var. symbol') }}</td>
     <td class="meta-value mono">{{ invoice.varsymbol|default('—') }}</td>
   </tr>
-  {% if not supplier.is_vat_payer %}
+  {# Identifikovaná osoba (§ 6g–6l, #94) na zahraničním RC dokladu řádek
+     „Není plátce DPH" nemá — matl by příjemce, který má daň samovyměřit;
+     nahrazuje ho RC klauzule + DIČ. Tuzemské faktury IO řádek mají (pravdivý). #}
+  {% if not supplier.is_vat_payer and not (supplier.is_identified|default(false) and invoice.reverse_charge) %}
   <tr>
     <td class="meta-label">{{ t('DPH', 'VAT') }}</td>
     <td class="meta-value" colspan="3">{{ t('Není plátce DPH', 'Not a VAT payer') }}</td>
   </tr>
-  {% elseif invoice.tax_date and invoice.invoice_type != 'proforma' %}
+  {% elseif supplier.is_vat_payer and invoice.tax_date and invoice.invoice_type != 'proforma' %}
   <tr>
     <td class="meta-label">{{ t('DUZP', 'Tax point') }}</td>
     <td class="meta-value">{{ invoice.tax_date|date(date_format) }}</td>
@@ -173,7 +176,13 @@
       <th class="num nowrap" style="width:9%">{{ t('Mn.', 'Qty') }}</th>
       <th class="nowrap" style="width:8%">{{ t('Jed.', 'Unit') }}</th>
       <th class="num nowrap" style="width:18%">{{ t('Cena/j', 'Price/unit') }}</th>
+      {# RC doklad neplátce/IO: částky jsou základ daně (samovyměří odběratel) —
+         sloupec to musí říct, neutrální „Celkem" by byl nejednoznačný. #}
+      {% if invoice.reverse_charge %}
+      <th class="num nowrap" style="width:23%">{{ t('Celkem bez DPH', 'Total excl. VAT') }}</th>
+      {% else %}
       <th class="num nowrap" style="width:23%">{{ t('Celkem', 'Total') }}</th>
+      {% endif %}
       {% endif %}
     </tr>
   </thead>
@@ -219,8 +228,15 @@
 
 {% if invoice.reverse_charge %}
 <div class="note rc-note">
+  {# Tuzemský RC mezi plátci = § 92a ZDPH; přeshraniční plnění (klient mimo CZ,
+     vč. faktur identifikované osoby do EU) = čl. 196 směrnice 2006/112/ES. #}
+  {% if client.country_iso2|default('CZ') == 'CZ' %}
   {{ t('Daň odvede zákazník (přenesená daňová povinnost dle § 92a zákona o DPH).',
        'Reverse charge — VAT to be accounted for by the customer.') }}
+  {% else %}
+  {{ t('Daň odvede zákazník (přenesení daňové povinnosti dle čl. 196 směrnice 2006/112/ES).',
+       'Reverse charge — VAT to be accounted for by the customer pursuant to Article 196 of Council Directive 2006/112/EC.') }}
+  {% endif %}
 </div>
 {% endif %}
 

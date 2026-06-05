@@ -47,13 +47,16 @@ final class DphPriznaniAction
         }
         $supplierId = SupplierGuard::currentId($request);
         $stmt = $this->db->pdo()->prepare(
-            'SELECT vat_period, is_vat_payer, taxpayer_type, financial_office_code FROM supplier WHERE id = ?'
+            'SELECT vat_period, is_vat_payer, is_identified, taxpayer_type, financial_office_code FROM supplier WHERE id = ?'
         );
         $stmt->execute([$supplierId]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $isIdentified = !((bool) ($row['is_vat_payer'] ?? false)) && (bool) ($row['is_identified'] ?? false);
         return Json::ok($response, [
-            'vat_period'            => $row['vat_period'] ?? null,
+            // Identifikovaná osoba podává vždy měsíčně — UI nedostane kvartální volbu.
+            'vat_period'            => $isIdentified ? 'monthly' : ($row['vat_period'] ?? null),
             'is_vat_payer'          => (bool) ($row['is_vat_payer'] ?? false),
+            'is_identified'         => $isIdentified,
             'taxpayer_type'         => $row['taxpayer_type'] ?? null,
             'has_financial_office'  => !empty($row['financial_office_code']),
         ]);

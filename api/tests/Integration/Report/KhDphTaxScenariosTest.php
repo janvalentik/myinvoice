@@ -58,6 +58,8 @@ final class KhDphTaxScenariosTest extends TestCase
     private array $invoiceIds = [];
     /** @var int[] */
     private array $purchaseIds = [];
+    /** Původní plátcovství supplier-a — test vynucuje plátce (viz setUp). */
+    private ?array $origVatFlags = null;
 
     protected function setUp(): void
     {
@@ -89,6 +91,17 @@ final class KhDphTaxScenariosTest extends TestCase
         if ($this->supplierId === 0 || $this->currencyId === 0 || $this->vatRateId === 0 || $this->userId === 0 || $this->czId === 0) {
             $this->markTestSkipped('Chybí základní data (supplier/currency/vat_rate/user/country) v DB.');
         }
+
+        // Scénáře předpokládají PLÁTCE DPH (DPHDP3 typ P s plnými řádky + odpočty).
+        // Identifikovaná osoba (issue #94) builder přepíná do režimu typ I s filtrem
+        // řádků — reálné nastavení dodavatele v dev DB by testy rozbilo. Vynutit
+        // plátce a v tearDown vrátit (IO režim kryje IdentifiedPersonDphTest).
+        $flags = $pdo->query(
+            "SELECT is_vat_payer, is_identified FROM supplier WHERE id = {$this->supplierId}"
+        )->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $this->origVatFlags = $flags;
+        $pdo->prepare('UPDATE supplier SET is_vat_payer = 1, is_identified = 0 WHERE id = ?')
+            ->execute([$this->supplierId]);
     }
 
     protected function tearDown(): void
@@ -97,6 +110,14 @@ final class KhDphTaxScenariosTest extends TestCase
             return;
         }
         $pdo = $this->db->pdo();
+        if ($this->origVatFlags !== null && $this->supplierId > 0) {
+            $pdo->prepare('UPDATE supplier SET is_vat_payer = ?, is_identified = ? WHERE id = ?')
+                ->execute([
+                    (int) ($this->origVatFlags['is_vat_payer'] ?? 1),
+                    (int) ($this->origVatFlags['is_identified'] ?? 0),
+                    $this->supplierId,
+                ]);
+        }
         foreach ($this->invoiceIds as $id) {
             $pdo->prepare('DELETE FROM invoice_items WHERE invoice_id = ?')->execute([$id]);
             $pdo->prepare('DELETE FROM invoices WHERE id = ?')->execute([$id]);

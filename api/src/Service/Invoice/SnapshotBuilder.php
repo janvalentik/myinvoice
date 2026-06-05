@@ -86,6 +86,9 @@ final class SnapshotBuilder
             'ic'           => $row['ic'],
             'dic'          => $row['dic'],
             'is_vat_payer' => (bool) $row['is_vat_payer'],
+            // Identifikovaná osoba (§ 6g–6l, issue #94) — PDF podle ní volí RC
+            // klauzuli a potlačí „Není plátce DPH" na zahraničním RC dokladu.
+            'is_identified' => (bool) ($row['is_identified'] ?? false),
             'email'        => $row['email'],
             'phone'        => $row['phone'],
             'web'          => $row['web'],

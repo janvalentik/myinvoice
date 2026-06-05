@@ -45,7 +45,14 @@ odmítne nebo bude generovat formálně neúplný výkaz.
 | Pole v UI | XML atribut | Hodnoty | Kdy použít |
 |---|---|---|---|
 | **Typ poplatníka** | `typ_ds` ve VetaP | `F` (FO/OSVČ) / `P` (PO/s.r.o.) | Podle právní formy. |
-| **Typ plátce DPH** | `typ_platce` ve VetaD | `P` (měsíční) / `Q` (čtvrtletní) | Měsíční default. Čtvrtletní jen pokud máš obrat < 10 mil. Kč/rok a FÚ ti to přidělil. |
+| **Typ plátce DPH** | `typ_platce` ve VetaD | `P` (plátce) / `I` (identifikovaná osoba) | `I` se nastaví automaticky, když je v dodavateli zaškrtnutá **Identifikovaná osoba** (viz [§ 6.1.1](06_Fakturujeme.md#611-identifikovaná-osoba--6g6l-zdph)). Perioda (měsíc/kvartál) jde zvlášť atributy `mesic`/`ctvrt` dle `vat_period`. |
+
+> 🛈 **Identifikovaná osoba**: přiznání obsahuje jen řádky samovyměření
+> z přeshraničních přijatých plnění (ř. 3–6, 12–13) **bez zrcadlového odpočtu
+> ř. 43** (IO nemá nárok na odpočet — daň se reálně platí, ř. 64). Podává se
+> **vždy měsíčně** a jen za měsíce, kdy povinnost vznikla; tuzemské řádky
+> a oddíl C se automaticky vynechají (s upozorněním v náhledu). Kontrolní
+> hlášení IO nepodává; služby do EU vykazuje v souhrnném hlášení.
 
 ### Sídlo / adresa (od v4.0.6)
 
@@ -148,7 +155,9 @@ Pole `street` se ukládá samostatně, EPO chce všechny tři atributy.
 validací (`c_ufo` je `use="required"`).
 
 **„Tenant není evidovaný jako plátce DPH"**
-→ V Identifikaci firmy zapni `is_vat_payer = true`. Vyplň DIČ.
+→ V Identifikaci firmy zapni `is_vat_payer = true`. Vyplň DIČ. Pokud jsi
+**identifikovaná osoba**, nech plátce vypnutého a zaškrtni `Identifikovaná
+osoba` — přiznání se pak generuje s `typ_platce='I'`.
 
 **Čísla v Veta1/Veta4 nesedí**
 → Zkontroluj **VAT klasifikační kódy** na položkách faktur za období. Každý řádek

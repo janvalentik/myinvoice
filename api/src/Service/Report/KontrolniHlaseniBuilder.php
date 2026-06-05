@@ -373,7 +373,13 @@ final class KontrolniHlaseniBuilder
     private function validateSupplier(array $s): array
     {
         $w = [];
-        if (!$s['is_vat_payer']) $w[] = 'Tenant není plátce DPH — KH nemusí být relevantní.';
+        if (!$s['is_vat_payer']) {
+            // Identifikovaná osoba (§ 6g–6l, issue #94) KH nepodává NIKDY (§ 101c
+            // jen plátci) — přeshraniční povinnosti pokrývá DPHDP3 typ I + SHV.
+            $w[] = !empty($s['is_identified'])
+                ? 'Identifikovaná osoba kontrolní hlášení nepodává (§ 101c — jen plátci DPH). Přeshraniční plnění patří do přiznání DPH (typ I) a souhrnného hlášení.'
+                : 'Tenant není plátce DPH — KH nemusí být relevantní.';
+        }
         if (empty($s['financial_office_code'])) $w[] = 'Chybí kód finančního úřadu.';
         if (empty($s['dic'])) $w[] = 'Chybí DIČ.';
         return $w;
@@ -384,7 +390,7 @@ final class KontrolniHlaseniBuilder
         $stmt = $this->db->pdo()->prepare(
             "SELECT s.id, s.company_name, s.street, s.city, s.zip,
                     COALESCE(c.iso2, 'CZ') AS country_iso2,
-                    s.ic, s.dic, s.is_vat_payer,
+                    s.ic, s.dic, s.is_vat_payer, s.is_identified,
                     s.taxpayer_type, s.vat_period, s.financial_office_code,
                     s.workplace_code, s.data_box_type, s.data_box_id,
                     s.email, s.phone, s.cz_nace_code,

@@ -44,6 +44,8 @@ final class RecurringGeneratorTest extends TestCase
     private array $createdTemplateIds = [];
     /** @var int[] faktury k vyčištění */
     private array $createdInvoiceIds = [];
+    /** Původní plátcovství supplier-a — test ho vynucuje na plátce (viz setUp). */
+    private ?array $origVatFlags = null;
 
     protected function setUp(): void
     {
@@ -104,10 +106,28 @@ final class RecurringGeneratorTest extends TestCase
         $this->userId = (int) $this->db->pdo()
             ->query("SELECT id FROM users ORDER BY id LIMIT 1")
             ->fetchColumn();
+
+        // Test předpokládá PLÁTCE (sazby 21 % na fakturách) — generátor neplátci/IO
+        // autoritativně přepíná položky na 0 % (applyNonVatPayerRate), takže reálné
+        // nastavení dodavatele v dev DB by test rozbilo. Vynutit a v tearDown vrátit.
+        $flags = $this->db->pdo()->query(
+            "SELECT is_vat_payer, is_identified FROM supplier WHERE id = {$this->supplierId}"
+        )->fetch(PDO::FETCH_ASSOC) ?: [];
+        $this->origVatFlags = $flags;
+        $this->db->pdo()->prepare('UPDATE supplier SET is_vat_payer = 1, is_identified = 0 WHERE id = ?')
+            ->execute([$this->supplierId]);
     }
 
     protected function tearDown(): void
     {
+        if (isset($this->db) && $this->origVatFlags !== null && $this->supplierId > 0) {
+            $this->db->pdo()->prepare('UPDATE supplier SET is_vat_payer = ?, is_identified = ? WHERE id = ?')
+                ->execute([
+                    (int) ($this->origVatFlags['is_vat_payer'] ?? 1),
+                    (int) ($this->origVatFlags['is_identified'] ?? 0),
+                    $this->supplierId,
+                ]);
+        }
         if (empty($this->createdInvoiceIds) && empty($this->createdTemplateIds)) {
             if (isset($this->db)) $this->db->close();
             return;

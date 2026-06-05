@@ -114,6 +114,9 @@ function defaultItemUnit(): string {
 
 // Aktivní dodavatel — pokud není plátce DPH, fakturuje bez DPH (žádné DPH UI ani v PDF).
 const supplierIsVatPayer = computed(() => supplierStore.currentSupplier?.is_vat_payer ?? true)
+// Identifikovaná osoba (§ 6g–6l ZDPH, #94) — neplátce, který ale služby do EU
+// fakturuje s přenesenou daňovou povinností (čl. 196 směrnice) a podává SHV.
+const supplierIsIdentified = computed(() => supplierStore.currentSupplier?.is_identified ?? false)
 
 // „Osvobozeno od daně z příjmů" má smysl jen pro OSVČ (FO): osvobození dle § 4 ZDP
 // platí výhradně pro fyzické osoby, u s.r.o. (PO) žádný § 4 není a prodej majetku je
@@ -124,10 +127,17 @@ const showIncomeTaxExemptUI = computed(
 )
 
 // RC je volba na konkrétním plnění (přenesení daň. povinnosti), ne natvrdo vlastnost
-// odběratele → checkbox zobrazíme vždy, když je dodavatel plátce DPH (neplátce RC
-// vystavit nemůže). Příznak `reverse_charge` v profilu klienta slouží jen jako default
-// předvyplnění při výběru klienta (viz onClientChange), uživatel ho může přepnout.
-const showReverseChargeUI = computed(() => supplierIsVatPayer.value)
+// odběratele → checkbox zobrazíme vždy, když je dodavatel plátce DPH (čistý neplátce
+// RC vystavit nemůže) NEBO identifikovaná osoba (#94 — RC u služeb do EU je její
+// hlavní use-case). Příznak `reverse_charge` v profilu klienta slouží jen jako default
+// předvyplnění při výběru klienta (viz applyClientDefaults), uživatel ho může přepnout.
+const showReverseChargeUI = computed(() => supplierIsVatPayer.value || supplierIsIdentified.value)
+
+// Neplátce/IO s RC: částky na dokladu JSOU základ daně (ceny bez DPH) — DPH si
+// samovyměří odběratel sazbou své země, česká sazba se neuvádí. Sloupec proto
+// místo neutrálního „Celkem" pojmenujeme „Bez DPH", ať je to z dokladu zřejmé.
+const nonPayerTotalLabel = computed(() =>
+  form.value.reverse_charge ? t('invoice.totals.without_vat') : t('invoice.totals.total'))
 
 const form = ref<{
   invoice_type: 'invoice' | 'proforma' | 'credit_note'
@@ -503,9 +513,20 @@ async function applyClientDefaults(clientId: number) {
   form.value.currency_id = c.currency_default_id
   form.value.currency = c.currency_default
   form.value.language = c.language
-  // Neplátce DPH nikdy nevystavuje RC fakturu — ignorujeme klientský flag.
+  // Čistý neplátce DPH nikdy nevystavuje RC fakturu — ignorujeme klientský flag.
   // RC jen přepne hlavičkový příznak; sazby položek (nominální) se nemění.
-  form.value.reverse_charge = supplierIsVatPayer.value ? c.reverse_charge : false
+  // Identifikovaná osoba (#94): u EU klienta s DIČ je RC její hlavní use-case
+  // (služby § 9/1, čl. 196 směrnice) → zapnout automaticky a předvyplnit
+  // klasifikaci 22 (EU služby → souhrnné hlášení). Klient ze 3. země RC nemá —
+  // plnění je mimo předmět DPH, žádná klauzule ani SHV.
+  if (supplierIsVatPayer.value) {
+    form.value.reverse_charge = c.reverse_charge
+  } else if (supplierIsIdentified.value && c.country_is_eu && c.country_iso2 !== 'CZ' && (c.dic || '').trim() !== '') {
+    form.value.reverse_charge = true
+    if (!form.value.vat_classification_code) form.value.vat_classification_code = '22'
+  } else {
+    form.value.reverse_charge = false
+  }
   // Výchozí kategorie tržby klienta — předvyplň, jen pokud uživatel ještě nevybral
   // (project default má přednost a aplikuje se až v applyProjectDefaults).
   if (form.value.revenue_category_id == null && c.default_revenue_category_id != null) {
@@ -1264,10 +1285,17 @@ async function deleteDraft() {
                 {{ t('payment_method.hint') }}
               </p>
             </div>
-            <label v-if="showReverseChargeUI" class="flex items-center gap-2 text-sm text-neutral-700">
-              <input v-model="form.reverse_charge" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
-              <span>{{ t('invoice.reverse_charge') }} ({{ t('invoice.totals.vat') }} 0 %)</span>
-            </label>
+            <div v-if="showReverseChargeUI">
+              <label class="flex items-center gap-2 text-sm text-neutral-700">
+                <input v-model="form.reverse_charge" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+                <span>{{ t('invoice.reverse_charge') }} ({{ t('invoice.totals.vat') }} 0 %)</span>
+              </label>
+              <!-- IO (#94): vysvětlení, proč na RC dokladu není sazba DPH — částky jsou
+                   základ daně, samovyměřuje odběratel sazbou své země. -->
+              <p v-if="!supplierIsVatPayer && form.reverse_charge" class="text-xs text-neutral-500 mt-1 ml-6">
+                {{ t('invoice.reverse_charge_io_hint') }}
+              </p>
+            </div>
             <div v-if="showPricesIncludeVatUI">
               <label class="flex items-center gap-2 text-sm text-neutral-700">
                 <input v-model="form.prices_include_vat" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
@@ -1375,7 +1403,7 @@ async function deleteDraft() {
               <th class="px-3 py-2 text-left font-medium w-16">{{ t('invoice.items_table.unit') }}</th>
               <th class="px-3 py-2 text-right font-medium w-32">{{ unitPriceHeaderLabel }}</th>
               <th v-if="supplierIsVatPayer" class="px-3 py-2 text-center font-medium w-24">{{ t('invoice.totals.vat') }}</th>
-              <th class="px-3 py-2 text-right font-medium w-32">{{ supplierIsVatPayer ? t('invoice.items_table.total_incl_vat') : t('invoice.totals.total') }}</th>
+              <th class="px-3 py-2 text-right font-medium w-32">{{ supplierIsVatPayer ? t('invoice.items_table.total_incl_vat') : nonPayerTotalLabel }}</th>
               <th class="px-3 py-2 w-12"></th>
             </tr>
           </thead>
@@ -1473,7 +1501,7 @@ async function deleteDraft() {
               </div>
             </div>
             <div class="flex items-baseline justify-between pt-1 border-t border-neutral-200">
-              <span class="text-xs font-medium text-neutral-500 uppercase tracking-wide">{{ supplierIsVatPayer ? t('invoice.items_table.total_incl_vat') : t('invoice.totals.total') }}</span>
+              <span class="text-xs font-medium text-neutral-500 uppercase tracking-wide">{{ supplierIsVatPayer ? t('invoice.items_table.total_incl_vat') : nonPayerTotalLabel }}</span>
               <input :value="itemTotal(item)" @change="setItemGross(item, ($event.target as HTMLInputElement).value)"
                 type="text" inputmode="decimal" :title="t('invoice.items_table.gross_edit_hint')"
                 class="w-32 h-9 px-2 border border-neutral-300 rounded text-right font-mono text-sm font-semibold" />

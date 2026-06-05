@@ -26,6 +26,8 @@ export interface DphPriznaniPreview {
 export interface DphSettings {
   vat_period: 'monthly' | 'quarterly' | null
   is_vat_payer: boolean
+  /** Identifikovaná osoba (§ 6g–6l, issue #94) — přiznání typu I, vždy měsíčně. */
+  is_identified?: boolean
   taxpayer_type: 'fo' | 'po' | null
   has_financial_office: boolean
 }

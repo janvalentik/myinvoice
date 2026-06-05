@@ -43,6 +43,17 @@ export const useSupplierStore = defineStore('supplier', () => {
     }
   }
 
+  /**
+   * Propsání změn z uloženého nastavení dodavatele do brief listu (issue #94).
+   * availableSuppliers se plní jen z /me při startu — bez patche by editor
+   * faktur četl stale hodnoty (is_vat_payer, defaulty) až do hard refreshe.
+   */
+  function patchSupplier(id: number, partial: Partial<SupplierBrief>) {
+    const idx = availableSuppliers.value.findIndex(s => s.id === id)
+    if (idx === -1) return
+    availableSuppliers.value[idx] = { ...availableSuppliers.value[idx], ...partial, id }
+  }
+
   return {
     currentSupplierId,
     availableSuppliers,
@@ -50,5 +61,6 @@ export const useSupplierStore = defineStore('supplier', () => {
     currentSupplier,
     setSupplier,
     setAvailable,
+    patchSupplier,
   }
 })

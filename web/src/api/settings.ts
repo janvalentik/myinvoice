@@ -19,6 +19,9 @@ export interface Supplier {
   ic: string | null
   dic: string | null
   is_vat_payer: boolean
+  /** Identifikovaná osoba (§ 6g–6l ZDPH, issue #94) — neplátce v tuzemsku
+   *  s přeshraničními povinnostmi. Nelze kombinovat s is_vat_payer. */
+  is_identified: boolean
   email: string
   phone: string | null
   web: string | null

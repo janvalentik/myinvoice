@@ -416,7 +416,11 @@ final class InvoicePdfRenderer
 
     private function docTypeLabel(array $invoice, string $locale, array $supplier = []): string
     {
-        $isVatPayer = (bool) ($supplier['is_vat_payer'] ?? true);
+        // Identifikovaná osoba (§ 6g–6l, #94): její RC faktura do EU JE daňový
+        // doklad (povinnost ho vystavit do 15 dnů od konce měsíce, § 28) —
+        // label „daňový doklad" si zaslouží stejně jako plátcovská.
+        $isVatPayer = (bool) ($supplier['is_vat_payer'] ?? true)
+            || ((bool) ($supplier['is_identified'] ?? false) && !empty($invoice['reverse_charge']));
         $labels = [
             'cs' => [
                 'invoice'      => $isVatPayer ? 'Faktura — daňový doklad' : 'Faktura',

@@ -37,6 +37,29 @@ už budou s DPH.
 > být plátcem (zpětná registrace), je třeba opravit dodatečným daňovým
 > dokladem. To MyInvoice neumí automaticky — řeš s účetní.
 
+### 6.1.1 Identifikovaná osoba (§ 6g–6l ZDPH)
+
+Třetí daňový status mezi plátcem a neplátcem — typicky freelancer, který
+fakturuje služby do EU (a/nebo nakupuje zahraniční služby typu reklamy či
+SaaS), ale v tuzemsku plátcem není. V `Nastavení → Dodavatel` nech **Plátce
+DPH vypnutý** a zaškrtni **Identifikovaná osoba**.
+
+Co se tím změní (vše ostatní zůstává jako u neplátce):
+
+| Oblast | Chování IO |
+|---|---|
+| Tuzemské faktury | beze změny — bez DPH, banner „Není plátce DPH" |
+| Faktura **EU** klientovi s DIČ | po výběru klienta se automaticky zapne **reverse charge** a předvyplní klasifikace **22** (EU služby → souhrnné hlášení); PDF je daňový doklad s DIČ a klauzulí „daň odvede zákazník (čl. 196 směrnice 2006/112/ES)". Sazba DPH se na dokladu **neuvádí** (samovyměří odběratel sazbou své země) — částky jsou základ daně, sloupec se proto jmenuje „Celkem bez DPH". Totéž platí v šabloně pravidelné fakturace. |
+| Faktura klientovi mimo EU | bez RC — plnění je mimo předmět české DPH, žádná klauzule, žádné SHV |
+| Souhrnné hlášení (SHV) | podává se za měsíce s EU službami (kód 3) — `Daně → Souhrnné hlášení` |
+| Přijaté zahraniční doklady (klasifikace 23/24/25) | samovyměření DPH **bez nároku na odpočet** — daň se reálně platí |
+| DPH přiznání | typ **identifikovaná osoba** (`typ_platce='I'`), jen řádky samovyměření (ř. 3–6, 12–13), **vždy měsíčně** a jen za měsíce, kdy povinnost vznikla |
+| Kontrolní hlášení | **nepodává se nikdy** — stránka KH zobrazí upozornění |
+
+> ⚠️ Samovyměřená daň bez nároku na odpočet je u IO skutečný výdaj. Lhůta
+> podání přiznání i SHV je do 25. dne následujícího měsíce; faktura za EU
+> služby se vystavuje nejpozději do 15 dnů od konce měsíce plnění (§ 28).
+
 ## 6.2 Sazby DPH (číselník `CZ`)
 
 Standardní seed obsahuje čtyři sazby pro Česko:
@@ -72,8 +95,9 @@ checkboxem **Reverse charge** v editoru faktury.
   jde o B2B plnění s místem plnění v zemi příjemce dle § 9 odst. 1 ZDPH.
 
 V obou případech aplikace nastaví všechny položky na sazbu `CZ-RC` (0 %),
-sumace neukáže DPH řádky a do PDF přidá poznámku „Daň odvede zákazník
-(přenesená daňová povinnost dle § 92a zákona o DPH)".
+sumace neukáže DPH řádky a do PDF přidá zákonnou poznámku — pro tuzemského
+klienta „Daň odvede zákazník (přenesená daňová povinnost dle § 92a zákona
+o DPH)", pro zahraničního „…dle čl. 196 směrnice 2006/112/ES".
 
 ### Jak RC zapnout
 
@@ -85,7 +109,9 @@ sumace neukáže DPH řádky a do PDF přidá poznámku „Daň odvede zákazní
    povolenou. Po zaškrtnutí se všechny položky přepnou na 0 % RC sazbu.
 
 > 💡 RC checkbox je v editoru schovaný i tehdy, když je dodavatel **neplátce
-> DPH** — neplátce RC vystavit nemůže (nemá DPH co přenášet).
+> DPH** — neplátce RC vystavit nemůže (nemá DPH co přenášet). Výjimkou je
+> **identifikovaná osoba** (§ 6.1.1) — té se RC u zahraničního klienta s DIČ
+> zapne automaticky.
 
 ## 6.4 Zahraniční fakturace — limitace a OSS
 

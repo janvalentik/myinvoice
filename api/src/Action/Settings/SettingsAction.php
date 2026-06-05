@@ -122,11 +122,14 @@ final class SettingsAction
 
             $stmt = $pdo->prepare(
                 'INSERT INTO supplier (company_name, display_name, street, city, zip, country_id,
-                                       ic, dic, is_vat_payer, email, phone, web, tagline, commercial_register, taxpayer_type,
+                                       ic, dic, is_vat_payer, is_identified, email, phone, web, tagline, commercial_register, taxpayer_type,
                                        default_currency_id, default_vat_rate_id,
                                        default_payment_due_days, default_hourly_rate)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
             );
+            // Heuristika „má DIČ → je plátce" neplatí pro identifikovanou osobu
+            // (§ 6g–6l, issue #94) — IO má DIČ, ale plátce není.
+            $isIdentified = !empty($b['is_identified']);
             $stmt->execute([
                 (string) $b['company_name'],
                 $this->nullable($b, 'display_name') ?: (string) $b['company_name'],
@@ -136,7 +139,8 @@ final class SettingsAction
                 $countryId,
                 $this->nullable($b, 'ic'),
                 $this->nullable($b, 'dic'),
-                !empty($b['is_vat_payer']) ? 1 : (!empty($b['dic']) ? 1 : 0),
+                $isIdentified ? 0 : (!empty($b['is_vat_payer']) ? 1 : (!empty($b['dic']) ? 1 : 0)),
+                $isIdentified ? 1 : 0,
                 (string) $b['email'],
                 $this->nullable($b, 'phone'),
                 $this->nullable($b, 'web'),
@@ -213,7 +217,7 @@ final class SettingsAction
 
         $allowed = [
             'company_name', 'display_name', 'street', 'city', 'zip', 'country_id',
-            'ic', 'dic', 'is_vat_payer', 'email', 'phone', 'web', 'tagline', 'commercial_register',
+            'ic', 'dic', 'is_vat_payer', 'is_identified', 'email', 'phone', 'web', 'tagline', 'commercial_register',
             'default_currency_id', 'default_vat_rate_id', 'default_payment_due_days', 'default_payment_due_unit',
             // logo_path / signature_path se NIKDY nemění přes mass-assignment — jen přes
             // dedikované endpointy EmailBrandingAction::uploadLogo (multipart, processed by
@@ -241,6 +245,20 @@ final class SettingsAction
             'self_copy',
         ];
 
+        // Identifikovaná osoba (§ 6g–6l ZDPH, issue #94) je z definice NEPLÁTCE
+        // v tuzemsku — kombinace obou flagů je nevalidní. Kontrolujeme efektivní
+        // stav po této změně (z body, jinak ze současného řádku).
+        if (array_key_exists('is_identified', $body) || array_key_exists('is_vat_payer', $body)) {
+            $stmt = $this->db->pdo()->prepare('SELECT is_vat_payer, is_identified FROM supplier WHERE id = ?');
+            $stmt->execute([$id]);
+            $cur = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+            $effVatPayer   = array_key_exists('is_vat_payer', $body) ? (bool) $body['is_vat_payer'] : (bool) ($cur['is_vat_payer'] ?? false);
+            $effIdentified = array_key_exists('is_identified', $body) ? (bool) $body['is_identified'] : (bool) ($cur['is_identified'] ?? false);
+            if ($effVatPayer && $effIdentified) {
+                return Json::error($response, 'validation_failed',
+                    'Identifikovaná osoba je z definice neplátce DPH — nelze kombinovat s plátcovstvím. Plátce DPH přepínač identifikované osoby vypne.', 422);
+            }
+        }
         // Validace tax fields
         if (array_key_exists('taxpayer_type', $body) && $body['taxpayer_type'] !== null
             && !in_array($body['taxpayer_type'], ['fo', 'po'], true)) {
@@ -363,7 +381,7 @@ final class SettingsAction
         foreach ($allowed as $f) {
             if (array_key_exists($f, $body)) {
                 $sets[] = "$f = ?";
-                $params[] = in_array($f, ['is_vat_payer', 'auto_send_reminders', 'auto_generate_recurring', 'embed_isdoc', 'default_prices_include_vat', 'email_branding_enabled', 'pdf_logo_show_name', 'payment_thanks_enabled', 'payment_thanks_auto_send', 'payment_thanks_default_checked', 'payment_thanks_attach_paid_pdf'], true)
+                $params[] = in_array($f, ['is_vat_payer', 'is_identified', 'auto_send_reminders', 'auto_generate_recurring', 'embed_isdoc', 'default_prices_include_vat', 'email_branding_enabled', 'pdf_logo_show_name', 'payment_thanks_enabled', 'payment_thanks_auto_send', 'payment_thanks_default_checked', 'payment_thanks_attach_paid_pdf'], true)
                     ? ((int) (bool) $body[$f])
                     : $body[$f];
             }
@@ -466,6 +484,8 @@ final class SettingsAction
         if (!$row) return Json::error($response, 'not_found', 'Supplier nenalezen.', 404);
         $row['id']                       = (int) $row['id'];
         $row['is_vat_payer']             = (bool) $row['is_vat_payer'];
+        // Identifikovaná osoba (§ 6g–6l, issue #94) — doplněk k neplátci.
+        $row['is_identified']            = (bool) ($row['is_identified'] ?? false);
         $row['default_vat_rate_id']      = (int) $row['default_vat_rate_id'];
         $row['default_currency_id']      = (int) $row['default_currency_id'];
         $row['default_payment_due_days'] = (int) $row['default_payment_due_days'];

@@ -14,7 +14,7 @@ final class ClientRepository
     public function find(int $id): ?array
     {
         $stmt = $this->db->pdo()->prepare(
-            'SELECT c.*, co.iso2 AS country_iso2,
+            'SELECT c.*, co.iso2 AS country_iso2, co.is_eu AS country_is_eu,
                     cur.code AS currency_default
                FROM clients c
                JOIN countries co ON co.id = c.country_id
@@ -147,7 +147,7 @@ final class ClientRepository
                        c.auto_send_reminders,
                        c.payment_due_default, c.payment_due_unit, c.hourly_rate,
                        c.default_expense_category_id, c.default_revenue_category_id,
-                       c.archived_at, co.iso2 AS country_iso2,
+                       c.archived_at, co.iso2 AS country_iso2, co.is_eu AS country_is_eu,
                        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status = 'active' AND p.archived_at IS NULL) AS active_projects_count,
                        COALESCE(crc.revenue, 0) AS revenue,
                        crc.last_invoice_date,
@@ -589,6 +589,9 @@ final class ClientRepository
                 : null;
         }
         $row['reverse_charge']        = (bool) ($row['reverse_charge'] ?? 0);
+        // EU členství země klienta — editor podle něj u identifikované osoby (#94)
+        // auto-zapíná RC jen pro EU klienty (3. země = mimo předmět DPH, bez klauzule).
+        if (array_key_exists('country_is_eu', $row)) $row['country_is_eu'] = (bool) $row['country_is_eu'];
         if (array_key_exists('is_vat_payer', $row)) $row['is_vat_payer'] = (bool) $row['is_vat_payer'];
         if (array_key_exists('is_customer', $row)) $row['is_customer'] = (bool) $row['is_customer'];
         if (array_key_exists('is_vendor', $row))   $row['is_vendor']   = (bool) $row['is_vendor'];

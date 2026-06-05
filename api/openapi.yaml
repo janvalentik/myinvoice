@@ -5195,6 +5195,7 @@ components:
         ic: { type: string, nullable: true }
         dic: { type: string, nullable: true }
         is_vat_payer: { type: boolean }
+        is_identified: { type: boolean, description: "Identifikovaná osoba (§ 6g–6l ZDPH, issue #94) — neplátce v tuzemsku s přeshraničními povinnostmi (RC faktury do EU, SHV, samovyměření bez odpočtu). Nelze kombinovat s is_vat_payer=true." }
         commercial_register: { type: string, nullable: true, description: "Spisová značka u rejstříkového soudu (doplňuje ARES enricher)" }
         email: { type: string, format: email, nullable: true }
         phone: { type: string, nullable: true }

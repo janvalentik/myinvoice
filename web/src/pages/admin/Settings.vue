@@ -3,11 +3,31 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { settingsApi, type Supplier, type SelfCopyType, type SelfCopyMode } from '@/api/settings'
 import { clientsApi } from '@/api/clients'
+import { useSupplierStore } from '@/stores/supplier'
 import { useToast } from '@/composables/useToast'
 import { renderVarsymbolTemplate, hasCounterPlaceholder } from '@/utils/varsymbol'
 
 const { t } = useI18n()
 const toast = useToast()
+const supplierStore = useSupplierStore()
+
+// Po uložení propsat změny do supplier store (brief z /me) — jinak editor faktur
+// čte stale is_vat_payer/defaulty až do hard refreshe (issue #94).
+function syncSupplierStore(s: Supplier) {
+  supplierStore.patchSupplier(s.id, {
+    company_name: s.company_name,
+    ic: s.ic,
+    is_vat_payer: s.is_vat_payer,
+    is_identified: s.is_identified ?? false,
+    taxpayer_type: s.taxpayer_type ?? null,
+    default_payment_due_days: s.default_payment_due_days,
+    default_payment_due_unit: s.default_payment_due_unit,
+    default_prices_include_vat: s.default_prices_include_vat,
+    auto_send_reminders: s.auto_send_reminders,
+    payment_thanks_enabled: s.payment_thanks_enabled,
+    payment_thanks_default_checked: s.payment_thanks_default_checked,
+  })
+}
 
 const supplier = ref<Supplier | null>(null)
 const loading = ref(true)
@@ -169,6 +189,7 @@ async function saveSupplier() {
       ic: supplier.value.ic,
       dic: supplier.value.dic,
       is_vat_payer: supplier.value.is_vat_payer,
+      is_identified: supplier.value.is_identified ?? false,
       email: supplier.value.email,
       phone: supplier.value.phone,
       web: supplier.value.web,
@@ -219,6 +240,7 @@ async function saveSupplier() {
       opr_prijmeni: (supplier.value as any).opr_prijmeni ?? null,
       opr_postaveni: (supplier.value as any).opr_postaveni ?? null,
     })
+    syncSupplierStore(supplier.value)
     toast.success(t('common.saved'))
     bumpPreview()
   } catch (e: any) {
@@ -255,6 +277,7 @@ async function saveBranding(silent = false) {
     })
     // Merge response do reactive supplier (zachová local-only fields jako has_email_logo)
     supplier.value = { ...supplier.value, ...updated }
+    syncSupplierStore(supplier.value)
     if (!silent) toast.success(t('common.saved'))
     bumpPreview()
   } catch (e: any) {
@@ -370,9 +393,17 @@ async function removeLogo() {
           <div>
             <label class="flex items-center gap-2 text-sm mt-7">
               <input v-model="supplier.is_vat_payer" type="checkbox" class="rounded border-neutral-300 text-primary-600"
-                @change="supplier.is_vat_payer && ((supplier as any).flat_tax_band = 'none')" />
+                @change="supplier.is_vat_payer && (((supplier as any).flat_tax_band = 'none'), (supplier.is_identified = false))" />
               {{ t('settings.is_vat_payer') }}
             </label>
+            <!-- Identifikovaná osoba (§ 6g–6l ZDPH, #94) — jen pro neplátce; plátce ji vypne. -->
+            <label v-if="!supplier.is_vat_payer" class="flex items-center gap-2 text-sm mt-2">
+              <input v-model="supplier.is_identified" type="checkbox" class="rounded border-neutral-300 text-primary-600" />
+              {{ t('settings.is_identified') }}
+            </label>
+            <p v-if="!supplier.is_vat_payer && supplier.is_identified" class="text-xs text-neutral-500 mt-1 ml-6">
+              {{ t('settings.is_identified_hint') }}
+            </p>
           </div>
           <div>
             <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('settings.email') }} *</label>

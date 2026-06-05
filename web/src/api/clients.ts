@@ -28,6 +28,8 @@ export interface Client {
   city: string
   zip: string
   country_iso2: string
+  /** Země klienta je členský stát EU — řídí auto-RC u identifikované osoby (#94). */
+  country_is_eu?: boolean
   main_email: string
   phone?: string | null
   language: 'cs' | 'en'
