@@ -82,7 +82,7 @@ final class DphBookBuilder
                 'label'                 => $g['label'] !== '' ? $g['label'] : '(bez klasifikace)',
                 'dphdp3_line'           => $line,
                 'dphdp3_line_secondary' => $g['dphdp3_line_secondary'],
-                'kh_section'            => $g['kh_section'],
+                'kh_section'            => $this->effectiveKhSection($g),
                 'vat_rate'              => $g['vat_rate'],
             ];
             $row = $this->toBookRow($g);
@@ -335,6 +335,31 @@ final class DphBookBuilder
             default          => 'Plnění',
         };
         return sprintf('%s ř.%s - %s: %s%s', $prefix, str_pad($line, 3, '0', \STR_PAD_LEFT), $direction, $what, $rateLabel);
+    }
+
+    /**
+     * Efektivní KH sekce pro sloupec Knihy DPH. A.4/A.5 a B.2/B.3 NEJSOU
+     * vlastnost klasifikačního kódu, ale dokladu: rozhoduje celková hodnota
+     * dokladu vč. DPH (limit 10 000 Kč) a DIČ protistrany — stejná logika jako
+     * KontrolniHlaseniBuilder::collectSections. Číselník nese jen statický
+     * default (kód 40 → "B.2"), takže by Kniha ukazovala B.2 i u drobných
+     * dokladů, které v KH reálně jdou do sumace B.3 (POHODA tiskne efektivní
+     * sekci — reference DPH_LIST_KH 42026.pdf: 2026-0010 → B.2, zbytek B.3).
+     * Ostatní sekce (A.1, A.2, B.1, NULL) se nepřepočítávají.
+     *
+     * @param array<string,mixed> $g kanonický (seskupený) řádek ledgeru
+     */
+    private function effectiveKhSection(array $g): ?string
+    {
+        $kh = $g['kh_section'] ?? null;
+        if (!in_array($kh, ['A.4', 'A.5', 'B.2', 'B.3'], true)) {
+            return $kh;
+        }
+        $itemized = KontrolniHlaseniBuilder::cleanDic($g['counterparty_dic'] ?? null) !== ''
+            && abs((float) $g['total_with_vat_czk']) >= KontrolniHlaseniBuilder::ITEM_VS_BULK_THRESHOLD;
+        return str_starts_with($kh, 'A.')
+            ? ($itemized ? 'A.4' : 'A.5')
+            : ($itemized ? 'B.2' : 'B.3');
     }
 
     private function sectionOrder(string $key): int

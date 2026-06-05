@@ -291,6 +291,21 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertEqualsWithDelta(9000, $sec['43.010']['subtotal_base'], 0.01);
         $this->assertEqualsWithDelta(1890, $sec['43.010']['subtotal_vat'], 0.01,
             'Kniha DPH musí samovyměřit RC i přes is_reverse_charge, ne jen flag');
+        // Efektivní KH sekce per doklad ve sloupci KH — Kniha tiskne skutečnou
+        // sekci (limit 10 000 Kč vč. DPH + DIČ, jako POHODA), ne statický default
+        // z číselníku (kód 1 → "A.4", kód 40 → "B.2" by jinak byly všude).
+        $khSale = [];
+        foreach ($sec['36.001']['rows'] as $r) $khSale[$r['doc_number']] = $r['kh_section'];
+        $this->assertSame('A.4', $khSale['2099060001'], 'S1 nad limit s DIČ → A.4');
+        $this->assertSame('A.5', $khSale['2099060002'], 'S2 do limitu → A.5 (sumace)');
+        $this->assertSame('A.5', $khSale['2099060003'], 'S3 nad limit bez DIČ → A.5 (sumace)');
+        $khPurch = [];
+        foreach ($sec['15.040']['rows'] as $r) $khPurch[$r['original_doc_number']] = $r['kh_section'];
+        $this->assertSame('B.2', $khPurch['P-2099-001'], 'P1 nad limit s DIČ → B.2');
+        $this->assertSame('B.3', $khPurch['P-2099-002'], 'P2 do limitu → B.3 (sumace)');
+        $this->assertSame('B.3', $khPurch['P-2099-003'], 'P3 nad limit bez DIČ → B.3 (sumace)');
+        $this->assertSame('B.2', $khPurch['P-2099-007'], 'P7 dobropis |−30 250| nad limit (abs) → B.2');
+
         // 43.043 — mirror odpočet u samovyměřené daně (P4 + P5)
         $this->assertArrayHasKey('43.043', $sec);
         $this->assertEqualsWithDelta(17000, $sec['43.043']['subtotal_base'], 0.01);

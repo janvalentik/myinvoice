@@ -28,8 +28,9 @@ use MyInvoice\Infrastructure\Database\Connection;
  */
 final class KontrolniHlaseniBuilder
 {
-    /** Limit pro A.4 vs A.5 (a B.2 vs B.3) — nad 10 000 Kč jdou jednotlivě, do sumace */
-    private const ITEM_VS_BULK_THRESHOLD = 10000.0;
+    /** Limit pro A.4 vs A.5 (a B.2 vs B.3) — nad 10 000 Kč jdou jednotlivě, do sumace.
+     *  Public: stejný práh používá DphBookBuilder pro efektivní KH sekci ve sloupci Knihy DPH. */
+    public const ITEM_VS_BULK_THRESHOLD = 10000.0;
 
     public function __construct(
         private readonly Connection $db,
@@ -85,7 +86,7 @@ final class KontrolniHlaseniBuilder
         // číselník Kód předmětů plnění; ideálně by mělo přicházet z vat_classification_code).
         $rowNum = 0;
         foreach ($a1 as $r) {
-            $cleanDic = $this->cleanDic($r['counterparty_dic'] ?? '');
+            $cleanDic = self::cleanDic($r['counterparty_dic'] ?? '');
             if ($cleanDic === '') continue; // Pattern [0-9]{1,10} required
             $rowNum++;
             $v = $dom->createElement('VetaA1');
@@ -107,7 +108,7 @@ final class KontrolniHlaseniBuilder
         // (které je 0 pro RC).
         $rowNum = 0;
         foreach ($a2 as $r) {
-            $vatId = $this->cleanDic($r['counterparty_dic'] ?? '');
+            $vatId = self::cleanDic($r['counterparty_dic'] ?? '');
             // Některé doklady (např. od neplátce v EU) nemusí mít VAT ID dodavatele
             // → atribut zůstává prázdný, jinak XSD pole povoluje.
             $rowNum++;
@@ -128,7 +129,7 @@ final class KontrolniHlaseniBuilder
         // VetaA4 — tuzemská plnění nad 10 000 Kč (vystavené)
         $rowNum = 0;
         foreach ($a4 as $r) {
-            $cleanDic = $this->cleanDic($r['counterparty_dic'] ?? '');
+            $cleanDic = self::cleanDic($r['counterparty_dic'] ?? '');
             if ($cleanDic === '') continue;
             $rowNum++;
             $taxDate = $this->formatDate($r['tax_date']);
@@ -159,7 +160,7 @@ final class KontrolniHlaseniBuilder
         // VetaB1 — Přenesená daňová povinnost (odběratel)
         $rowNum = 0;
         foreach ($b1 as $r) {
-            $cleanDic = $this->cleanDic($r['counterparty_dic'] ?? '');
+            $cleanDic = self::cleanDic($r['counterparty_dic'] ?? '');
             if ($cleanDic === '') continue;
             $rowNum++;
             $v = $dom->createElement('VetaB1');
@@ -178,7 +179,7 @@ final class KontrolniHlaseniBuilder
         // Default: oba 'N' (běžný odpočet, žádná oprava).
         $rowNum = 0;
         foreach ($b2 as $r) {
-            $cleanDic = $this->cleanDic($r['counterparty_dic'] ?? '');
+            $cleanDic = self::cleanDic($r['counterparty_dic'] ?? '');
             if ($cleanDic === '') continue;
             $rowNum++;
             $v = $dom->createElement('VetaB2');
@@ -283,7 +284,7 @@ final class KontrolniHlaseniBuilder
                     'varsymbol'             => $r['doc_number'],
                     'vendor_invoice_number' => $r['vendor_invoice_number'],
                     'tax_date'              => $r['tax_date'],
-                    'dic'                   => $this->cleanDic($r['counterparty_dic']),
+                    'dic'                   => self::cleanDic($r['counterparty_dic']),
                     'country_iso2'          => $r['country_iso2'],
                     'total_czk'             => (float) $r['total_with_vat_czk'],
                     'is_rc' => false, 'has_a2' => false, 'has_b1' => false, 'is_pomer' => false,
@@ -414,7 +415,8 @@ final class KontrolniHlaseniBuilder
     }
 
     /** DIČ pro KH XML — odstraní CZ prefix, jen číslice. */
-    private function cleanDic(?string $dic): string
+    /** Public static: stejnou normalizaci DIČ používá DphBookBuilder pro efektivní KH sekci. */
+    public static function cleanDic(?string $dic): string
     {
         if (!$dic) return '';
         // CZ12345678 → 12345678. Pattern v XSD je [0-9]{1,10}, takže strip vše ne-digit po prefixu.
