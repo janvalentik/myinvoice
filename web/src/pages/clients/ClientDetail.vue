@@ -3,7 +3,7 @@ import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vu
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { clientsApi, type Client, type BankLookupResult } from '@/api/clients'
+import { clientsApi, TAX_NUMBER_LABELS, type Client, type BankLookupResult, type ViesLookupResult } from '@/api/clients'
 import { invoicesApi, type InvoiceListItem } from '@/api/invoices'
 import { purchaseInvoicesApi, type PurchaseInvoice } from '@/api/purchaseInvoices'
 import { recurringApi, type RecurringTemplate } from '@/api/recurring'
@@ -32,26 +32,42 @@ const recurringTemplates = ref<RecurringTemplate[]>([])
 const purchaseInvoices = ref<PurchaseInvoice[]>([])
 const purchaseInvoicesLoading = ref(false)
 
-// Detaily plátce DPH (registr plátců DPH / CRPDPH) — načítají se až na vyžádání.
+// Detaily plátce DPH — CZ DIČ jde do registru plátců DPH (CRPDPH/MFČR: účty + nespolehlivost),
+// zahraniční EU DIČ (SK…) do VIES; CRPDPH je jen český registr a cizí DIČ by vždy
+// vrátil nepravdivé „není evidován" (#120).
 const vatInfoOpen = ref(false)
 const vatInfoLoading = ref(false)
 const vatInfo = ref<BankLookupResult | null>(null)
+const vatInfoVies = ref<ViesLookupResult | null>(null)
 const vatInfoError = ref('')
 
 async function loadVatPayerDetails() {
-  const dic = (client.value?.dic || '').replace(/\D/g, '')
-  if (!dic) return
+  const raw = (client.value?.dic || '').toUpperCase().replace(/[\s-]/g, '')
+  if (!raw) return
+  const prefix = raw.match(/^([A-Z]{2})\d/)?.[1] ?? null
   vatInfoOpen.value = true
   vatInfoLoading.value = true
   vatInfoError.value = ''
+  vatInfo.value = null
+  vatInfoVies.value = null
   try {
-    vatInfo.value = await clientsApi.lookupBank(dic)
+    if (prefix && prefix !== 'CZ') {
+      vatInfoVies.value = await clientsApi.lookupVies(raw)
+    } else {
+      vatInfo.value = await clientsApi.lookupBank(raw.replace(/\D/g, ''))
+    }
   } catch (e: any) {
     vatInfoError.value = e?.response?.data?.error?.message || t('client.vat_payer_details_failed')
   } finally {
     vatInfoLoading.value = false
   }
 }
+
+// Národní daňové číslo + label dle země (#120); u SK je `dic` = IČ DPH.
+const taxNumberLabel = computed(() =>
+  client.value ? (TAX_NUMBER_LABELS[client.value.country_iso2] ?? null) : null
+)
+const dicIsSk = computed(() => (client.value?.dic || '').toUpperCase().startsWith('SK'))
 
 // Aggregace přijatých faktur per měsíc / rok (paralel se statistikami vystavených).
 // Server zatím nevrací aggregated dataset, takže computované client-side z purchaseInvoices.
@@ -323,7 +339,9 @@ async function deleteClient() {
         <h1 class="text-2xl font-semibold mt-1">{{ client.company_name }}</h1>
         <div class="text-sm text-neutral-500 mt-1 flex flex-wrap items-center gap-x-2">
           <span v-if="client.ic"><span>{{ t('common.ic') }}</span> <span class="font-mono">{{ client.ic }}</span></span>
-          <span v-if="client.dic">· <span>{{ t('common.dic') }}</span> <span class="font-mono">{{ client.dic }}</span></span>
+          <!-- Národní daňové číslo (#120): SK DIČ / Steuernummer / NIP / Adószám; u SK je `dic` = IČ DPH -->
+          <span v-if="client.tax_number">· <span>{{ taxNumberLabel ?? t('common.tax_number') }}</span> <span class="font-mono">{{ client.tax_number }}</span></span>
+          <span v-if="client.dic">· <span>{{ dicIsSk ? t('common.ic_dph') : t('common.dic') }}</span> <span class="font-mono">{{ client.dic }}</span></span>
           <span v-if="client.archived_at" class="px-2 py-0.5 text-xs bg-neutral-100 text-neutral-600 rounded">{{ t('common.archived') }}</span>
         </div>
       </div>
@@ -364,6 +382,20 @@ async function deleteClient() {
       </div>
       <div v-if="vatInfoLoading" class="text-sm text-neutral-500">{{ t('common.loading') }}</div>
       <div v-else-if="vatInfoError" class="text-sm text-danger-500">{{ vatInfoError }}</div>
+      <!-- Zahraniční EU DIČ → výsledek z VIES (#120) -->
+      <template v-else-if="vatInfoVies">
+        <div v-if="vatInfoVies.source === 'error'" class="text-sm text-warning-600">{{ t('client.vat_payer_vies_unavailable') }}</div>
+        <div v-else-if="!vatInfoVies.valid" class="text-sm text-neutral-600">{{ t('client.vat_payer_vies_not_registered') }}</div>
+        <div v-else class="space-y-2 text-sm">
+          <div>
+            <span class="px-2 py-0.5 rounded bg-success-50 text-success-600 font-medium">{{ t('client.vat_payer_vies_registered') }}</span>
+          </div>
+          <div v-if="vatInfoVies.vat_number" class="font-mono text-neutral-900">{{ vatInfoVies.vat_number }}</div>
+          <div v-if="vatInfoVies.name" class="text-neutral-900">{{ vatInfoVies.name }}</div>
+          <div v-if="vatInfoVies.address" class="text-neutral-600 whitespace-pre-line">{{ vatInfoVies.address }}</div>
+          <p class="text-xs text-neutral-400">{{ t('client.vat_payer_vies_source') }}</p>
+        </div>
+      </template>
       <template v-else-if="vatInfo">
         <div v-if="vatInfo.source === 'error'" class="text-sm text-warning-600">{{ t('client.vat_payer_unavailable') }}</div>
         <div v-else-if="!vatInfo.found" class="text-sm text-neutral-600">{{ t('client.vat_payer_not_registered') }}</div>

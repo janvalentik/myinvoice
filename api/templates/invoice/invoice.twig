@@ -70,7 +70,17 @@
       <div class="spacer-4">&nbsp;</div>
       <div class="ic-dic">
         {% if supplier.ic %}{{ t('IČO', 'Reg. No.') }}: {{ supplier.ic }}<br>{% endif %}
-        {% if supplier.dic %}{{ t('DIČ', 'VAT ID') }}: {{ supplier.dic }}{% endif %}
+        {# SK plátce DPH (#120): DIČ s prefixem SK je „IČ DPH"; vedle něj patří DIČ = totéž bez
+           prefixu (supplier skdic nevede, SK DIČ se od IČ DPH liší jen prefixem). Neplátce má
+           v poli jen číslo bez prefixu → spadne do else a tiskne se jako DIČ. #}
+        {% if supplier.dic %}
+          {% if supplier.dic|upper starts with 'SK' %}
+            {{ t('DIČ', 'Tax ID') }}: {{ supplier.dic|slice(2) }}<br>
+            {{ t('IČ DPH', 'VAT ID') }}: {{ supplier.dic }}
+          {% else %}
+            {{ t('DIČ', 'VAT ID') }}: {{ supplier.dic }}
+          {% endif %}
+        {% endif %}
       </div>
     </td>
     <td>
@@ -85,8 +95,21 @@
       <div>{{ locale == 'en' ? client.country_name_en : client.country_name_cs }}</div>
       <div class="spacer-4">&nbsp;</div>
       <div class="ic-dic">
+        {# Národní daňové číslo (#120): SK DIČ / DE+AT Steuernummer / PL NIP / HU Adószám —
+           nativní label podle země klienta. `dic` zůstává VAT ID s prefixem (u SK = IČ DPH,
+           u SK se proto VAT řádek labeluje „IČ DPH"). Pořadí dle SK praxe: IČO, DIČ, IČ DPH.
+           Starší SK snapshoty tax_number nemají → odvodíme z IČ DPH oseknutím prefixu
+           (SK DIČ se od IČ DPH liší jen prefixem; u DE/PL/HU odvodit nejde). #}
+        {% set tax_no_labels = {'SK': 'DIČ', 'DE': 'Steuernummer', 'AT': 'Steuernummer', 'PL': 'NIP', 'HU': 'Adószám'} %}
+        {% set client_dic_sk = client.dic and (client.dic|upper starts with 'SK') %}
+        {% set client_tax_no = client.tax_number|default(client_dic_sk ? client.dic|slice(2) : '') %}
         {% if client.ic %}{{ t('IČO', 'Reg. No.') }}: {{ client.ic }}<br>{% endif %}
-        {% if client.dic %}{{ t('DIČ', 'VAT ID') }}: {{ client.dic }}{% endif %}
+        {% if client_tax_no %}
+          {{ tax_no_labels[client.country_iso2|default('')]|default(client_dic_sk ? 'DIČ' : t('Daňové číslo', 'Tax No.')) }}: {{ client_tax_no }}{% if client.dic %}<br>{% endif %}
+        {% endif %}
+        {% if client.dic %}
+          {{ client_dic_sk ? t('IČ DPH', 'VAT ID') : t('DIČ', 'VAT ID') }}: {{ client.dic }}
+        {% endif %}
       </div>
     </td>
   </tr>

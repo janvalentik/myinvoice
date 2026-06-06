@@ -1461,7 +1461,7 @@ final class PurchaseInvoiceRepository
     private function buildVendorSnapshot(int $vendorId): array
     {
         $stmt = $this->db->pdo()->prepare(
-            'SELECT c.id, c.company_name, c.first_name, c.last_name, c.ic, c.dic,
+            'SELECT c.id, c.company_name, c.first_name, c.last_name, c.ic, c.dic, c.tax_number,
                     c.street, c.city, c.zip, c.main_email, c.phone, c.language,
                     co.iso2 AS country_iso2, co.name_cs AS country_name_cs, co.name_en AS country_name_en
                FROM clients c

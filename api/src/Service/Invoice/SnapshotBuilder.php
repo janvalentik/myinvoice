@@ -50,6 +50,9 @@ final class SnapshotBuilder
             'last_name'    => $row['last_name'],
             'ic'           => $row['ic'],
             'dic'          => $row['dic'],
+            // Národní daňové číslo (#120): SK DIČ / DE Steuernummer / PL NIP / HU Adószám;
+            // u SK klienta `dic` nese IČ DPH (SK+číslo) a `tax_number` DIČ bez prefixu.
+            'tax_number'   => $row['tax_number'] ?? null,
             'street'       => $row['street'],
             'city'         => $row['city'],
             'zip'          => $row['zip'],

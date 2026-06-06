@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { clientsApi, type ClientPayload, type Client, type ClientEmailContact, type EmailContactUsageCode, type EmailContactRecipient } from '@/api/clients'
+import { clientsApi, TAX_NUMBER_LABELS, type ClientPayload, type Client, type ClientEmailContact, type EmailContactUsageCode, type EmailContactRecipient } from '@/api/clients'
 import { codebooksApi, type Country, type Currency } from '@/api/codebooks'
 import { expenseCategoriesApi, type ExpenseCategory } from '@/api/expenseCategories'
 import { revenueCategoriesApi, type RevenueCategory } from '@/api/revenueCategories'
@@ -88,6 +88,7 @@ const form = ref<ClientPayload>({
   company_name: '',
   ic: null,
   dic: null,
+  tax_number: null,
   street: '',
   city: '',
   zip: '',
@@ -157,6 +158,12 @@ function setContactRecipient(c: ClientEmailContact, r: EmailContactRecipient) {
   c.usages = c.usages.map(u => ({ ...u, recipient: r }))
 }
 
+// Národní daňové číslo (#120): SK DIČ / DE+AT Steuernummer / PL NIP / HU Adószám.
+// Pole se zobrazí jen pro země z TAX_NUMBER_LABELS; u SK se zároveň pole `dic`
+// přejmenuje na „IČ DPH" (DIČ s prefixem SK = IČ DPH, samostatné DIČ je bez prefixu).
+const taxNumberLabel = computed(() => TAX_NUMBER_LABELS[form.value.country_iso2] ?? null)
+const isSkClient = computed(() => form.value.country_iso2 === 'SK')
+
 const countries = ref<Country[]>([])
 const currencies = ref<Currency[]>([])
 const expenseCategories = ref<ExpenseCategory[]>([])
@@ -170,20 +177,30 @@ const viesResult = ref<import('@/api/clients').ViesLookupResult | null>(null)
 const duplicateIc = ref<{ id: number; name: string } | null>(null)
 const duplicateDic = ref<{ id: number; name: string } | null>(null)
 
-// Detaily plátce DPH (registr plátců DPH / CRPDPH) — bankovní účty + nespolehlivost, na vyžádání.
+// Detaily plátce DPH — CZ DIČ jde do registru plátců DPH (CRPDPH/MFČR: účty + nespolehlivost),
+// zahraniční EU DIČ (SK…) do VIES; CRPDPH je jen český registr a cizí DIČ by vždy
+// vrátil nepravdivé „není evidován" (#120).
 const vatInfoOpen = ref(false)
 const vatInfoLoading = ref(false)
 const vatInfo = ref<import('@/api/clients').BankLookupResult | null>(null)
+const vatInfoVies = ref<import('@/api/clients').ViesLookupResult | null>(null)
 const vatInfoError = ref('')
 
 async function loadVatPayerDetails() {
-  const dic = (form.value.dic || '').replace(/\D/g, '')
-  if (!dic) return
+  const raw = (form.value.dic || '').toUpperCase().replace(/[\s-]/g, '')
+  if (!raw) return
+  const prefix = raw.match(/^([A-Z]{2})\d/)?.[1] ?? null
   vatInfoOpen.value = true
   vatInfoLoading.value = true
   vatInfoError.value = ''
+  vatInfo.value = null
+  vatInfoVies.value = null
   try {
-    vatInfo.value = await clientsApi.lookupBank(dic)
+    if (prefix && prefix !== 'CZ') {
+      vatInfoVies.value = await clientsApi.lookupVies(raw)
+    } else {
+      vatInfo.value = await clientsApi.lookupBank(raw.replace(/\D/g, ''))
+    }
   } catch (e: any) {
     vatInfoError.value = e?.response?.data?.error?.message || t('client.vat_payer_details_failed')
   } finally {
@@ -237,6 +254,7 @@ function sanitize(c: Client): Partial<ClientPayload> {
     last_name: c.last_name ?? null,
     ic: c.ic ?? null,
     dic: c.dic ?? null,
+    tax_number: c.tax_number ?? null,
     street: c.street,
     city: c.city,
     zip: c.zip,
@@ -322,6 +340,11 @@ async function checkVies() {
     // VIES: platné DIČ = registrovaný plátce DPH (autoritativní pro zahraniční EU).
     if (result.source !== 'error') form.value.is_vat_payer = result.valid
     if (result.valid) {
+      // SK: DIČ = IČ DPH bez prefixu (#120) — předvyplnit, pokud ještě není.
+      const vat = (result.vat_number || form.value.dic || '').toUpperCase().replace(/[\s-]/g, '')
+      if (vat.startsWith('SK') && !form.value.tax_number) {
+        form.value.tax_number = vat.slice(2)
+      }
       if (result.name && !form.value.company_name) {
         form.value.company_name = result.name
       }
@@ -419,9 +442,10 @@ async function submit() {
               </p>
             </div>
             <div>
-              <label class="block text-xs font-medium text-neutral-600 mb-1">{{ t('client.dic') }}</label>
+              <!-- U SK klienta nese pole `dic` IČ DPH (s prefixem SK) — label dle země (#120) -->
+              <label class="block text-xs font-medium text-neutral-600 mb-1">{{ isSkClient ? t('client.ic_dph') : t('client.dic') }}</label>
               <div class="flex gap-2">
-                <input autocomplete="off" v-model="form.dic" placeholder="CZ12345678"
+                <input autocomplete="off" v-model="form.dic" :placeholder="isSkClient ? 'SK2022638992' : 'CZ12345678'"
                   @blur="checkDuplicateDic"
                   class="flex-1 h-9 px-3 border border-neutral-300 rounded-md font-mono text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
                 <button type="button" @click="checkVies" :disabled="!form.dic || viesLoading"
@@ -433,6 +457,13 @@ async function submit() {
                 ⚠ {{ t('client.duplicate_dic') }} <strong>{{ duplicateDic.name }}</strong>
                 <RouterLink :to="`/clients/${duplicateDic.id}`" class="text-primary-700 hover:underline ml-1">{{ t('client.open_existing') }} →</RouterLink>
               </p>
+            </div>
+            <!-- Národní daňové číslo (#120) — jen země z TAX_NUMBER_LABELS (SK/DE/AT/PL/HU) -->
+            <div v-if="taxNumberLabel">
+              <label class="block text-xs font-medium text-neutral-600 mb-1">{{ taxNumberLabel }}</label>
+              <input autocomplete="off" v-model="form.tax_number" :placeholder="isSkClient ? '2022638992' : ''"
+                class="w-full h-9 px-3 border border-neutral-300 rounded-md font-mono text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none" />
+              <p class="text-xs text-neutral-500 mt-1">{{ isSkClient ? t('client.tax_number_hint_sk') : t('client.tax_number_hint') }}</p>
             </div>
           </div>
           <div v-if="viesResult" class="mt-2 text-xs">
@@ -461,6 +492,20 @@ async function submit() {
             </div>
             <div v-if="vatInfoLoading" class="text-sm text-neutral-500">{{ t('common.loading') }}</div>
             <div v-else-if="vatInfoError" class="text-sm text-danger-500">{{ vatInfoError }}</div>
+            <!-- Zahraniční EU DIČ → výsledek z VIES (#120) -->
+            <template v-else-if="vatInfoVies">
+              <div v-if="vatInfoVies.source === 'error'" class="text-sm text-warning-600">{{ t('client.vat_payer_vies_unavailable') }}</div>
+              <div v-else-if="!vatInfoVies.valid" class="text-sm text-neutral-600">{{ t('client.vat_payer_vies_not_registered') }}</div>
+              <div v-else class="space-y-2 text-sm">
+                <div>
+                  <span class="px-2 py-0.5 rounded bg-success-50 text-success-600 font-medium">{{ t('client.vat_payer_vies_registered') }}</span>
+                </div>
+                <div v-if="vatInfoVies.vat_number" class="font-mono text-neutral-900">{{ vatInfoVies.vat_number }}</div>
+                <div v-if="vatInfoVies.name" class="text-neutral-900">{{ vatInfoVies.name }}</div>
+                <div v-if="vatInfoVies.address" class="text-neutral-600 whitespace-pre-line">{{ vatInfoVies.address }}</div>
+                <p class="text-xs text-neutral-400">{{ t('client.vat_payer_vies_source') }}</p>
+              </div>
+            </template>
             <template v-else-if="vatInfo">
               <div v-if="vatInfo.source === 'error'" class="text-sm text-warning-600">{{ t('client.vat_payer_unavailable') }}</div>
               <div v-else-if="!vatInfo.found" class="text-sm text-neutral-600">{{ t('client.vat_payer_not_registered') }}</div>

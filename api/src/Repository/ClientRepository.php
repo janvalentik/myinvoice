@@ -141,7 +141,7 @@ final class ClientRepository
         // Page — LIMIT/OFFSET přes bindValue(PARAM_INT) pro defense-in-depth proti SQLi
         $offset = max(0, ($page - 1) * $perPage);
         // Cache `client_revenue_cache` — primární řádek vybíráme přes c.currency_default_id
-        $sql = "SELECT c.id, c.supplier_id, c.company_name, c.ic, c.dic, c.main_email, c.language,
+        $sql = "SELECT c.id, c.supplier_id, c.company_name, c.ic, c.dic, c.tax_number, c.main_email, c.language,
                        c.currency_default_id, cur.code AS currency_default,
                        c.reverse_charge, c.is_vat_payer, c.is_customer, c.is_vendor,
                        c.auto_send_reminders,
@@ -236,13 +236,13 @@ final class ClientRepository
         $defaultRevenueCategoryId = $this->resolveRevenueCategoryId($data, $supplierId);
 
         $sql = 'INSERT INTO clients
-            (supplier_id, company_name, first_name, last_name, ic, dic, street, city, zip, country_id,
+            (supplier_id, company_name, first_name, last_name, ic, dic, tax_number, street, city, zip, country_id,
              main_email, phone, language, currency_default_id, reverse_charge, is_vat_payer,
              is_customer, is_vendor,
              auto_send_reminders, payment_due_default, payment_due_unit, hourly_rate, note,
              default_expense_category_id, default_revenue_category_id,
              invoice_number_format, proforma_number_format, credit_note_number_format, invoice_number_period)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
         $stmt = $this->db->pdo()->prepare($sql);
         $stmt->execute([
             $supplierId,
@@ -251,6 +251,9 @@ final class ClientRepository
             $this->nullable($data, 'last_name'),
             $this->nullable($data, 'ic'),
             $this->nullable($data, 'dic'),
+            // Národní daňové číslo (#120) — SK DIČ / DE Steuernummer / PL NIP / HU Adószám;
+            // `dic` u takových klientů nese VAT ID s prefixem (u SK = IČ DPH).
+            $this->nullable($data, 'tax_number'),
             (string) $data['street'],
             (string) $data['city'],
             (string) $data['zip'],
@@ -386,7 +389,7 @@ final class ClientRepository
             : $oldDefaultRevenueCategory;
 
         $sql = 'UPDATE clients SET
-                company_name = ?, first_name = ?, last_name = ?, ic = ?, dic = ?,
+                company_name = ?, first_name = ?, last_name = ?, ic = ?, dic = ?, tax_number = ?,
                 street = ?, city = ?, zip = ?, country_id = ?,
                 main_email = ?, phone = ?, language = ?, currency_default_id = ?,
                 reverse_charge = ?, is_vat_payer = COALESCE(?, is_vat_payer), is_customer = ?, is_vendor = ?,
@@ -402,6 +405,7 @@ final class ClientRepository
             $this->nullable($data, 'last_name'),
             $this->nullable($data, 'ic'),
             $this->nullable($data, 'dic'),
+            $this->nullable($data, 'tax_number'),
             (string) $data['street'],
             (string) $data['city'],
             (string) $data['zip'],

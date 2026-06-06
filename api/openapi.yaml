@@ -4171,7 +4171,8 @@ components:
         first_name: { type: string, nullable: true }
         last_name: { type: string, nullable: true }
         ic: { type: string, nullable: true, description: IČO (8 číslic) }
-        dic: { type: string, nullable: true, description: DIČ }
+        dic: { type: string, nullable: true, description: "DIČ / VAT ID s country prefixem (u SK klienta = IČ DPH)" }
+        tax_number: { type: string, nullable: true, description: "Národní daňové číslo bez prefixu (SK DIČ, DE/AT Steuernummer, PL NIP, HU Adószám) — issue #120" }
         street: { type: string }
         city: { type: string }
         zip: { type: string }
@@ -4285,7 +4286,8 @@ components:
         first_name: { type: string, nullable: true }
         last_name: { type: string, nullable: true }
         ic: { type: string, nullable: true, description: "IČO — 8 číslic" }
-        dic: { type: string, nullable: true }
+        dic: { type: string, nullable: true, description: "DIČ / VAT ID s country prefixem (u SK = IČ DPH)" }
+        tax_number: { type: string, nullable: true, description: "Národní daňové číslo bez prefixu (SK DIČ, DE/AT Steuernummer, PL NIP, HU Adószám)" }
         street: { type: string }
         city: { type: string }
         zip: { type: string }

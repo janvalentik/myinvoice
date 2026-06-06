@@ -1087,7 +1087,8 @@ async function updateApprovalStatus() {
       <div v-if="invoice.client_ic || invoice.client_dic" class="text-xs font-mono text-neutral-500 text-right whitespace-nowrap">
         <span v-if="invoice.client_ic">{{ t('common.ic') }} {{ invoice.client_ic }}</span>
         <span v-if="invoice.client_ic && invoice.client_dic">, </span>
-        <span v-if="invoice.client_dic">{{ t('common.dic') }} {{ invoice.client_dic }}</span>
+        <!-- SK DIČ s prefixem = IČ DPH (#120) -->
+        <span v-if="invoice.client_dic">{{ (invoice.client_dic || '').toUpperCase().startsWith('SK') ? t('common.ic_dph') : t('common.dic') }} {{ invoice.client_dic }}</span>
       </div>
     </div>
 

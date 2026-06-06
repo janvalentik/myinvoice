@@ -23,7 +23,10 @@ export interface Client {
   first_name?: string | null
   last_name?: string | null
   ic?: string | null
+  /** DIČ / VAT ID s country prefixem (u SK klienta = IČ DPH). */
   dic?: string | null
+  /** Národní daňové číslo bez prefixu — SK DIČ, DE/AT Steuernummer, PL NIP, HU Adószám (#120). */
+  tax_number?: string | null
   street: string
   city: string
   zip: string
@@ -153,12 +156,28 @@ export interface ViesLookupResult {
   vat_number?: string
 }
 
+/**
+ * Národní daňové číslo vedle VAT ID (#120) — země, kde existuje a píše se na doklady,
+ * s nativním labelem pole. SK: DIČ bez prefixu (má ho i neplátce; `dic` u SK = IČ DPH).
+ * Jinde národní číslo = VAT ID bez prefixu nebo se na faktury neuvádí → pole se nezobrazuje.
+ */
+export const TAX_NUMBER_LABELS: Record<string, string> = {
+  SK: 'DIČ',
+  DE: 'Steuernummer',
+  AT: 'Steuernummer',
+  PL: 'NIP',
+  HU: 'Adószám',
+}
+
 export interface ClientPayload {
   company_name: string
   first_name?: string | null
   last_name?: string | null
   ic?: string | null
+  /** DIČ / VAT ID s country prefixem (u SK = IČ DPH). */
   dic?: string | null
+  /** Národní daňové číslo bez prefixu (viz TAX_NUMBER_LABELS). */
+  tax_number?: string | null
   street: string
   city: string
   zip: string

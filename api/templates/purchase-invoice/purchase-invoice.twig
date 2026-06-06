@@ -48,8 +48,19 @@
       <div>{{ vendor.country_iso2 }}</div>
       <div class="spacer-4">&nbsp;</div>
       <div class="ic-dic">
+        {# Národní daňové číslo dodavatele (#120): SK DIČ / DE+AT Steuernummer / PL NIP /
+           HU Adószám s nativním labelem; `dic` = VAT ID s prefixem (u SK = IČ DPH).
+           Starší snapshoty tax_number nemají → u SK odvození z IČ DPH oseknutím prefixu. #}
+        {% set tax_no_labels = {'SK': 'DIČ', 'DE': 'Steuernummer', 'AT': 'Steuernummer', 'PL': 'NIP', 'HU': 'Adószám'} %}
+        {% set vendor_dic_sk = vendor.dic and (vendor.dic|upper starts with 'SK') %}
+        {% set vendor_tax_no = vendor.tax_number|default(vendor_dic_sk ? vendor.dic|slice(2) : '') %}
         {% if vendor.ic %}{% if locale == 'en' %}Reg. No.{% else %}IČO{% endif %}: {{ vendor.ic }}<br>{% endif %}
-        {% if vendor.dic %}{% if locale == 'en' %}VAT ID{% else %}DIČ{% endif %}: {{ vendor.dic }}{% endif %}
+        {% if vendor_tax_no %}
+          {{ tax_no_labels[vendor.country_iso2|default('')]|default(vendor_dic_sk ? 'DIČ' : (locale == 'en' ? 'Tax No.' : 'Daňové číslo')) }}: {{ vendor_tax_no }}{% if vendor.dic %}<br>{% endif %}
+        {% endif %}
+        {% if vendor.dic %}
+          {% if vendor_dic_sk %}{{ locale == 'en' ? 'VAT ID' : 'IČ DPH' }}{% else %}{{ locale == 'en' ? 'VAT ID' : 'DIČ' }}{% endif %}: {{ vendor.dic }}
+        {% endif %}
       </div>
     </td>
     <td>
@@ -62,7 +73,14 @@
       <div class="spacer-4">&nbsp;</div>
       <div class="ic-dic">
         {% if our_company.ic %}{% if locale == 'en' %}Reg. No.{% else %}IČO{% endif %}: {{ our_company.ic }}<br>{% endif %}
-        {% if our_company.dic %}{% if locale == 'en' %}VAT ID{% else %}DIČ{% endif %}: {{ our_company.dic }}{% endif %}
+        {% if our_company.dic %}
+          {% if our_company.dic|upper starts with 'SK' %}
+            {% if locale == 'en' %}Tax ID{% else %}DIČ{% endif %}: {{ our_company.dic|slice(2) }}<br>
+            {% if locale == 'en' %}VAT ID{% else %}IČ DPH{% endif %}: {{ our_company.dic }}
+          {% else %}
+            {% if locale == 'en' %}VAT ID{% else %}DIČ{% endif %}: {{ our_company.dic }}
+          {% endif %}
+        {% endif %}
       </div>
     </td>
   </tr>
