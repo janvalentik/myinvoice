@@ -326,6 +326,9 @@ return [
             'daily_retention_days'   => 30,          // drž denní mysqldump zálohy N dnů
             'monthly_retention_days' => 365,         // drž 1. v měsíci jako "monthly" zálohu N dnů
             'output_dir'             => __DIR__ . '/storage/backup', // absolutní cesta! (relativní by se ukotvila k rootu aplikace, ne k CWD cronu)
+            'password'               => '',          // volitelné heslo ZIP záloh (DB + PDF + Dokumenty), AES-256. Prázdné = bez šifrování.
+                                                     // Rozbalení: 7-Zip / WinRAR / `unzip -P` — Průzkumník Windows AES-256 neumí.
+                                                     // Šifruje se obsah souborů; názvy souborů uvnitř ZIPu zůstávají čitelné.
         ],
     ],
 ];

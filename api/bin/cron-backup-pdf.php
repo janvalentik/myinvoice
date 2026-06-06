@@ -16,6 +16,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use MyInvoice\Bootstrap;
 use MyInvoice\Infrastructure\Config\Config;
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Service\Cron\BackupEncryption;
 use MyInvoice\Service\Cron\CronRun;
 
 $rootDir = Bootstrap::rootDir();
@@ -37,6 +38,14 @@ if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
 
 if (!class_exists(ZipArchive::class)) {
     $msg = 'PHP ext-zip není nainstalována.';
+    fwrite(STDERR, "$msg\n");
+    $run->finish('error', null, $msg, 1);
+    exit(1);
+}
+
+// Volitelné šifrování zálohy (cfg cron.backup.password, AES-256).
+$zipPassword = BackupEncryption::passwordFromConfig($config);
+if (($msg = BackupEncryption::unsupportedReason($zipPassword)) !== null) {
     fwrite(STDERR, "$msg\n");
     $run->finish('error', null, $msg, 1);
     exit(1);
@@ -95,6 +104,13 @@ foreach ($pdfs as $abs => $rel) {
     if (defined('ZipArchive::CM_STORE')) {
         $zip->setCompressionName($rel, ZipArchive::CM_STORE);
     }
+    if (!BackupEncryption::encryptEntry($zip, $rel, $zipPassword)) {
+        fwrite(STDERR, "Cannot encrypt ZIP entry: $rel\n");
+        $zip->close();
+        @unlink($file);
+        $run->finish('error', null, 'zip encryption failed', 1);
+        exit(1);
+    }
 }
 if (!$zip->close()) {
     @unlink($file);
@@ -113,6 +129,9 @@ $count = count($pdfs);
 echo "[" . date('Y-m-d H:i:s') . "] backup-pdf: " . basename($file) . " ({$count} souborů, {$size} KB)\n";
 
 $report = ['file' => basename($file), 'files' => $count, 'size_kb' => $size];
+if ($zipPassword !== '') {
+    $report['encrypted'] = 'AES-256';
+}
 
 // Retention: smaž PDF zálohy starší 30 dní (1. v měsíci drž 365 dní).
 // Filtrujeme jen vlastní prefix "{dbName}-pdf-", aby se nedotklo DB dumpů.

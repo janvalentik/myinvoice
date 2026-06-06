@@ -592,6 +592,14 @@ V `cmd/` jsou připravené `.cmd` (Windows Task Scheduler) i `.sh` (Linux cron) 
 
 Detaily v `cmd/README.md`.
 
+**Šifrování záloh:** volitelné heslo `cron.backup.password` v `cfg.php`
+zašifruje všechny tři typy ZIP záloh (DB dump, PDF dokladů, sekce Dokumenty)
+algoritmem AES-256. Pro rozbalení použijte 7-Zip, WinRAR nebo `unzip -P` —
+vestavěný Průzkumník Windows šifrované AES-256 archivy neumí otevřít. Šifruje
+se obsah souborů, názvy souborů uvnitř archivu zůstávají čitelné. Pokud je
+heslo nastavené a PHP šifrování nepodporuje (libzip < 1.2), záloha se záměrně
+nevytvoří a úloha skončí chybou — nešifrovaná záloha by vznikla jen omylem.
+
 **Kontrola, že úlohy běží:** otevři v aplikaci **Systém → Plánované úlohy**.
 Každý cron skript si zapisuje vlastní heartbeat do tabulky `cron_runs`
 (start, konec, exit code, JSON report). Stránka ukazuje pro každou

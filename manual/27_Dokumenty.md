@@ -105,7 +105,9 @@ Dokumenty zálohuje **samostatná plánovaná úloha** `cron-backup-documents`
 (viz *Systém → Plánované úlohy*), oddělená od zálohy PDF faktur. Zálohuje celé
 úložiště `storage/documents/` (všechny typy souborů) do
 `storage/backup/{db}-documents-RRRR-MM-DD.zip` s retencí 30 denních + 12 měsíčních
-záloh. Náhledy se nezálohují (regenerují se).
+záloh. Náhledy se nezálohují (regenerují se). Zálohu lze volitelně šifrovat
+heslem `cron.backup.password` v `cfg.php` (AES-256, společné pro všechny typy
+záloh — viz § 2.4.1).
 
 ## Bezpečnost
 

@@ -27,6 +27,12 @@ samotného skriptu, takže jsou přenositelné mezi `C:\inetpub\wwwroot\…`,
 | `cron-generate-recurring-invoices.{cmd,sh}` | Generování faktur ze šablon pravidelné fakturace; volitelné rovnou vystavení a odeslání klientovi (`--dry-run`) |
 | `cron-version-check.{cmd,sh}` | Denní kontrola GitHub Releases API; cachuje poslední dostupnou verzi + release notes pro **Systém → Aktualizace** |
 
+Všechny tři backup ZIPy (DB, PDF, Dokumenty) lze volitelně šifrovat heslem
+`cron.backup.password` v `cfg.php` (AES-256). Rozbalení pak vyžaduje 7-Zip /
+WinRAR / `unzip -P` — vestavěný Průzkumník Windows AES-256 archivy neotevře.
+Pokud je heslo nastavené a PHP ext-zip AES nepodporuje (libzip < 1.2), záloha
+se záměrně nevytvoří a úloha skončí chybou (vidět v **Systém → Plánované úlohy**).
+
 ### Docker — vývoj v kontejnerech
 
 | Skript | Co dělá |
