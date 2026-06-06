@@ -12,6 +12,7 @@ use MyInvoice\Repository\InvoiceRepository;
 use MyInvoice\Repository\PurchaseInvoiceRepository;
 use MyInvoice\Service\Invoice\InvoiceCalculator;
 use MyInvoice\Service\Invoice\PurchaseInvoiceCalculator;
+use MyInvoice\Service\Invoice\SnapshotBuilder;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -48,6 +49,7 @@ final class IdokladImportService
         private readonly Config $config,
         private readonly LoggerInterface $logger,
         private readonly PurchaseInvoiceCnbApplier $cnbApplier,
+        private readonly SnapshotBuilder $snapshots,
     ) {}
 
     /**
@@ -211,7 +213,9 @@ final class IdokladImportService
     }
 
     /**
-     * Import IssuedInvoices → invoices. MVP mapping: header + items, status='draft'.
+     * Import IssuedInvoices → invoices. Mapping: header + items; status='draft',
+     * ledaže iDoklad doklad eviduje jako zaplacený (PaymentStatus 1/3) → 'paid'
+     * s paid_at = DateOfPayment (#121, viz ImportedPaymentStateMapper).
      * Dobropisy (CreditNotes) jsou separátní endpoint a dělají se ve fázi 3.
      *
      * Note: faktury z iDoklad nemají project_id (oni nemají koncept projektů jako my)
@@ -320,7 +324,61 @@ final class IdokladImportService
         if (!empty($items)) {
             $this->invoices->replaceItems($invoiceId, $items);
         }
+
+        // #121: promítni platební stav z iDokladu (PaymentStatus 1=Paid / 3=Overpaid)
+        // — zaplacené historické doklady nesmí zůstat viset jako nezaplacené pohledávky.
+        $this->applyIssuedPaymentState(
+            $invoiceId,
+            $clientId,
+            (int) $payload['currency_id'],
+            $supplierId,
+            ImportedPaymentStateMapper::fromIdoklad($i),
+            (string) ($payload['tax_date'] ?? '') ?: (string) $payload['issue_date'],
+            (string) $payload['issue_date'],
+        );
         return $invoiceId;
+    }
+
+    /**
+     * Aplikuje namapovaný platební stav na čerstvě importovanou vydanou fakturu
+     * (issue #121). Jen pro doklady ve stavu 'draft' (guard v WHERE). Doklad opouští
+     * 'draft', proto dostává snapshoty (client/supplier/bank) stejně jako file import
+     * (InvoiceImportService) a IssueInvoiceAction; sent_at = issue_date 12:00 (stejná
+     * aproximace jako file import).
+     *
+     * @param ?array{status:string, paid_at:?string} $state  null = ponechat draft
+     */
+    private function applyIssuedPaymentState(int $invoiceId, int $clientId, int $currencyId, int $supplierId, ?array $state, string $fallbackPaidAt, string $issueDate): void
+    {
+        if ($state === null || $state['status'] !== 'paid') return;
+
+        $snapshots = $this->snapshots->build($clientId, $currencyId, $supplierId);
+        $this->db->pdo()->prepare(
+            "UPDATE invoices SET status = 'paid', paid_at = ?, sent_at = ?,
+                    client_snapshot = ?, supplier_snapshot = ?, bank_snapshot = ?
+              WHERE id = ? AND status = 'draft'"
+        )->execute([
+            $state['paid_at'] ?? $fallbackPaidAt,
+            $issueDate . ' 12:00:00',
+            json_encode($snapshots['client'],   JSON_UNESCAPED_UNICODE),
+            json_encode($snapshots['supplier'], JSON_UNESCAPED_UNICODE),
+            $snapshots['bank'] !== null ? json_encode($snapshots['bank'], JSON_UNESCAPED_UNICODE) : null,
+            $invoiceId,
+        ]);
+    }
+
+    /**
+     * Aplikuje 'paid' na čerstvě importovanou přijatou fakturu (issue #121).
+     * Guard na status='draft' — createReceivedFromIdoklad může přes dedup guard
+     * vrátit existující (už zpracovaný) doklad, ten nepřepisujeme.
+     */
+    private function applyPurchasePaymentState(int $purchaseId, int $supplierId, ?array $state, string $fallbackPaidAt): void
+    {
+        if ($state === null || $state['status'] !== 'paid') return;
+        $this->db->pdo()->prepare(
+            "UPDATE purchase_invoices SET status = 'paid', paid_at = ?
+              WHERE id = ? AND supplier_id = ? AND status = 'draft'"
+        )->execute([$state['paid_at'] ?? $fallbackPaidAt, $purchaseId, $supplierId]);
     }
 
     /**
@@ -516,6 +574,15 @@ final class IdokladImportService
                 }
             }
         }
+
+        // #121: iDoklad eviduje doklad jako zaplacený → promítni (jen na čerstvě
+        // vytvořený doklad; dedup-vrácený existující doklad výše se nemění).
+        $this->applyPurchasePaymentState(
+            $id,
+            $supplierId,
+            ImportedPaymentStateMapper::fromIdoklad($i),
+            $taxDate ?: $issueDate,
+        );
 
         return $id;
     }
@@ -840,6 +907,16 @@ final class IdokladImportService
                 if (!empty($items)) {
                     $this->invoices->replaceItems($invoiceId, $items);
                 }
+                // #121: vyrovnaný/uhrazený dobropis nesmí zůstat draft
+                $this->applyIssuedPaymentState(
+                    $invoiceId,
+                    $clientId,
+                    (int) $payload['currency_id'],
+                    $supplierId,
+                    ImportedPaymentStateMapper::fromIdoklad($i),
+                    (string) ($payload['tax_date'] ?? '') ?: (string) $payload['issue_date'],
+                    (string) $payload['issue_date'],
+                );
                 $this->invCalc->recompute($invoiceId);
                 if ($downloadAttachments) {
                     $this->archiveIssuedPdf($supplierId, $invoiceId, $idokladId, $i);

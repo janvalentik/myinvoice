@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **API import přebírá platební stav z Fakturoidu a iDokladu ([#121](https://github.com/radekhulan/myinvoice/issues/121)).** Import z Fakturoidu (a stejně i z iDokladu) dosud ignoroval, že zdrojový systém doklad eviduje jako zaplacený — všechny importované faktury skončily jako nezaplacené a upomínkový cron na ně posílal klientům upomínky. Nově: doklad ve zdroji **zaplacený** (Fakturoid `status=paid`, iDoklad `PaymentStatus` Uhrazeno/Přeplaceno) se importuje rovnou jako **Zaplacená** s datem úhrady ze zdroje (`paid_on` / `DateOfPayment`, fallback DUZP → datum vystavení) a se snapshoty jako při vystavení; Fakturoid **stornovaný** doklad jako **Stornovaná**. Platí pro vydané faktury, dobropisy i přijaté faktury (expenses). Ostatní doklady (nezaplacené, částečně uhrazené) zůstávají záměrně Koncept k ruční kontrole — auto-vystavení by na reálně nezaplacené historické doklady spustilo hromadné upomínky. Manuál § 17.8.5 a § 17.9.4.
+
 ## [4.18.0] — 2026-06-05
 
 ### Added

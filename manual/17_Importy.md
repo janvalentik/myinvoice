@@ -176,9 +176,21 @@ Klikni **Spustit import**.
 | Sekce | Co se vytvoří |
 |---|---|
 | **contacts** | `clients` rows (IČ, name, address, DIČ, email, phone). ARES NEvolá — důvěřuje datům z iDokladu. |
-| **invoices** | `invoices` + `invoice_items` + VAT classification. Status: `paid` nebo `issued` per pravidlo 30 dní (viz § 17.3). |
+| **invoices** | `invoices` + `invoice_items` + VAT classification. Status: viz § 17.8.5. |
 | **credit-notes** | `invoices` se `invoice_type='credit_note'` + parent link na původní fakturu (přes `parent_invoice_id`). |
 | **purchases** | `purchase_invoices` + `purchase_invoice_items` (od v3.6.0). Klient → `clients` s `is_vendor=true`. |
+
+### 17.8.5 Platební stav (od v4.18.1)
+
+API import přebírá **skutečný platební stav ze zdrojového systému** — na rozdíl
+od file uploadu (§ 17.3), kde se stáří jen odhaduje pravidlem 30 dní:
+
+- Doklad v iDokladu **Uhrazeno / Přeplaceno** → importuje se jako **Zaplacená**
+  (`paid_at` = datum úhrady z iDokladu; nepošle se na ni upomínka).
+- Vše ostatní (neuhrazeno, částečně uhrazeno) → **Koncept**. Doklady si
+  zkontroluješ a vystavíš sám — záměrně se automaticky nevystavují, aby na
+  reálně nezaplacené historické faktury nezačaly klientům odcházet upomínky.
+- Totéž platí pro **přijaté faktury** (uhrazeno → Zaplacená, jinak Koncept).
 
 **Sleva** *(od v4.3.0)* — sleva z iDokladu se přenáší: sleva na úrovni dokladu
 (`DiscountType=OnDocument`) se u vydaných faktur uloží jako procentuální sleva
@@ -241,6 +253,11 @@ Identické s iDoklad (viz § 17.8.3) — vyber roky, sekce, dry-run.
 | **invoices** | `invoices` + `invoice_items` + DPH klasifikace |
 | **credit-notes** | `invoices` s `invoice_type='credit_note'` |
 | **purchases** (Fakturoid `expenses`) | `purchase_invoices` |
+
+**Platební stav** *(od v4.18.1)* — stejně jako u iDokladu (§ 17.8.5) se přebírá
+skutečný stav z Fakturoidu: doklad **Zaplaceno** → importuje se jako Zaplacená
+(`paid_at` = datum úhrady `paid_on`), **Stornováno** → Stornovaná; vše ostatní
+(vč. částečných úhrad) zůstává Koncept k ručnímu vystavení.
 
 Fakturoid stránkuje po 40 záznamech — MyInvoice automaticky tahá všechny stránky
 za vybrané roky.
