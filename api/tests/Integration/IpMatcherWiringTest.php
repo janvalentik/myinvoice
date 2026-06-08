@@ -36,7 +36,6 @@ final class IpMatcherWiringTest extends TestCase
 
         // Regresní jádro: kontejner musí IpMatcheru vstříknout Config (před opravou null).
         $prop = (new \ReflectionObject($matcher))->getProperty('config');
-        $prop->setAccessible(true);
         self::assertInstanceOf(
             Config::class,
             $prop->getValue($matcher),

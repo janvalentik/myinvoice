@@ -65,7 +65,6 @@ final class TotpServiceTest extends TestCase
         // RFC test counter 1 (T=59) — používáme reflexi pro testování i v jiném čase
         $reflection = new \ReflectionClass(TotpService::class);
         $method = $reflection->getMethod('generateAt');
-        $method->setAccessible(true);
         self::assertSame('287082', $method->invoke($svc, $secret, 1));
     }
 

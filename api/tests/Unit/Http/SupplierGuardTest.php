@@ -14,7 +14,7 @@ final class SupplierGuardTest extends TestCase
     /** Vytvoří fake request s nastaveným supplier.current_id atributem. */
     private function requestWithSupplier(?int $supplierId): ServerRequestInterface
     {
-        $req = $this->createMock(ServerRequestInterface::class);
+        $req = $this->createStub(ServerRequestInterface::class);
         $req->method('getAttribute')
             ->willReturnCallback(fn (string $name, $default = null) =>
                 $name === SupplierScopeMiddleware::ATTR_CURRENT_ID ? ($supplierId ?? $default) : $default

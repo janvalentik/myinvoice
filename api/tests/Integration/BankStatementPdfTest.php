@@ -93,7 +93,7 @@ final class BankStatementPdfTest extends TestCase
 
     private function mockRequest(int $sid, string $role, array $files = []): ServerRequestInterface
     {
-        $req = $this->createMock(ServerRequestInterface::class);
+        $req = $this->createStub(ServerRequestInterface::class);
         $req->method('getAttribute')->willReturnCallback(function (string $name, $default = null) use ($sid, $role) {
             if ($name === SupplierScopeMiddleware::ATTR_CURRENT_ID) return $sid;
             if ($name === AuthMiddleware::ATTR_USER) return ['id' => $this->userId, 'role' => $role];

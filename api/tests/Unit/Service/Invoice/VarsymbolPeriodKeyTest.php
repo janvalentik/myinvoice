@@ -27,7 +27,6 @@ final class VarsymbolPeriodKeyTest extends TestCase
     {
         $this->gen = (new ReflectionClass(VarsymbolGenerator::class))->newInstanceWithoutConstructor();
         $this->makePeriodKey = (new ReflectionClass(VarsymbolGenerator::class))->getMethod('makePeriodKey');
-        $this->makePeriodKey->setAccessible(true);
     }
 
     private function key(string $period, string $date): string

@@ -38,10 +38,10 @@ final class ViesClientCzRoutingTest extends TestCase
         ]);
 
         // Connection s mockovaným PDO → fromCache nevrátí žádný řádek, cache() je no-op.
-        $stmt = $this->createMock(PDOStatement::class);
+        $stmt = $this->createStub(PDOStatement::class);
         $stmt->method('execute')->willReturn(true);
         $stmt->method('fetchColumn')->willReturn(false);
-        $pdo = $this->createMock(PDO::class);
+        $pdo = $this->createStub(PDO::class);
         $pdo->method('prepare')->willReturn($stmt);
 
         $connection = new Connection($config);

@@ -110,7 +110,6 @@ final class UnauthenticatedAccessTest extends TestCase
         if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
         $resp = curl_exec($ch);
         $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         return ['status' => (int) $status, 'body' => is_string($resp) ? $resp : ''];
     }
 }
