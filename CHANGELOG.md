@@ -5,6 +5,13 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.19.2] — 2026-06-08
+
+### Fixed
+
+- **CRM dashboard počítá tržby, náklady a zisk bez DPH (pro plátce).** Dosud CRM (KPI karty, srovnání období, grafy a tabulky zisku, top klienti/dodavatelé, rozpady kategorií) sčítal částky **včetně DPH**, takže se ziskovost a meziroční srovnání zkreslovaly o vracenou daň. Nově se — shodně se stránkami Tržby a Náklady — u plátce DPH počítá **bez DPH** (u neplátce včetně). Peněžní toky („Co přiteče/odteče", pohledávky a závazky po splatnosti) zůstávají správně **včetně DPH**. Stejná oprava i na Dashboardu (dlaždice „Náklady {rok}" a trend nákladů za 12 měsíců nově bez DPH).
+- **CRM čísla nově sedí s Tržbami/Náklady i pro starší období.** CRM přestal číst 13měsíční pre-agregovanou cache `crm_monthly_summary` (kvůli které byl „Loňský rok" a meziroční srovnání podhodnocené) a počítá **živě z faktur** stejnou metodikou jako stránky Tržby/Náklady — vč. zařazení podle DUZP (fallback datum vystavení) a správného vyřazení spárovaných/zaplacených záloh z nákladů. „Loňský rok" v CRM tak odpovídá „Obratu" ve Tržbách.
+
 ## [4.19.1] — 2026-06-08
 
 ### Added

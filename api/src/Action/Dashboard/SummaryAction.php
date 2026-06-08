@@ -55,7 +55,7 @@ final class SummaryAction
             'top_clients_12m'        => $this->topClientsRolling12m($pdo, $sid, $isVatPayer),
             'revenue_by_month'       => $this->revenueByMonth($pdo, $sid, $isVatPayer),
             'revenue_breakdown_12m'  => $this->revenueBreakdown12m($pdo, $sid, $isVatPayer),
-            'purchase_costs_by_month'=> $this->purchaseCostsByMonth($pdo, $sid),
+            'purchase_costs_by_month'=> $this->purchaseCostsByMonth($pdo, $sid, $isVatPayer),
             'revenue_by_year'        => $revenueByYear,
             'rolling_12m'            => $this->rolling12mRevenue($pdo, $sid, $isVatPayer),
             'cashflow_ytd'           => $this->cashflowYtd($pdo, $year, $prevYear, $sid),
@@ -260,6 +260,17 @@ final class SummaryAction
     }
 
     /**
+     * Sloupec NÁKLADU dle plátcovství DPH: plátce má vstupní DPH odpočitatelnou →
+     * náklad je bez DPH; neplátce ji odečíst nemůže → náklad je s DPH.
+     * Náklady/trend jsou „cost" metrika (ne cash), proto net pro plátce — shodně
+     * s PurchaseSummaryAction::costCol. (Závazky/cashflow dál používají gross.)
+     */
+    private function costCol(bool $isVatPayer): string
+    {
+        return $isVatPayer ? 'pi.total_without_vat' : 'pi.total_with_vat';
+    }
+
+    /**
      * Schvalování výkazu zákazníkem — count requested + overdue (>5 dní).
      * Klik na tile → /admin/approvals.
      * @return array{requested: int, overdue: int}
@@ -414,10 +425,11 @@ final class SummaryAction
             $statusCounts[$r['status']] = (int) $r['cnt'];
         }
 
-        // Přijaté faktury YTD — náklady, počet, nezaplacené, po splatnosti
+        // Přijaté faktury YTD — náklady (net pro plátce), počet, nezaplacené, po splatnosti
+        $costCol = $this->costCol($isVatPayer);
         $stmt = $pdo->prepare(
             "SELECT COUNT(*) AS cnt,
-                    COALESCE(SUM(pi.total_with_vat * IF(cur.code = 'CZK' OR pi.exchange_rate IS NULL, 1, pi.exchange_rate)), 0) AS costs_czk
+                    COALESCE(SUM({$costCol} * IF(cur.code = 'CZK' OR pi.exchange_rate IS NULL, 1, pi.exchange_rate)), 0) AS costs_czk
                FROM purchase_invoices pi
           LEFT JOIN currencies cur ON cur.id = pi.currency_id
               WHERE pi.supplier_id = ?
@@ -513,10 +525,11 @@ final class SummaryAction
         return "(i.invoice_type NOT IN ('invoice','proforma') OR i.amount_to_pay > 0)";
     }
 
-    private function purchaseCostsByMonth(\PDO $pdo, int $sid): array
+    private function purchaseCostsByMonth(\PDO $pdo, int $sid, bool $isVatPayer): array
     {
+        $costCol = $this->costCol($isVatPayer);
         $sql = "SELECT DATE_FORMAT(pi.issue_date, '%Y-%m') AS ym,
-                       SUM(pi.total_with_vat * IF(cur.code = 'CZK' OR pi.exchange_rate IS NULL, 1, pi.exchange_rate)) AS total
+                       SUM({$costCol} * IF(cur.code = 'CZK' OR pi.exchange_rate IS NULL, 1, pi.exchange_rate)) AS total
                   FROM purchase_invoices pi
              LEFT JOIN currencies cur ON cur.id = pi.currency_id
                  WHERE pi.supplier_id = ?
