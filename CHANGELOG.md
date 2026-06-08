@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.19.4] — 2026-06-08
+
+### Added
+
+- **Patička: „Podpořte autora" a „Chcete jinou funkci?".** Odkazy v patičce aplikace nově otevírají přehledná modální okna. **Podpora autora** zobrazí bankovní spojení pro dar (účet u Partners Banky, IBAN, BIC/SWIFT) a **QR kód** k platbě (roztažený na plnou šířku se zachovaným poměrem stran, jemně zesvětlený). **Chcete jinou funkci?** představí, kdo MyInvoice vyvíjí (MyWebdesign.cz s.r.o. — 20 let na trhu, seniorní vývoj akcelerovaný AI, reference jako Prazdroj, ZOOT či Syntex) a nabídne poptávku na vývoj vlastních funkcí, reportů či napojení s tlačítkem vedoucím na kontaktní formulář. Oba dialogy jsou plně lokalizované (cs/en).
+
 ## [4.19.3] — 2026-06-08
 
 ### Added
