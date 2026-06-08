@@ -131,11 +131,11 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
     </div>
 
     <div v-else-if="summary && summary.kpi" class="space-y-6">
-      <!-- ═══ Akce pro tebe (přesunuto z CRM) — první část Přehledu ═══ -->
-      <ActionItemsWidget />
+      <!-- ═══ Akce pro tebe (přesunuto z CRM) — první část Přehledu (skryto pro readonly) ═══ -->
+      <ActionItemsWidget v-if="auth.canWrite" />
 
-      <!-- ═══ Výkazy práce — rozpracované (draft) vystavené faktury k doplnění ═══ -->
-      <section v-if="summary.draft_invoices && summary.draft_invoices.length" class="space-y-3">
+      <!-- ═══ Výkazy práce — rozpracované (draft) vystavené faktury k doplnění (skryto pro readonly) ═══ -->
+      <section v-if="auth.canWrite && summary.draft_invoices && summary.draft_invoices.length" class="space-y-3">
         <h2 class="flex items-center gap-2 flex-wrap">
           <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-primary-50 text-primary-700">
             {{ t('dashboard.work_reports.title') }}
