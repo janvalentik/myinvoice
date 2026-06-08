@@ -168,7 +168,7 @@ const hasCostsData = computed(() => (summary.value?.purchase_costs_by_month ?? [
                 </RouterLink>
                 <button type="button" @click="openWorkReport(d.id)"
                   class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium">
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-6m3 6v-4m3 4v-2"/></svg>
                   {{ t('dashboard.work_reports.button') }}
                 </button>
               </div>

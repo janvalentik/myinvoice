@@ -1206,6 +1206,8 @@
     "doc_1": "doklad",
     "doc_2_4": "doklady",
     "doc_5plus": "dokladů",
+    "prediction": "predikce",
+    "prediction_hint": "Predikce vč. konceptů (rozpracováno {amount})",
     "dates_section": "Datumy",
     "modals": {
       "mark_paid_title": "Označit jako zaplacené",

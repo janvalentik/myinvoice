@@ -599,10 +599,15 @@ final class InvoiceRepository
             $cur = $row['currency'];
             if (!isset($grouped[$month]['totals_per_currency'][$cur])) {
                 $grouped[$month]['totals_per_currency'][$cur] = [
-                    'currency'    => $cur,
-                    'without_vat' => 0.0,
-                    'vat'         => 0.0,
-                    'with_vat'    => 0.0,
+                    'currency'        => $cur,
+                    'without_vat'     => 0.0,
+                    'vat'             => 0.0,
+                    'with_vat'        => 0.0,
+                    // Predikce: koncepty (draft) vystavených faktur/dobropisů – ještě nejsou
+                    // obratem, ale ukazují, kolik je „rozpracováno" k vystavení v daném měsíci.
+                    'draft_without_vat' => 0.0,
+                    'draft_vat'         => 0.0,
+                    'draft_with_vat'    => 0.0,
                 ];
             }
             // Do obratu počítáme jen vystavené faktury + dobropisy (credit_note má záporné částky → odečte se).
@@ -612,15 +617,24 @@ final class InvoiceRepository
                 $grouped[$month]['totals_per_currency'][$cur]['without_vat'] += $row['total_without_vat'];
                 $grouped[$month]['totals_per_currency'][$cur]['vat']         += $row['total_vat'];
                 $grouped[$month]['totals_per_currency'][$cur]['with_vat']    += $row['total_with_vat'];
+            } elseif ($row['status'] === 'draft'
+                && in_array($row['invoice_type'], ['invoice', 'credit_note'], true)) {
+                // Koncepty do samostatné „predikce" (sčítají se k obratu až na FE pro predikovaný součet).
+                $grouped[$month]['totals_per_currency'][$cur]['draft_without_vat'] += $row['total_without_vat'];
+                $grouped[$month]['totals_per_currency'][$cur]['draft_vat']         += $row['total_vat'];
+                $grouped[$month]['totals_per_currency'][$cur]['draft_with_vat']    += $row['total_with_vat'];
             }
         }
 
         // Round totals
         foreach ($grouped as &$m) {
             foreach ($m['totals_per_currency'] as &$t) {
-                $t['without_vat'] = round($t['without_vat'], 2);
-                $t['vat']         = round($t['vat'], 2);
-                $t['with_vat']    = round($t['with_vat'], 2);
+                $t['without_vat']       = round($t['without_vat'], 2);
+                $t['vat']               = round($t['vat'], 2);
+                $t['with_vat']          = round($t['with_vat'], 2);
+                $t['draft_without_vat'] = round($t['draft_without_vat'], 2);
+                $t['draft_vat']         = round($t['draft_vat'], 2);
+                $t['draft_with_vat']    = round($t['draft_with_vat'], 2);
             }
             $m['totals_per_currency'] = array_values($m['totals_per_currency']);
         }

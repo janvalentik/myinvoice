@@ -310,6 +310,9 @@ function mergeGroups(existing: MonthGroup[], incoming: MonthGroup[]): MonthGroup
         found.without_vat = Math.round((found.without_vat + t.without_vat) * 100) / 100
         found.vat         = Math.round((found.vat         + t.vat)         * 100) / 100
         found.with_vat    = Math.round((found.with_vat    + t.with_vat)    * 100) / 100
+        found.draft_without_vat = Math.round((found.draft_without_vat + t.draft_without_vat) * 100) / 100
+        found.draft_vat         = Math.round((found.draft_vat         + t.draft_vat)         * 100) / 100
+        found.draft_with_vat    = Math.round((found.draft_with_vat    + t.draft_with_vat)    * 100) / 100
       } else {
         cur.totals_per_currency.push({ ...t })
       }
@@ -604,9 +607,14 @@ const monthOptions = computed(() => (tm('common.months_short') as unknown as str
             <span class="text-xs text-neutral-500">{{ g.count }} {{ g.count === 1 ? t('invoice.doc_1') : (g.count < 5 ? t('invoice.doc_2_4') : t('invoice.doc_5plus')) }}</span>
           </div>
           <div class="flex items-center gap-3 text-xs">
-            <span v-for="t in g.totals_per_currency" :key="t.currency" class="font-mono">
-              <span class="text-neutral-500">{{ t.currency }}:</span>
-              <span class="font-semibold text-neutral-900 ml-1">{{ formatMoney(t.with_vat, t.currency) }}</span>
+            <span v-for="tot in g.totals_per_currency" :key="tot.currency" class="font-mono">
+              <span class="text-neutral-500">{{ tot.currency }}:</span>
+              <span class="font-semibold text-neutral-900 ml-1">{{ formatMoney(tot.with_vat, tot.currency) }}</span>
+              <span v-if="tot.draft_with_vat !== 0" class="ml-1 text-primary-600"
+                :title="t('invoice.prediction_hint', { amount: formatMoney(tot.draft_with_vat, tot.currency) })">
+                → {{ formatMoney(tot.with_vat + tot.draft_with_vat, tot.currency) }}
+                <span class="text-[10px] uppercase tracking-wide text-primary-500">{{ t('invoice.prediction') }}</span>
+              </span>
             </span>
           </div>
         </header>

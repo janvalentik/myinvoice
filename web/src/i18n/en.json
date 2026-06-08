@@ -1206,6 +1206,8 @@
     "doc_1": "document",
     "doc_2_4": "documents",
     "doc_5plus": "documents",
+    "prediction": "forecast",
+    "prediction_hint": "Forecast incl. drafts (in progress {amount})",
     "dates_section": "Dates",
     "modals": {
       "mark_paid_title": "Mark as paid",

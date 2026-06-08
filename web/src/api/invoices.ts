@@ -212,6 +212,10 @@ export interface MonthGroup {
     without_vat: number
     vat: number
     with_vat: number
+    /** Predikce — součet konceptů (draft) vystavených faktur/dobropisů v měsíci. */
+    draft_without_vat: number
+    draft_vat: number
+    draft_with_vat: number
   }>
   invoices: InvoiceListItem[]
 }
