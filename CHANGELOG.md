@@ -5,6 +5,13 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.20.1] — 2026-06-09
+
+### Fixed
+
+- **Skrytí akcí „Spáruj platby z banky" / „Zkontroluj koncepty přijatých faktur" / „Souhrnné hlášení" hlásilo `Invalid item_type`.** Nové typy akcí (z 4.20.0) chyběly v allowlistu i ve snapshotu pro režim „skrýt pro historická data" — doplněny, skrývání teď funguje pro všechny akce.
+- **Počítadlo (badge) u akce „Pošli upomínky" nesedělo s cílovým seznamem.** Počítalo jen ostré faktury, zatímco seznam `/invoices?overdue=1` od 4.20.0 zobrazuje i nezaplacené nespárované proformy. Dotaz akce nyní zrcadlí seznam (vč. proforem a vyřazení finálních dokladů k zaplacené proformě), takže číslo v odznaku odpovídá počtu v seznamu.
+
 ## [4.20.0] — 2026-06-09
 
 ### Added
