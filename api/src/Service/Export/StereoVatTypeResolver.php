@@ -1,0 +1,244 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Service\Export;
+
+/**
+ * Resolves MyInvoice VAT classification codes to Stereo TypeOfVAT metadata.
+ *
+ * First iteration is intentionally hard-coded. The source of truth is the
+ * invoice item classification; invoice header and conservative sale defaults
+ * are used only as fallbacks.
+ */
+final class StereoVatTypeResolver
+{
+    /** @var array<string, string> */
+    private const TYPE_OF_VAT_BY_CLASSIFICATION_CODE = [
+        '1' => 'U',      // Tuzemské plnění, základní sazba
+        '2' => 'U',      // Tuzemské plnění, snížená sazba
+        '3' => 'UO',     // Tuzemské osvobozené plnění
+        '20' => 'IDZ',   // Dodání zboží do jiného členského státu
+        '22' => 'UVSP',  // Poskytnutí služby s místem plnění mimo tuzemsko
+        '25S' => 'URP',  // Tuzemský režim přenesení daňové povinnosti
+        '26' => 'UV',    // Vývoz zboží
+    ];
+
+    /** @var list<string> */
+    private const EU_COUNTRIES = [
+        'AT', 'BE', 'BG', 'HR', 'CY', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU',
+        'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI',
+        'ES', 'SE',
+    ];
+
+    /**
+     * @param array<string,mixed> $invoice
+     * @param array<string,mixed> $item
+     * @return array{classification_code:?string,type_of_vat:?string,process_vat:bool,reverse_charge:bool}
+     */
+    public function resolveRow(array $invoice, array $item): array
+    {
+        $classificationCode = $this->classificationCode($invoice, $item);
+        $normalizedCode = $classificationCode !== null ? $this->normalizeCode($classificationCode) : null;
+
+        return [
+            'classification_code' => $classificationCode,
+            'type_of_vat' => $normalizedCode !== null ? $this->typeOfVat($normalizedCode) : null,
+            'process_vat' => false,
+            'reverse_charge' => $this->isReverseCharge($normalizedCode),
+        ];
+    }
+
+    /**
+     * Stereo TypeOfVAT is a document-wide setting. Prefer the invoice header
+     * classification when present; otherwise require all rows to resolve to the
+     * same Stereo type.
+     *
+     * @param array<string,mixed> $invoice
+     * @param list<array{classification_code:?string,type_of_vat:?string,process_vat:bool,reverse_charge:bool}> $rowResolutions
+     * @return array{classification_code:?string,type_of_vat:string,process_vat:bool,reverse_charge:bool}|null
+     */
+    public function resolveDocument(array $invoice, array $rowResolutions): ?array
+    {
+        $headerCode = $this->nonEmptyString($invoice['vat_classification_code'] ?? null);
+        if ($headerCode !== null) {
+            $normalizedCode = $this->normalizeCode($headerCode);
+            $typeOfVat = $this->typeOfVat($normalizedCode);
+            if ($typeOfVat !== null) {
+                $reverseCharge = $this->isReverseCharge($normalizedCode);
+                return [
+                    'classification_code' => $headerCode,
+                    'type_of_vat' => $typeOfVat,
+                    'process_vat' => false,
+                    'reverse_charge' => $reverseCharge,
+                ];
+            }
+        }
+
+        if ($rowResolutions === []) {
+            return null;
+        }
+
+        $byType = [];
+        $unresolvedCodes = [];
+        foreach ($rowResolutions as $resolution) {
+            $type = $resolution['type_of_vat'] ?? null;
+            if ($type === null) {
+                $unresolvedCodes[] = $resolution['classification_code'] ?? '?';
+                continue;
+            }
+            $byType[$type] ??= [
+                'classification_code' => $resolution['classification_code'] ?? null,
+                'type_of_vat' => $type,
+                'process_vat' => false,
+                'reverse_charge' => !empty($resolution['reverse_charge']),
+            ];
+            $byType[$type]['reverse_charge'] = $byType[$type]['reverse_charge'] || !empty($resolution['reverse_charge']);
+        }
+
+        if ($unresolvedCodes !== [] || count($byType) > 1) {
+            throw new \RuntimeException(sprintf(
+                'Stereo XML vyžaduje jeden Typ DPH pro celý doklad %s. Nalezené typy: %s%s.',
+                $this->documentLabel($invoice),
+                implode(', ', array_keys($byType)) ?: '-',
+                $unresolvedCodes !== [] ? '; nepřeložené kódy: ' . implode(', ', array_unique($unresolvedCodes)) : '',
+            ));
+        }
+
+        if ($byType === []) {
+            return null;
+        }
+
+        /** @var array{classification_code:?string,type_of_vat:string,process_vat:bool,reverse_charge:bool} */
+        return reset($byType);
+    }
+
+    /**
+     * @param array<string,mixed> $invoice
+     * @param array{type_of_vat:string}|null $documentResolution
+     */
+    public function documentProcessVat(array $invoice, ?array $documentResolution): ?bool
+    {
+        if ($documentResolution === null) {
+            return null;
+        }
+
+        return (string) ($invoice['invoice_type'] ?? '') !== 'proforma';
+    }
+
+    /**
+     * @param array{reverse_charge:bool}|null $documentResolution
+     */
+    public function documentReverseCharge(?array $documentResolution): ?bool
+    {
+        if ($documentResolution === null) {
+            return null;
+        }
+
+        return !empty($documentResolution['reverse_charge']);
+    }
+
+    /**
+     * @param array<string,mixed> $invoice
+     * @param array<string,mixed> $item
+     */
+    private function classificationCode(array $invoice, array $item): ?string
+    {
+        return $this->nonEmptyString($item['vat_classification_code'] ?? null)
+            ?? $this->nonEmptyString($invoice['vat_classification_code'] ?? null)
+            ?? $this->defaultSaleClassificationCode(
+                (float) ($item['vat_rate_snapshot'] ?? 0),
+                !empty($invoice['reverse_charge']),
+                $this->clientCountryIso2($invoice),
+            );
+    }
+
+    private function defaultSaleClassificationCode(float $vatRate, bool $reverseCharge, string $clientCountryIso2): string
+    {
+        $rate = (int) round($vatRate);
+        $country = strtoupper($clientCountryIso2) ?: 'CZ';
+        $isForeign = $country !== 'CZ';
+        $isEu = in_array($country, self::EU_COUNTRIES, true);
+
+        if ($reverseCharge && !$isForeign) {
+            return '25s';
+        }
+        if ($isForeign && $rate === 0) {
+            return $isEu ? '22' : '26';
+        }
+        if ($rate >= 21) {
+            return '1';
+        }
+        if ($rate >= 5 && $rate <= 15) {
+            return '2';
+        }
+
+        return '3';
+    }
+
+    /**
+     * @param array<string,mixed> $invoice
+     */
+    private function clientCountryIso2(array $invoice): string
+    {
+        $snapshot = $this->snapshot($invoice['client_snapshot'] ?? null);
+        $country = $this->nonEmptyString($snapshot['country_iso2'] ?? null)
+            ?? $this->nonEmptyString($invoice['client_country_iso2'] ?? null)
+            ?? 'CZ';
+
+        return strtoupper($country);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function snapshot(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function nonEmptyString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $string = trim((string) $value);
+        return $string !== '' ? $string : null;
+    }
+
+    private function normalizeCode(string $code): string
+    {
+        return strtoupper(trim($code));
+    }
+
+    private function typeOfVat(string $normalizedCode): ?string
+    {
+        return self::TYPE_OF_VAT_BY_CLASSIFICATION_CODE[$normalizedCode] ?? null;
+    }
+
+    private function isReverseCharge(?string $normalizedCode): bool
+    {
+        return $normalizedCode === '25S';
+    }
+
+    /**
+     * @param array<string,mixed> $invoice
+     */
+    private function documentLabel(array $invoice): string
+    {
+        $label = $this->nonEmptyString($invoice['varsymbol'] ?? null)
+            ?? $this->nonEmptyString($invoice['id'] ?? null)
+            ?? '?';
+
+        return '#' . $label;
+    }
+}

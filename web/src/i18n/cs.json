@@ -2628,6 +2628,8 @@
     "format_pdf_zip_hint": "PDF každé faktury v ZIPu — pro účetní/archiv.",
     "format_pohoda": "Pohoda XML",
     "format_pohoda_hint": "XML data package pro import do Stormware Pohoda.",
+    "format_stereo": "Stereo XML",
+    "format_stereo_hint": "DocumentPack XML pro import vydaných faktur do Stereo.",
     "format_isdoc": "ISDOC",
     "format_isdoc_hint": "Standardní česká XML faktura (ISDOC 6.0.x), single-invoice nebo ZIP s více ISDOC.",
     "format_fakturoid": "Fakturoid",

@@ -117,7 +117,7 @@ a aplikace platby spáruje sama:
 
 ## 1.8 Exporty pro účetní
 
-Tři standardní formáty pro předání dokladů externí kanceláři nebo internímu
+Čtyři standardní formáty pro předání dokladů externí kanceláři nebo internímu
 účetnímu oddělení:
 
 - **PDF ZIP po měsících** — klasická archivace, název souboru
@@ -126,6 +126,7 @@ Tři standardní formáty pro předání dokladů externí kanceláři nebo inte
   podporují ho všechny větší české účetní programy
 - **Pohoda XML** (Stormware data package) — přímý import do Pohody bez
   ručního opisu
+- **Stereo XML** — DocumentPack XML pro import vydaných faktur do Stereo
 - Filtrování exportu podle období, typu dokladu (faktury / zálohové /
   dobropisy) a stavu (vystavené / zaplacené / vše)
 

@@ -3,9 +3,9 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useYearOptions } from '@/composables/useYearOptions'
 
-const { t } = useI18n()
+const { t, tm, rt } = useI18n()
 
-type Format = 'pdf-zip' | 'isdoc' | 'pohoda'
+type Format = 'pdf-zip' | 'isdoc' | 'pohoda' | 'stereo'
 type PeriodType = 'monthly' | 'quarterly'
 
 // Default = předchozí měsíc: export se dělá po uzávěrce právě skončeného měsíce,
@@ -77,7 +77,7 @@ async function downloadExport() {
     const blob = await resp.blob()
     const dispo = resp.headers.get('Content-Disposition') || ''
     const m = dispo.match(/filename="?([^"]+)"?/)
-    const ext = format.value === 'pohoda' ? 'xml' : (format.value === 'isdoc' ? 'isdoc' : 'zip')
+    const ext = ['pohoda', 'stereo'].includes(format.value) ? 'xml' : (format.value === 'isdoc' ? 'isdoc' : 'zip')
     const filename = m ? m[1] : `myinvoice-${periodFileLabel.value}.${ext}`
 
     const a = document.createElement('a')
@@ -96,8 +96,9 @@ async function downloadExport() {
 
 const monthLabel = (m: string): string => {
   const [y, mm] = m.split('-')
-  const months = t('common.months_long') as unknown as string[]
-  return `${months[Number(mm) - 1] || mm} ${y}`
+  const months = tm('common.months_long') as string[]
+  const label = months[Number(mm) - 1]
+  return `${label ? rt(label) : mm} ${y}`
 }
 </script>
 
@@ -113,12 +114,13 @@ const monthLabel = (m: string): string => {
       <!-- Formát výběr -->
       <div>
         <label class="block text-sm font-medium text-neutral-700 mb-2">{{ t('export.format') }}</label>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
           <label
             v-for="opt in [
               { val: 'pdf-zip' as Format, label: t('export.format_pdf_zip'), hint: t('export.format_pdf_zip_hint') },
               { val: 'isdoc' as Format,   label: t('export.format_isdoc'),   hint: t('export.format_isdoc_hint') },
               { val: 'pohoda' as Format,  label: t('export.format_pohoda'),  hint: t('export.format_pohoda_hint') },
+              { val: 'stereo' as Format,  label: t('export.format_stereo'),  hint: t('export.format_stereo_hint') },
             ]"
             :key="opt.val"
             class="cursor-pointer block p-3 border rounded-md transition"
@@ -133,7 +135,7 @@ const monthLabel = (m: string): string => {
                 <path fill="#ffffff" opacity="0.35" d="M20 2v8h8z"/>
                 <text x="16" y="26" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" text-anchor="middle" letter-spacing="0.3">PDF</text>
               </svg>
-              <svg v-else-if="opt.val === 'pohoda'" class="w-5 h-5 text-warning-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414"/></svg>
+              <svg v-else-if="opt.val === 'pohoda' || opt.val === 'stereo'" class="w-5 h-5 text-warning-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414"/></svg>
               <svg v-else class="w-5 h-5 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2"/></svg>
               <span class="text-sm font-medium">{{ opt.label }}</span>
             </div>

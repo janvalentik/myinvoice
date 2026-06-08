@@ -198,7 +198,7 @@ Aby bylo úplně jasno, kde je hranice:
 - Upomínání po splatnosti
 - Bankovní importy (FIO, KB, ČSOB) a párování plateb podle VS
 - ARES + VIES lookup (autocomplete IČO/DIČ)
-- Export pro účetní: **Pohoda XML, ISDOC, PDF ZIP**
+- Export pro účetní: **Pohoda XML, Stereo XML, ISDOC, PDF ZIP**
 - XML pro EPO portál MFČR: **DPH přiznání (DPHDP3), kontrolní hlášení,
   souhrnné hlášení** — jako pomůcka k ověření s účetní
 
@@ -213,7 +213,7 @@ Aby bylo úplně jasno, kde je hranice:
 - Insolvenční registr, registr ekonomických subjektů
 
 Standardní tok je: **MyInvoice vystaví doklady → vygeneruje výkazy DPH →
-uživatel/účetní jednou měsíčně exportuje (Pohoda XML / ISDOC) → účetní
+uživatel/účetní jednou měsíčně exportuje (Pohoda XML / Stereo XML / ISDOC) → účetní
 doklady zaúčtuje a ověřené výkazy podá**. Aplikace primárně **eviduje,
 podává a generuje výkazy** z dokladů, neúčtuje je.
 

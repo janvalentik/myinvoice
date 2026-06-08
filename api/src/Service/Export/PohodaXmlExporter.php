@@ -43,11 +43,16 @@ final class PohodaXmlExporter
     public const NS_INV = 'http://www.stormware.cz/schema/version_2/invoice.xsd';
     public const NS_TYP = 'http://www.stormware.cz/schema/version_2/type.xsd';
 
+    private readonly InvoiceExportDataResolver $dataResolver;
+
     public function __construct(
         private readonly InvoiceRepository $repo,
         private readonly Connection $db,
         private readonly TaxConstantsRepository $taxConstants,
-    ) {}
+        ?InvoiceExportDataResolver $dataResolver = null,
+    ) {
+        $this->dataResolver = $dataResolver ?? new InvoiceExportDataResolver($db);
+    }
 
     /**
      * Hranice základní sazby (bucket high vs low) pro rok dokladu — z číselníku
@@ -353,39 +358,7 @@ final class PohodaXmlExporter
 
     private function resolveClient(array $invoice): array
     {
-        // Live data ze clients tabulky jako defensive base (pro legacy faktury
-        // s prázdným snapshotem nebo snapshoty bez všech polí — chybějící
-        // street/city/zip/country v Pohoda XML by jinak vyrobilo prázdný
-        // partner address). Snapshot vyhrává nad live (zachovává historický
-        // stav vystavené faktury). Stejný pattern jako v IsdocExporter.
-        $live = $this->loadLiveClient((int) ($invoice['client_id'] ?? 0));
-        if (!empty($invoice['client_snapshot'])) {
-            $snap = is_string($invoice['client_snapshot']) ? json_decode($invoice['client_snapshot'], true) : $invoice['client_snapshot'];
-            if (is_array($snap)) {
-                return array_merge($live, $snap);
-            }
-        }
-        if (empty($live)) {
-            return [
-                'company_name' => $invoice['client_company_name'] ?? '',
-                'ic' => $invoice['client_ic'] ?? '',
-                'dic' => $invoice['client_dic'] ?? '',
-                'main_email' => $invoice['client_main_email'] ?? '',
-                'country_iso2' => 'CZ',
-            ];
-        }
-        return $live;
-    }
-
-    private function loadLiveClient(int $clientId): array
-    {
-        if ($clientId <= 0) return [];
-        $stmt = $this->db->pdo()->prepare(
-            'SELECT c.*, co.iso2 AS country_iso2, co.name_cs AS country_name_cs, co.name_en AS country_name_en
-               FROM clients c JOIN countries co ON co.id = c.country_id WHERE c.id = ?'
-        );
-        $stmt->execute([$clientId]);
-        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        return $this->dataResolver->client($invoice);
     }
 
     private function fmt(float $value): string

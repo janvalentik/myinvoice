@@ -12,7 +12,7 @@ Multi-supplier fakturační systém (jedna instalace = N dodavatelů / IČO s iz
 - **Mail:** Symfony Mailer 8 (SMTP + DKIM)
 - **Grafy:** Chart.js 4 + vue-chartjs 5
 - **Build / testy:** Composer 2, pnpm 10 + Node.js 22+, PHPUnit 13, PHPStan 2, vue-tsc 2
-- **Exporty pro účetní:** PDF ZIP, **ISDOC 6.0.2**, **Pohoda XML** (Stormware data package)
+- **Exporty pro účetní:** PDF ZIP, **ISDOC 6.0.2**, **Pohoda XML** (Stormware data package), **Stereo XML**
 - **Hosting:** IIS i Apache (oba podporované)
 - **Konfigurace:** `cfg.php` v rootu repa (+ `cfg.local.php` pro per-env override)
 - **Logy:** `log/` v rootu, denní rotace 90 dní
@@ -33,7 +33,7 @@ Multi-supplier fakturační systém (jedna instalace = N dodavatelů / IČO s iz
 11. **Email s PDF přílohou** přes Twig šablony + per-dodavatel `From:` jméno a `Reply-To:` adresa
 12. **Upomínky** — manuální tlačítko, hromadná akce, nebo cron `cron-send-reminders.php`
 13. **GPC import** bankovních výpisů (KB/FIO/ČSOB/RB/ČS) s SHA256 dedupe + auto-matching
-14. **Exporty pro účetní:** PDF ZIP po měsících, **ISDOC 6.0.2**, **Pohoda XML** (per-dodavatel kódy: středisko, činnost, předkontace)
+14. **Exporty pro účetní:** PDF ZIP po měsících, **ISDOC 6.0.2**, **Pohoda XML** (per-dodavatel kódy: středisko, činnost, předkontace), **Stereo XML**
 15. Reverse charge přepínatelný per klient
 16. Číselník DPH s validitou v čase, měny **CZK + EUR** (rozšiřitelný), per-dodavatel bankovní účty
 17. **Brute-force ochrana** přes Redis (fallback MariaDB MEMORY) + **TOTP 2FA**
@@ -100,4 +100,3 @@ Multi-supplier fakturační systém (jedna instalace = N dodavatelů / IČO s iz
 | 7 | Vystavení daňového dokladu z proformy | Ano, s odečtem zaplacené zálohy |
 | 8 | First-run setup | Wizard při prvním spuštění (admin + dodavatel) |
 | 9 | IP allowlist | Volitelný, IPv4 i IPv6 + CIDR prefixy |
-
