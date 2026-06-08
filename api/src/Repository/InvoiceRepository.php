@@ -63,6 +63,7 @@ final class InvoiceRepository
                     c.ic AS client_ic, c.dic AS client_dic,
                     c.language AS client_language,
                     c.reverse_charge AS client_reverse_charge,
+                    u.name AS created_by_name,
                     p.name AS project_name, p.hourly_rate AS project_hourly_rate,
                     p.payment_due_days AS project_payment_due_days,
                     p.project_number AS project_number, p.contract_number AS contract_number,
@@ -74,6 +75,7 @@ final class InvoiceRepository
                     rcat.label AS revenue_category_label, rcat.code AS revenue_category_code
                FROM invoices i
                JOIN clients c ON c.id = i.client_id
+          LEFT JOIN users u ON u.id = i.created_by
           LEFT JOIN projects p ON p.id = i.project_id
                JOIN currencies cur ON cur.id = i.currency_id
           LEFT JOIN revenue_categories rcat ON rcat.id = i.revenue_category_id

@@ -87,11 +87,15 @@ final class IsdocExporter
      */
     private float $exportRate = 1.0;
     private bool $exportForeign = false;
+    private readonly InvoiceExportDataResolver $dataResolver;
 
     public function __construct(
         private readonly InvoiceRepository $repo,
         private readonly Connection $db,
-    ) {}
+        ?InvoiceExportDataResolver $dataResolver = null,
+    ) {
+        $this->dataResolver = $dataResolver ?? new InvoiceExportDataResolver($db);
+    }
 
     /**
      * @param int[] $invoiceIds
@@ -479,80 +483,17 @@ final class IsdocExporter
 
     private function resolveSupplier(array $invoice): array
     {
-        // Live data ze supplier tabulky (defenzivní base — pro legacy faktury s prázdným
-        // snapshotem a pro chybějící klíče v starších snapshotech). Snapshot vyhrává nad
-        // live (zachovává historický stav vystavené faktury).
-        $live = $this->loadLiveSupplier((int) ($invoice['supplier_id'] ?? 0));
-        if (!empty($invoice['supplier_snapshot'])) {
-            $snap = is_string($invoice['supplier_snapshot']) ? json_decode($invoice['supplier_snapshot'], true) : $invoice['supplier_snapshot'];
-            if (is_array($snap)) {
-                return array_merge($live, $snap);
-            }
-        }
-        return $live;
+        return $this->dataResolver->supplier($invoice);
     }
 
     private function resolveClient(array $invoice): array
     {
-        $live = $this->loadLiveClient((int) ($invoice['client_id'] ?? 0));
-        if (!empty($invoice['client_snapshot'])) {
-            $snap = is_string($invoice['client_snapshot']) ? json_decode($invoice['client_snapshot'], true) : $invoice['client_snapshot'];
-            if (is_array($snap)) {
-                return array_merge($live, $snap);
-            }
-        }
-        // Final fallback: invoice repo joinuje basic client fields (legacy data bez clients
-        // záznamu — např. smazaný klient).
-        if (empty($live)) {
-            return [
-                'company_name' => $invoice['client_company_name'] ?? '',
-                'ic' => $invoice['client_ic'] ?? '',
-                'dic' => $invoice['client_dic'] ?? '',
-                'main_email' => $invoice['client_main_email'] ?? '',
-                'country_iso2' => 'CZ',
-            ];
-        }
-        return $live;
-    }
-
-    private function loadLiveSupplier(int $supplierId): array
-    {
-        if ($supplierId <= 0) return [];
-        $stmt = $this->db->pdo()->prepare(
-            'SELECT s.*, co.iso2 AS country_iso2, co.name_cs AS country_name_cs, co.name_en AS country_name_en
-               FROM supplier s JOIN countries co ON co.id = s.country_id WHERE s.id = ?'
-        );
-        $stmt->execute([$supplierId]);
-        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
-    }
-
-    private function loadLiveClient(int $clientId): array
-    {
-        if ($clientId <= 0) return [];
-        $stmt = $this->db->pdo()->prepare(
-            'SELECT c.*, co.iso2 AS country_iso2, co.name_cs AS country_name_cs, co.name_en AS country_name_en
-               FROM clients c JOIN countries co ON co.id = c.country_id WHERE c.id = ?'
-        );
-        $stmt->execute([$clientId]);
-        return $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        return $this->dataResolver->client($invoice);
     }
 
     private function resolveBank(array $invoice): ?array
     {
-        if (!empty($invoice['bank_snapshot'])) {
-            $snap = is_string($invoice['bank_snapshot']) ? json_decode($invoice['bank_snapshot'], true) : $invoice['bank_snapshot'];
-            if (is_array($snap)) return $snap;
-        }
-        if (!empty($invoice['bank_account_number']) || !empty($invoice['bank_iban'])) {
-            return [
-                'account_number' => $invoice['bank_account_number'] ?? null,
-                'bank_code'      => $invoice['bank_code'] ?? null,
-                'bank_name'      => $invoice['bank_name'] ?? null,
-                'iban'           => $invoice['bank_iban'] ?? null,
-                'bic'            => $invoice['bank_bic'] ?? null,
-            ];
-        }
-        return null;
+        return $this->dataResolver->bank($invoice);
     }
 
     private function el(\DOMDocument $dom, \DOMElement $parent, string $name, string $value): \DOMElement

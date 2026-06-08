@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { purchaseInvoicesApi } from '@/api/purchaseInvoices'
 import { useYearOptions } from '@/composables/useYearOptions'
 
-const { t } = useI18n()
+const { t, tm, rt } = useI18n()
 
 type Format = 'pdf-zip' | 'pohoda' | 'isdoc'
 type DateBy = 'tax' | 'issue' | 'received'
@@ -38,9 +38,10 @@ const monthParts = computed(() => {
 
 const selectedPeriodLabel = computed(() => {
   if (periodType.value === 'quarterly') return `Q${quarter.value} ${year.value}`
-  const months = t('common.months_long') as unknown as string[]
+  const months = tm('common.months_long') as string[]
   const m = monthParts.value.month
-  return `${months[m - 1] || String(m).padStart(2, '0')} ${monthParts.value.year}`
+  const label = months[m - 1]
+  return `${label ? rt(label) : String(m).padStart(2, '0')} ${monthParts.value.year}`
 })
 
 const exportPeriod = computed(() => {

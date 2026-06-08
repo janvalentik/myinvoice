@@ -1,6 +1,6 @@
-# 15. Exporty (PDF ZIP, ISDOC, Pohoda XML)
+# 15. Exporty (PDF ZIP, ISDOC, Pohoda XML, Stereo XML)
 
-Pro účetní (interní oddělení nebo externí kancelář) nabízí MyInvoice tři
+Pro účetní (interní oddělení nebo externí kancelář) nabízí MyInvoice čtyři
 formáty hromadného exportu **vystavených faktur** a per-faktura export
 **přijatých faktur** (ISDOC / Pohoda / naše PDF rekonstrukce — viz [Export přijatých faktur](18_Export_prijatych.md)).
 
@@ -16,6 +16,7 @@ formáty hromadného exportu **vystavených faktur** a per-faktura export
 | **PDF ZIP** | Klasická archivace | Všechna PDF za zvolené období v ZIP archivu |
 | **ISDOC 6.0.2** | Český národní standard pro B2B výměnu faktur | XML soubor pro každou fakturu, balené v ZIP |
 | **Pohoda XML** | Stormware Pohoda — přímý import bez ručního opisu | Sloučený dataPack XML soubor |
+| **Stereo XML** | Stereo for Windows — import vydaných faktur | Sloučený DocumentPack XML soubor |
 
 ## 15.1 Obrazovka exportů
 
@@ -27,7 +28,7 @@ Formulář:
 
 | Pole | Význam |
 |---|---|
-| Formát | `PDF ZIP` / `ISDOC` / `Pohoda XML` |
+| Formát | `PDF ZIP` / `ISDOC` / `Pohoda XML` / `Stereo XML` |
 | Období | Měsíc-rok (např. „Duben 2026") nebo celé čtvrtletí (`Q1` až `Q4`) |
 | Filtrovat podle | Datum vystavení nebo DUZP (u DUZP se při prázdné hodnotě použije datum vystavení) |
 | Typ | Všechny / Faktury / Zálohové / Dobropisy |
@@ -217,12 +218,51 @@ MyInvoice mapuje DPH sazby na **Pohoda kódy klasifikace**:
 
 Pokud klient potřebuje přesně tvoji PDF verzi, použij paralelně **PDF ZIP**.
 
-## 15.5 Faktury v cizí měně (EUR / USD / …) — kurz CZK v exportu
+## 15.5 Stereo XML
+
+Stereo XML export vytváří jeden `DocumentPack` soubor pro vydané faktury za
+zvolené období. Je určený pro import do **Kastner Stereo** přes volbu
+**Import faktury (XML)**. Výstup používá:
+
+- `SoftwareVendor` a `SoftwareProduct` = `myinvoice.cz`,
+- `Payment/CurrencyCode` a `Rows/Row/CurrencyCode` s legacy Stereo mapováním
+  `CZK → Kč`; ostatní měny zůstávají jako ISO kód (`EUR`, ...),
+- `Payment/ConstantSymbol` jako prázdný element, pokud faktura konstantní symbol
+  neobsahuje.
+
+DPH se skládá z řádkových součtů uložených na faktuře. `LineNet` je základ řádku
+bez DPH (`total_without_vat`), `LineVAT` je DPH řádku a `LineNet + LineVAT`
+odpovídá částce řádku s DPH. Souhrny `TaxableTotal`, `VatTotal` a `NetTotal`
+jsou součty těchto hodnot přes všechny položky.
+
+Export v první iteraci zapisuje pevné mapování DPH klasifikací MyInvoice do
+Stereo `TypeOfVAT`. Stereo vyžaduje jeden typ DPH pro celý doklad, proto se
+stejná hodnota zapisuje do `VatInfo/TypeOfVAT` i do všech řádků dokladu. Pokud
+má faktura vyplněný hlavičkový `vat_classification_code`, použije se jako
+autoritativní typ pro celý Stereo doklad; jinak musí všechny položky vycházet na
+stejný Stereo typ. Smíšené typy bez hlavičkové klasifikace export zastaví
+s validační chybou.
+
+| MyInvoice `vat_classification_code` | Stereo `TypeOfVAT` |
+| --- | --- |
+| `1`, `2` | `U` |
+| `3` | `UO` |
+| `20` | `IDZ` |
+| `22` | `UVSP` |
+| `25s` | `URP` |
+| `26` | `UV` |
+
+Volitelné účetní klasifikace Stereo jako `TypeOfOperation`, `Stredisko`, `Vykon`
+nebo `Zakazka` se zatím nezapisují. `TypeOfOperation` není podle XSD povinné a
+u tuzemského režimu přenesení daňové povinnosti může import Sterea odmítnout,
+pokud hodnota neodpovídá lokálnímu číselníku.
+
+## 15.6 Faktury v cizí měně (EUR / USD / …) — kurz CZK v exportu
 
 Pro faktury v jiné měně než CZK MyInvoice automaticky přidává do exportů
 **kurz ČNB** zafixovaný na faktuře — viz [§ 10.4.2](10_Faktura_editor.md#1042-faktura-v-cizi-mene-eur-usd-prepocet-do-czk).
 
-### 15.5.1 ISDOC — `LocalCurrencyCode` + `CurrencyCode` + `CurrRate`
+### 15.6.1 ISDOC — `LocalCurrencyCode` + `CurrencyCode` + `CurrRate`
 
 ISDOC export pro EUR fakturu obsahuje:
 
@@ -238,7 +278,7 @@ si CZK ekvivalent dopočítá z `CurrRate`. Pokud faktura nemá zafixovaný kurz
 (starší data před verzí 1.4 nebo selhal fetch z ČNB), `CurrRate=1` — uživatel
 musí v účetním softu kurz ručně doplnit.
 
-### 15.5.2 Pohoda XML — `inv:foreignCurrency` + `inv:homeCurrency`
+### 15.6.2 Pohoda XML — `inv:foreignCurrency` + `inv:homeCurrency`
 
 Pohoda XML pro EUR fakturu obsahuje **oba** bloky v `<inv:invoiceSummary>`:
 
@@ -262,7 +302,7 @@ Položky (`<inv:invoiceItem>`) pro non-CZK fakturu používají `<inv:foreignCur
 místo `<inv:homeCurrency>` — Pohoda po importu položkové CZK hodnoty dopočítá
 z globálního kurzu.
 
-### 15.5.3 Tipy
+### 15.6.3 Tipy
 
 - **Konzultuj kurz s účetní** — některé účetní software (zejm. Pohoda) má
   vlastní kurzovní lístek a může při importu kurz přepsat. Pokud chceš mít
@@ -271,7 +311,7 @@ z globálního kurzu.
   ho automaticky doplní (cache → ČNB → poslední známý). Když ČNB nedostupné
   a žádný kurz není, v ISDOC dostaneš `CurrRate=1` s varováním.
 
-## 15.6 Filtrování
+## 15.7 Filtrování
 
 | Volba | Použití |
 |---|---|
@@ -279,7 +319,7 @@ z globálního kurzu.
 | Stav = Zaplacené | Pro výplatu DPH (jen reálně přijaté) |
 | Typ = Dobropisy | Pro samostatnou agendu oprav |
 
-## 15.7 Tipy
+## 15.8 Tipy
 
 - **Měsíční rytmus** — exportuj 1. den následujícího měsíce za ten skončený
   měsíc.
@@ -288,9 +328,10 @@ z globálního kurzu.
   [Hromadný export (ZIP)](32_Hromadny_export.md) v sekci Daně —
   vyřeší zařazení do období daňově korektně a roztřídí vše do pojmenovaných
   složek.
-- **ISDOC i Pohoda** — pokud si nejsi jistý, který formát použít, **ISDOC**
-  je univerzální (otevřený standard, fungují různé softwary). Pohoda XML jen
-  když víš, že příjemce má Pohodu.
+- **ISDOC, Pohoda, Stereo** — pokud si nejsi jistý, který formát použít,
+  **ISDOC** je univerzální (otevřený standard, fungují různé softwary).
+  Pohoda XML nebo Stereo XML použij jen když víš, že příjemce používá daný
+  účetní software.
 - **Stáhni i PDF ZIP jako backup** — XML formáty obsahují data, ale ne grafiku
   PDF. Pokud archivuješ pro daňové účely, mít originální PDF je nutné.
 - **Před prvním exportem do Pohody** → konzultuj s účetní, jaké chce kódy

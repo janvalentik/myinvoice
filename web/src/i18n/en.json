@@ -2548,6 +2548,8 @@
     "format_pdf_zip_hint": "Each invoice as a PDF inside one ZIP — for accounting/archive.",
     "format_pohoda": "Pohoda XML",
     "format_pohoda_hint": "XML data package for import into Stormware Pohoda.",
+    "format_stereo": "Stereo XML",
+    "format_stereo_hint": "DocumentPack XML for importing issued invoices into Stereo.",
     "format_isdoc": "ISDOC",
     "format_isdoc_hint": "Czech standard XML invoice (ISDOC 6.0.x), single or ZIP with multiple ISDOC.",
     "format_fakturoid": "Fakturoid",
