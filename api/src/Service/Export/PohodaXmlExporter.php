@@ -31,11 +31,14 @@ use MyInvoice\Repository\TaxConstantsRepository;
  *   pohoda_activity_code → <inv:activity><typ:ids>...</typ:ids></inv:activity>
  *   pohoda_contract_code → <inv:contract><typ:ids>...</typ:ids></inv:contract>
  *
- * VAT classification (`<inv:classificationVAT>`) hardcoded podle vat_rate_snapshot:
- *   21 %  → UDA5     (tuzemské plnění základní)
- *   12 %  → UDA5_12  (snížené)
- *    0 %  → UNX      (osvobozeno)
- *   reverse_charge → PNAR (přenesená daňová povinnost)
+ * VAT classification (`<inv:classificationVAT>`) — Pohoda schema vyžaduje STRUKTUROVANÉ
+ * dítě `<typ:ids>` + `<typ:classificationVATType>` ({inland, nonSubsume}), NE prostý text
+ * (validation error: "typ Text v tomto kontextu elementu classificationVAT není povolen").
+ * Mapování podle vat_rate_snapshot:
+ *   21 %  → UDA5    + inland     (tuzemské plnění základní)
+ *   12 %  → UDA5_12 + inland     (snížené)
+ *    0 %  → UNX     + nonSubsume (osvobozeno)
+ *   reverse_charge → PNAR + nonSubsume (přenesená daňová povinnost)
  */
 final class PohodaXmlExporter
 {
@@ -155,9 +158,13 @@ final class PohodaXmlExporter
             }
             $this->el($dom, $hdr, self::NS_INV, 'inv:dateDue', (string) $invoice['due_date']);
 
-            // Klasifikace DPH (per-faktura — vezme se první VAT rate z položek; v praxi mix se řeší per-položka v invoiceItem)
+            // Klasifikace DPH (per-faktura — vezme se nejvyšší VAT rate z položek; mix se v praxi
+            // řeší per-položka v invoiceItem). Pohoda vyžaduje strukturované dítě, ne prostý text.
             $defaultVatClass = $this->classifyVat($invoice);
-            $this->el($dom, $hdr, self::NS_INV, 'inv:classificationVAT', $defaultVatClass);
+            $classEl = $dom->createElementNS(self::NS_INV, 'inv:classificationVAT');
+            $this->el($dom, $classEl, self::NS_TYP, 'typ:ids', $defaultVatClass['ids']);
+            $this->el($dom, $classEl, self::NS_TYP, 'typ:classificationVATType', $defaultVatClass['type']);
+            $hdr->appendChild($classEl);
 
             // Číslo objednávky / poznámka
             if (!empty($invoice['note_above_items'])) {
@@ -342,18 +349,25 @@ final class PohodaXmlExporter
         return $el;
     }
 
-    private function classifyVat(array $invoice): string
+    /**
+     * @return array{ids:string, type:string}  ids = zkratka členění v Pohodě, type = enum {inland, nonSubsume}
+     */
+    private function classifyVat(array $invoice): array
     {
-        if (!empty($invoice['reverse_charge'])) return 'PNAR';
+        if (!empty($invoice['reverse_charge'])) {
+            return ['ids' => 'PNAR', 'type' => 'nonSubsume'];
+        }
         $bd = $invoice['vat_breakdown'] ?? [];
-        if (empty($bd)) return 'UDA5';
+        if (empty($bd)) {
+            return ['ids' => 'UDA5', 'type' => 'inland'];
+        }
         $maxRate = 0.0;
         foreach ($bd as $b) {
             if ((float) $b['rate'] > $maxRate) $maxRate = (float) $b['rate'];
         }
-        if ($maxRate >= $this->highBoundary($invoice)) return 'UDA5';
-        if ($maxRate >= 11.5) return 'UDA5_12';
-        return 'UNX';
+        if ($maxRate >= $this->highBoundary($invoice)) return ['ids' => 'UDA5',    'type' => 'inland'];
+        if ($maxRate >= 11.5)                          return ['ids' => 'UDA5_12', 'type' => 'inland'];
+        return ['ids' => 'UNX', 'type' => 'nonSubsume'];
     }
 
     private function resolveClient(array $invoice): array
