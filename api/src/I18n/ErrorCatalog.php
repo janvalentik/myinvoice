@@ -25,7 +25,7 @@ final class ErrorCatalog
         'Chybí project_id.' => 'Missing project_id.',
         'Chybí title.' => 'Missing title.',
         'Chyba konfigurace serveru.' => 'Server configuration error.',
-        'DIČ musí mít prefix země a 4-12 číslic (např. CZ12345678).' => 'VAT ID must have a country prefix and 4–12 digits (e.g. CZ12345678).',
+        'DIČ musí mít prefix země a 2-12 znaků (např. CZ12345678, NL123456789B01).' => 'VAT ID must have a country prefix and 2–12 characters (e.g. CZ12345678, NL123456789B01).',
         'Dobropis ani storno nelze stornovat.' => 'Credit note and cancellation cannot be cancelled.',
         'Email je už registrovaný.' => 'Email is already registered.',
         'Email se nepodařilo odeslat: ' => 'Failed to send email: ',

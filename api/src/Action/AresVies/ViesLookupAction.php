@@ -18,11 +18,22 @@ final class ViesLookupAction
         $body = (array) ($request->getParsedBody() ?? []);
         $vatId = strtoupper(trim((string) ($body['vat_id'] ?? '')));
 
-        if (!preg_match('/^[A-Z]{2}\d{4,12}$/', $vatId)) {
-            return Json::error($response, 'invalid_vat_id', 'DIČ musí mít prefix země a 4-12 číslic (např. CZ12345678).', 400);
+        if (!$this->isValidVatId($vatId)) {
+            return Json::error($response, 'invalid_vat_id', 'DIČ musí mít prefix země a 2-12 znaků (např. CZ12345678, NL123456789B01).', 400);
         }
 
         $result = $this->vies->lookup($vatId);
         return Json::ok($response, $result);
+    }
+
+    /**
+     * Formát DIČ pro VIES: 2-písmenný kód země + 2-12 alfanumerických znaků.
+     * Jen číslice NESTAČÍ — řada zemí EU má v DIČ písmeno (NL …B01, AT U…,
+     * ES, FR, IE). Znaky + a * pokrývají starší irské formáty; normalizaci
+     * (strtoupper, ořez mezer) řeší volající výše.
+     */
+    private function isValidVatId(string $vatId): bool
+    {
+        return (bool) preg_match('/^[A-Z]{2}[A-Z0-9+*]{2,12}$/', $vatId);
     }
 }

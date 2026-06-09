@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Zahraniční DIČ s písmenem (např. nizozemské `NL123456789B01`) nešlo ověřit přes VIES.** Validace povolovala po prefixu země jen číslice (`/^[A-Z]{2}\d{4,12}$/`), takže DIČ s písmenem padalo na „DIČ musí mít prefix země a 4-12 číslic". Týkalo se i Rakouska (`ATU…`), Španělska, Francie a Irska. Nově se po prefixu země povolí 2-12 alfanumerických znaků, takže projdou všechny formáty DIČ ze systému VIES.
+
 ## [4.20.1] — 2026-06-09
 
 ### Fixed

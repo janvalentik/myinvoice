@@ -37,7 +37,7 @@ final class ViesClient
     public function lookup(string $vatId): array
     {
         $vatId = strtoupper(preg_replace('/[\s\-]/', '', $vatId) ?? '');
-        if (!preg_match('/^([A-Z]{2})(\d{4,12})$/', $vatId, $m)) {
+        if (!preg_match('/^([A-Z]{2})([A-Z0-9+*]{2,12})$/', $vatId, $m)) {
             return ['valid' => false, 'source' => 'error'];
         }
         $country = $m[1];
