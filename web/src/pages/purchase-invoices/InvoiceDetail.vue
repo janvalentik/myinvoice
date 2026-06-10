@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import LinkedDocumentsPanel from '@/components/documents/LinkedDocumentsPanel.vue'
 import PdfDropzone from '@/components/purchase/PdfDropzone.vue'
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { purchaseInvoicesApi, type PurchaseInvoice, type PurchaseInvoiceStatus, type PurchaseInvoiceBrief } from '@/api/purchaseInvoices'
+import { purchaseInvoicesApi, type PurchaseInvoice, type PurchaseInvoiceStatus, type PurchaseInvoiceBrief, type PaymentQrResponse } from '@/api/purchaseInvoices'
 import { formatMoney, formatDate } from '@/composables/useFormat'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
@@ -299,6 +299,96 @@ function confirmForceEdit() {
 }
 const canDelete = computed(() => invoice.value?.status === 'draft')
 
+// ── „Zaplatit pomocí QR" ──────────────────────────────────────────────────────
+// Tlačítko se zobrazí u nezaplacené faktury s kladnou částkou k úhradě (readonly
+// smí QR zobrazit z uloženého účtu; doplnění/editace účtu jen pro auth.canWrite).
+const canPayWithQr = computed(() => {
+  const inv = invoice.value
+  if (!inv || inv.status === 'paid' || inv.status === 'cancelled') return false
+  const toPay = inv.amount_to_pay > 0 ? inv.amount_to_pay : inv.total_with_vat
+  return toPay > 0
+})
+
+// Účet uložený u faktury (CZ účet+kód nebo IBAN) → zobrazíme box v detailu.
+const hasStoredAccount = computed(() => {
+  const inv = invoice.value
+  if (!inv) return false
+  return (!!inv.payment_account_number && !!inv.payment_bank_code) || !!inv.payment_iban
+})
+
+const qrOpen = ref(false)
+const qrLoading = ref(false)
+const qrSaving = ref(false)
+const qrEditing = ref(false)
+const qrData = ref<PaymentQrResponse | null>(null)
+const qrForm = reactive({ account_number: '', bank_code: '', iban: '', bic: '', variable_symbol: '' })
+
+function syncQrForm(res: PaymentQrResponse): void {
+  qrForm.account_number = res.account.account_number || ''
+  qrForm.bank_code = res.account.bank_code || ''
+  qrForm.iban = res.account.iban || ''
+  qrForm.bic = res.account.bic || ''
+  qrForm.variable_symbol = res.account.variable_symbol || ''
+}
+
+async function openQr(): Promise<void> {
+  if (!invoice.value) return
+  qrOpen.value = true
+  qrEditing.value = false
+  qrData.value = null
+  qrLoading.value = true
+  try {
+    const res = await purchaseInvoicesApi.paymentQr(invoice.value.id)
+    qrData.value = res
+    syncQrForm(res)
+    // Jednorázová lazy extrakce účtu (ISDOC → AI) — jen pokud ji endpoint nabídl
+    // a uživatel smí zapisovat (readonly POST stejně neprojde RoleMiddlewarem).
+    if (res.needs_account && res.can_extract && auth.canWrite) {
+      await runExtract()
+    }
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    qrLoading.value = false
+  }
+}
+
+async function runExtract(): Promise<void> {
+  const id = invoice.value?.id
+  if (!id) return
+  qrLoading.value = true
+  try {
+    const res = await purchaseInvoicesApi.extractPaymentAccount(id)
+    qrData.value = res
+    syncQrForm(res)
+    // Účet se doplnil → obnov fakturu, ať se box „Platební účet" v detailu ukáže hned.
+    if (!res.needs_account && res.source !== 'qr_image') {
+      invoice.value = await purchaseInvoicesApi.get(id)
+    }
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    qrLoading.value = false
+  }
+}
+
+async function saveQrAccount(): Promise<void> {
+  if (!invoice.value || qrSaving.value) return
+  qrSaving.value = true
+  try {
+    const res = await purchaseInvoicesApi.updatePaymentAccount(invoice.value.id, { ...qrForm })
+    qrData.value = res
+    syncQrForm(res)
+    qrEditing.value = false
+    invoice.value = await purchaseInvoicesApi.get(invoice.value.id)
+    toast.success(t('purchase_invoice.qr.saved'))
+  } catch (e) {
+    toast.error(apiErrorMessage(e))
+  } finally {
+    qrSaving.value = false
+  }
+}
+
 /**
  * Action log helpers — strip "purchase_invoice." prefix, color-code badge per action group.
  */
@@ -411,6 +501,12 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
           </button>
         </template>
         </template>
+        <!-- Zaplatit pomocí QR (i pro readonly — zobrazení QR z uloženého účtu) -->
+        <button v-if="canPayWithQr" type="button" @click="openQr"
+          class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 text-primary-700 hover:bg-primary-50 font-medium rounded-md inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4h6v6H4V4zm0 10h6v6H4v-6zM14 4h6v6h-6V4zm2 10h2m2 0v2m-4 2v2m4 0h2m-2-6h.01M14 18h.01"/></svg>
+          {{ t('purchase_invoice.qr.button') }}
+        </button>
         <a v-if="invoice.pdf_path" :href="purchaseInvoicesApi.pdfUrl(invoice.id)" target="_blank"
           class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 rounded-md text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1.5">
           <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"/></svg>
@@ -540,6 +636,23 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
             </dd>
           </div>
         </dl>
+      </div>
+
+      <!-- Platební účet dodavatele (pokud známý) — vyplní prázdné místo vedle Měny -->
+      <div v-if="hasStoredAccount" class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h3 class="text-sm font-medium text-neutral-700 mb-3">{{ t('purchase_invoice.qr.account_section') }}</h3>
+        <dl class="space-y-2 text-sm">
+          <div v-if="invoice.payment_iban" class="flex justify-between gap-2"><dt class="text-neutral-500">{{ t('purchase_invoice.qr.iban') }}</dt><dd class="font-mono">{{ invoice.payment_iban }}</dd></div>
+          <div v-else class="flex justify-between gap-2"><dt class="text-neutral-500">{{ t('purchase_invoice.qr.account') }}</dt><dd class="font-mono">{{ invoice.payment_account_number }}/{{ invoice.payment_bank_code }}</dd></div>
+          <div v-if="invoice.payment_bic" class="flex justify-between gap-2"><dt class="text-neutral-500">{{ t('purchase_invoice.qr.bic') }}</dt><dd class="font-mono">{{ invoice.payment_bic }}</dd></div>
+          <div v-if="invoice.payment_variable_symbol" class="flex justify-between gap-2"><dt class="text-neutral-500">{{ t('purchase_invoice.qr.variable_symbol') }}</dt><dd class="font-mono">{{ invoice.payment_variable_symbol }}</dd></div>
+          <div v-if="invoice.payment_account_source" class="flex justify-between gap-2 pt-2 border-t border-neutral-100"><dt class="text-neutral-500">{{ t('purchase_invoice.qr.source_label') }}</dt><dd>{{ t('purchase_invoice.qr.source.' + invoice.payment_account_source) }}</dd></div>
+        </dl>
+        <button v-if="canPayWithQr" type="button" @click="openQr"
+          class="mt-3 cursor-pointer text-sm text-primary-700 hover:underline inline-flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4h6v6H4V4zm0 10h6v6H4v-6zM14 4h6v6h-6V4zm2 10h2m2 0v2m-4 2v2m4 0h2m-2-6h.01M14 18h.01"/></svg>
+          {{ t('purchase_invoice.qr.button') }}
+        </button>
       </div>
 
       <!-- Platba v jiné měně -->
@@ -713,6 +826,100 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
               </button>
             </li>
           </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Zaplatit pomocí QR -->
+    <div v-if="qrOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="qrOpen = false">
+      <div class="bg-surface rounded-lg shadow-xl max-w-sm w-full max-h-[90vh] overflow-y-auto">
+        <div class="px-5 py-3 border-b border-neutral-100 flex items-center justify-between">
+          <h3 class="font-medium">{{ t('purchase_invoice.qr.title') }}</h3>
+          <button type="button" @click="qrOpen = false" class="cursor-pointer text-neutral-400 hover:text-neutral-600">✕</button>
+        </div>
+        <div class="p-5 space-y-4">
+          <!-- Loading / probíhá lazy extrakce účtu -->
+          <div v-if="qrLoading" class="py-10 text-center text-sm text-neutral-500">
+            <svg class="animate-spin w-6 h-6 mx-auto mb-2 text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+            {{ t('purchase_invoice.qr.scanning') }}
+          </div>
+
+          <!-- Editace účtu (ruční) -->
+          <template v-else-if="qrEditing">
+            <div class="space-y-3">
+              <label class="block">
+                <span class="text-xs text-neutral-500">{{ t('purchase_invoice.qr.account') }}</span>
+                <input v-model="qrForm.account_number" type="text" placeholder="19-2000145399"
+                  class="w-full mt-0.5 px-3 h-9 text-sm border border-neutral-300 rounded-md font-mono" />
+              </label>
+              <label class="block">
+                <span class="text-xs text-neutral-500">{{ t('purchase_invoice.qr.bank_code') }}</span>
+                <input v-model="qrForm.bank_code" type="text" placeholder="0800"
+                  class="w-full mt-0.5 px-3 h-9 text-sm border border-neutral-300 rounded-md font-mono" />
+              </label>
+              <label class="block">
+                <span class="text-xs text-neutral-500">{{ t('purchase_invoice.qr.iban') }}</span>
+                <input v-model="qrForm.iban" type="text" placeholder="CZ65 0800 0000 1920 0014 5399"
+                  class="w-full mt-0.5 px-3 h-9 text-sm border border-neutral-300 rounded-md font-mono" />
+              </label>
+              <label class="block">
+                <span class="text-xs text-neutral-500">{{ t('purchase_invoice.qr.bic') }}</span>
+                <input v-model="qrForm.bic" type="text" placeholder="GIBACZPX"
+                  class="w-full mt-0.5 px-3 h-9 text-sm border border-neutral-300 rounded-md font-mono" />
+              </label>
+              <label class="block">
+                <span class="text-xs text-neutral-500">{{ t('purchase_invoice.qr.variable_symbol') }}</span>
+                <input v-model="qrForm.variable_symbol" type="text"
+                  class="w-full mt-0.5 px-3 h-9 text-sm border border-neutral-300 rounded-md font-mono" />
+              </label>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button type="button" @click="qrEditing = false"
+                class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-md">{{ t('common.cancel') }}</button>
+              <button type="button" @click="saveQrAccount" :disabled="qrSaving"
+                class="cursor-pointer px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white font-medium rounded-md">{{ t('purchase_invoice.qr.save') }}</button>
+            </div>
+          </template>
+
+          <!-- QR k dispozici -->
+          <template v-else-if="qrData && qrData.qr_data_uri">
+            <div class="flex flex-col items-center gap-2">
+              <img :src="qrData.qr_data_uri" alt="QR" class="w-48 h-48 rounded bg-white p-2 border border-neutral-200" />
+              <div class="text-lg font-semibold">{{ formatMoney(qrData.amount, qrData.currency) }}</div>
+              <p class="text-xs text-neutral-500 text-center">{{ t('purchase_invoice.qr.scan_hint') }}</p>
+            </div>
+            <dl class="text-sm space-y-1">
+              <div v-if="qrData.account.iban" class="flex justify-between gap-2">
+                <dt class="text-neutral-500">{{ t('purchase_invoice.qr.iban') }}</dt><dd class="font-mono">{{ qrData.account.iban }}</dd>
+              </div>
+              <div v-else-if="qrData.account.account_number" class="flex justify-between gap-2">
+                <dt class="text-neutral-500">{{ t('purchase_invoice.qr.account') }}</dt><dd class="font-mono">{{ qrData.account.account_number }}/{{ qrData.account.bank_code }}</dd>
+              </div>
+              <div v-if="qrData.account.variable_symbol" class="flex justify-between gap-2">
+                <dt class="text-neutral-500">{{ t('purchase_invoice.qr.variable_symbol') }}</dt><dd class="font-mono">{{ qrData.account.variable_symbol }}</dd>
+              </div>
+              <div v-if="qrData.source" class="flex justify-between gap-2">
+                <dt class="text-neutral-500">{{ t('purchase_invoice.qr.source_label') }}</dt><dd>{{ t('purchase_invoice.qr.source.' + qrData.source) }}</dd>
+              </div>
+            </dl>
+            <p v-if="qrData.source === 'qr_image'" class="text-xs text-warning-600">{{ t('purchase_invoice.qr.image_fallback_note') }}</p>
+            <button v-if="auth.canWrite" type="button" @click="qrEditing = true"
+              class="cursor-pointer w-full px-3 h-9 text-sm border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-md">{{ t('purchase_invoice.qr.edit') }}</button>
+          </template>
+
+          <!-- Účet chybí -->
+          <template v-else>
+            <p class="text-sm text-neutral-600">{{ t('purchase_invoice.qr.no_account') }}</p>
+            <div v-if="auth.canWrite" class="flex flex-col gap-2">
+              <button v-if="qrData && qrData.can_extract" type="button" @click="runExtract"
+                class="cursor-pointer px-3 h-9 text-sm bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-md inline-flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                {{ t('purchase_invoice.qr.extract') }}
+              </button>
+              <button type="button" @click="qrEditing = true"
+                class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-md">{{ t('purchase_invoice.qr.enter_manually') }}</button>
+            </div>
+          </template>
         </div>
       </div>
     </div>

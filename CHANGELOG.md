@@ -5,7 +5,11 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.21.0] — 2026-06-10
+
+### Added
+
+- **„Zaplatit pomocí QR" u přijatých faktur.** V detailu nezaplacené přijaté faktury je nové tlačítko **Zaplatit pomocí QR**, které zobrazí QR platbu dodavateli pro naskenování v mobilním bankovnictví — CZK doklady ve formátu **QR Platba (SPAYD)**, cizoměnové jako **SEPA (EPC)**. Platební účet dodavatele se získává v pořadí: z **ISDOC** přílohy PDF → jednorázové **AI rozpoznání** z faktury (krátký dotaz na Anthropic Claude jen na účet/IBAN/variabilní symbol, spustí se automaticky při otevření okna a proběhne nejvýše jednou) → **ruční** zadání → záložní **obrázek QR vytažený z PDF** (čtvercový černobílý obrázek se zobrazí k naskenování i bez rozpoznání účtu). Známý účet se zobrazí i v **detailu** faktury (box vedle měny) a je editovatelný v **editoru** faktury (box *Platební účet dodavatele*) i přímo v okně QR. AI extrakce přijatých faktur nově platební účet rovnou ukládá.
 
 ### Fixed
 

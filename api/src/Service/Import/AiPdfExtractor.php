@@ -506,9 +506,26 @@ final class AiPdfExtractor
             ]);
         }
 
+        // Platební účet dodavatele pro „Zaplatit pomocí QR" — z AI pole `payment`.
+        // Volný řetězec (účet i IBAN) rozparsujeme na strukturu. Repository nastaví
+        // source/checked_at jen pokud je účet skutečně použitelný.
+        $aiPayment = is_array($data['payment'] ?? null) ? $data['payment'] : [];
+        $bankParser = new \MyInvoice\Service\Payment\BankAccountParser();
+        $fromAccount = $bankParser->parse((string) ($aiPayment['bank_account'] ?? ''));
+        $fromIban = $bankParser->parse((string) ($aiPayment['iban'] ?? ''));
+        $aiVs = $aiPayment['variable_symbol'] ?? ($data['varsymbol'] ?? null);
+
         $payload = [
             'vendor_id'             => $vendorId,
             'vendor_invoice_number' => $this->sanitizeVendorNumber((string) $data['vendor_invoice_number']),
+            'payment'               => [
+                'account_number'  => $fromAccount['account_number'] ?? null,
+                'bank_code'       => $fromAccount['bank_code'] ?? null,
+                'iban'            => $fromAccount['iban'] ?? ($fromIban['iban'] ?? null),
+                'bic'             => null,
+                'variable_symbol' => ($aiVs !== null && $aiVs !== '') ? (string) $aiVs : null,
+                'source'          => 'ai',
+            ],
             'document_kind'         => $documentKind,
             'issue_date'            => (string) $data['issue_date'],
             'tax_date'              => isset($data['tax_date']) && $data['tax_date'] ? (string) $data['tax_date'] : null,

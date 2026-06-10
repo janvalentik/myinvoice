@@ -92,6 +92,56 @@ XML;
         self::assertSame(21.0, $inv['items'][0]['vat_rate']);
     }
 
+    public function testPaymentAccountAbsentWhenOnlyDueDate(): void
+    {
+        $inv = $this->parser->parse($this->minimalIsdoc())['invoices'][0];
+        self::assertArrayHasKey('payment', $inv);
+        self::assertNull($inv['payment']['account_number']);
+        self::assertNull($inv['payment']['iban']);
+        self::assertNull($inv['payment']['variable_symbol']);
+    }
+
+    public function testExtractsPaymentAccountFromPaymentMeans(): void
+    {
+        $ns = self::NS;
+        $xml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="$ns">
+  <DocumentType>1</DocumentType>
+  <ID>2605002</ID>
+  <IssueDate>2026-05-01</IssueDate>
+  <PaymentMeans>
+    <Payment>
+      <PaymentMeansCode>42</PaymentMeansCode>
+      <Details>
+        <PaymentDueDate>2026-05-15</PaymentDueDate>
+        <ID>19-2000145399</ID>
+        <BankCode>0800</BankCode>
+        <Name>Česká spořitelna</Name>
+        <IBAN>CZ65 0800 0000 1920 0014 5399</IBAN>
+        <BIC>GIBACZPX</BIC>
+        <VariableSymbol>2605002</VariableSymbol>
+      </Details>
+    </Payment>
+  </PaymentMeans>
+  <LocalCurrencyCode>CZK</LocalCurrencyCode>
+  <AccountingSupplierParty>
+    <Party><PartyIdentification><ID>21370362</ID></PartyIdentification></Party>
+  </AccountingSupplierParty>
+  <AccountingCustomerParty>
+    <Party><PartyIdentification><ID>12345678</ID></PartyIdentification></Party>
+  </AccountingCustomerParty>
+  <InvoiceLines/>
+</Invoice>
+XML;
+        $inv = $this->parser->parse($xml)['invoices'][0];
+        self::assertSame('19-2000145399', $inv['payment']['account_number']);
+        self::assertSame('0800', $inv['payment']['bank_code']);
+        self::assertSame('CZ6508000000192000145399', $inv['payment']['iban']); // mezery odstraněny
+        self::assertSame('GIBACZPX', $inv['payment']['bic']);
+        self::assertSame('2605002', $inv['payment']['variable_symbol']);
+    }
+
     public function testRejectsDoctypeBecauseOfXxe(): void
     {
         $xml = <<<'XML'

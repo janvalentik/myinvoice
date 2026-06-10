@@ -3,6 +3,31 @@ import { api } from './client'
 export type PurchaseInvoiceStatus = 'draft' | 'received' | 'booked' | 'paid' | 'cancelled'
 export type PurchaseDocumentKind = 'invoice' | 'receipt' | 'credit_note' | 'advance'
 export type ExchangeRateSource = 'cnb' | 'manual' | 'idoklad' | 'fakturoid'
+/** Provenience platebního účtu pro QR platbu (viz migrace 0107). */
+export type PaymentAccountSource = 'isdoc' | 'ai' | 'ai_reextract' | 'qr_image' | 'manual'
+
+/** Strukturovaný platební účet dodavatele (pro QR platbu / ruční editaci). */
+export interface PaymentQrAccount {
+  account_number: string | null
+  bank_code: string | null
+  iban: string | null
+  bic: string | null
+  variable_symbol: string | null
+}
+
+/** Odpověď „Zaplatit pomocí QR" endpointu. */
+export interface PaymentQrResponse {
+  ok: boolean
+  qr_data_uri: string | null
+  source: PaymentAccountSource | null
+  amount: number
+  currency: string
+  account: PaymentQrAccount
+  editable: boolean
+  needs_account: boolean
+  /** true → účet ještě nikdo nezkusil doplnit, frontend smí spustit extract-account. */
+  can_extract?: boolean
+}
 
 export interface PurchaseInvoiceItem {
   id?: number
@@ -127,6 +152,13 @@ export interface PurchaseInvoice {
   paid_amount_payment_ccy: number | null
   paid_amount_invoice_ccy: number | null
   exchange_diff_base: number | null
+  // Platební účet dodavatele pro „Zaplatit pomocí QR" (migrace 0107)
+  payment_account_number: string | null
+  payment_bank_code: string | null
+  payment_iban: string | null
+  payment_bic: string | null
+  payment_variable_symbol: string | null
+  payment_account_source: PaymentAccountSource | null
   status: PurchaseInvoiceStatus
   booked_at: string | null
   paid_at: string | null
@@ -261,6 +293,15 @@ export interface PurchaseInvoicePayload {
   expense_category_id?: number | null
   /** Ruční rekapitulace DPH dle dokladu (§ 73). null/[] = počítat standardně. */
   vat_overrides?: PurchaseVatOverride[] | null
+  /** Platební účet dodavatele pro QR platbu (migrace 0107). */
+  payment?: {
+    account_number?: string | null
+    bank_code?: string | null
+    iban?: string | null
+    bic?: string | null
+    variable_symbol?: string | null
+    source?: PaymentAccountSource
+  }
   items: Array<{
     description: string
     quantity: number
@@ -372,6 +413,15 @@ export const purchaseInvoicesApi = {
 
   dismissExtractionWarning: (id: number) =>
     api.post<PurchaseInvoice>(`/purchase-invoices/${id}/dismiss-extraction-warning`).then(r => r.data),
+
+  // „Zaplatit pomocí QR" — QR z uloženého účtu (GET), jednorázové lazy doplnění
+  // účtu z ISDOC/AI (POST), ruční editace účtu (PUT).
+  paymentQr: (id: number) =>
+    api.get<PaymentQrResponse>(`/purchase-invoices/${id}/payment-qr`).then(r => r.data),
+  extractPaymentAccount: (id: number) =>
+    api.post<PaymentQrResponse>(`/purchase-invoices/${id}/payment-qr/extract-account`).then(r => r.data),
+  updatePaymentAccount: (id: number, payload: Partial<PaymentQrAccount>) =>
+    api.put<PaymentQrResponse>(`/purchase-invoices/${id}/payment-account`, payload).then(r => r.data),
 
   // Propojení se zálohovou fakturou (advance) — proti dvojímu započtení nákladu
   advanceCandidates: (id: number) =>

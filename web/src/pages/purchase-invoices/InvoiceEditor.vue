@@ -72,6 +72,11 @@ const form = ref<{
   language: 'cs' | 'en'
   note_above_items: string
   note_below_items: string
+  payment_account_number: string
+  payment_bank_code: string
+  payment_iban: string
+  payment_bic: string
+  payment_variable_symbol: string
   advance_paid_amount: number
   rounding: number
   payment_currency_id: number | null
@@ -105,6 +110,11 @@ const form = ref<{
   language: 'cs',
   note_above_items: '',
   note_below_items: '',
+  payment_account_number: '',
+  payment_bank_code: '',
+  payment_iban: '',
+  payment_bic: '',
+  payment_variable_symbol: '',
   advance_paid_amount: 0,
   rounding: 0,
   payment_currency_id: null,
@@ -376,6 +386,11 @@ function populate(inv: PurchaseInvoice) {
   form.value.language = inv.language
   form.value.note_above_items = inv.note_above_items || ''
   form.value.note_below_items = inv.note_below_items || ''
+  form.value.payment_account_number = inv.payment_account_number || ''
+  form.value.payment_bank_code = inv.payment_bank_code || ''
+  form.value.payment_iban = inv.payment_iban || ''
+  form.value.payment_bic = inv.payment_bic || ''
+  form.value.payment_variable_symbol = inv.payment_variable_symbol || ''
   form.value.advance_paid_amount = inv.advance_paid_amount
   form.value.rounding = Number(inv.rounding) || 0
   form.value.payment_currency_id = inv.payment_currency_id
@@ -645,6 +660,16 @@ async function submit() {
       language: form.value.language,
       note_above_items: form.value.note_above_items || null,
       note_below_items: form.value.note_below_items || null,
+      // Platební účet dodavatele pro QR platbu (ruční úprava v editoru = source 'manual';
+      // backend nastaví source/checked_at jen pokud je účet skutečně vyplněný).
+      payment: {
+        account_number: form.value.payment_account_number.trim() || null,
+        bank_code: form.value.payment_bank_code.trim() || null,
+        iban: form.value.payment_iban.trim().replace(/\s+/g, '').toUpperCase() || null,
+        bic: form.value.payment_bic.trim().toUpperCase() || null,
+        variable_symbol: form.value.payment_variable_symbol.trim() || null,
+        source: 'manual',
+      },
       advance_paid_amount: form.value.advance_paid_amount,
       rounding: form.value.rounding,
       payment_currency_id: form.value.payment_currency_id,
@@ -1310,6 +1335,39 @@ function fieldErr(key: string): string | null {
           <div>
             <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.fields.note_below_items') }}</label>
             <textarea v-model="form.note_below_items" rows="3" class="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm resize-y"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Box 5: Platební účet dodavatele (pro „Zaplatit pomocí QR") -->
+      <div class="bg-surface border border-neutral-200 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-medium text-neutral-700 mb-1">{{ t('purchase_invoice.qr.account_section') }}</h2>
+        <p class="text-xs text-neutral-500 mb-3">{{ t('purchase_invoice.qr.account_section_hint') }}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.qr.account') }}</label>
+            <input v-model="form.payment_account_number" type="text" placeholder="19-2000145399"
+              class="w-full px-3 h-9 border border-neutral-300 rounded-md text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.qr.bank_code') }}</label>
+            <input v-model="form.payment_bank_code" type="text" placeholder="0800"
+              class="w-full px-3 h-9 border border-neutral-300 rounded-md text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.qr.iban') }}</label>
+            <input v-model="form.payment_iban" type="text" placeholder="CZ65 0800 0000 1920 0014 5399"
+              class="w-full px-3 h-9 border border-neutral-300 rounded-md text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.qr.bic') }}</label>
+            <input v-model="form.payment_bic" type="text" placeholder="GIBACZPX"
+              class="w-full px-3 h-9 border border-neutral-300 rounded-md text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs text-neutral-500 mb-1">{{ t('purchase_invoice.qr.variable_symbol') }}</label>
+            <input v-model="form.payment_variable_symbol" type="text"
+              class="w-full px-3 h-9 border border-neutral-300 rounded-md text-sm font-mono" />
           </div>
         </div>
       </div>

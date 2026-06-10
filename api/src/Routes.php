@@ -82,6 +82,7 @@ use MyInvoice\Action\PurchaseInvoice\OurPdfPurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\ExportPurchaseInvoiceAction;
 use MyInvoice\Action\PurchaseInvoice\ExportPurchaseInvoicesAction;
 use MyInvoice\Action\PurchaseInvoice\GetPurchaseInvoiceAction;
+use MyInvoice\Action\PurchaseInvoice\PaymentQrAction;
 use MyInvoice\Action\PurchaseInvoice\ListPurchaseInvoicesAction;
 use MyInvoice\Action\PurchaseInvoice\PurchaseInvoiceActivityAction;
 use MyInvoice\Action\PurchaseInvoice\ScanInboxAction;
@@ -313,6 +314,11 @@ final class Routes
         $app->get    ('/api/purchase-invoices/{id:[0-9]+}/isdoc',          [ExportPurchaseInvoiceAction::class, 'isdoc']);
         $app->get    ('/api/purchase-invoices/{id:[0-9]+}/pohoda',         [ExportPurchaseInvoiceAction::class, 'pohoda']);
         $app->get    ('/api/purchase-invoices/{id:[0-9]+}/activity',       PurchaseInvoiceActivityAction::class);
+        // „Zaplatit pomocí QR" — QR z uloženého účtu (GET, read), jednorázové lazy
+        // doplnění účtu z ISDOC/AI (POST, write), ruční editace účtu (PUT, write).
+        $app->get    ('/api/purchase-invoices/{id:[0-9]+}/payment-qr',     PaymentQrAction::class);
+        $app->post   ('/api/purchase-invoices/{id:[0-9]+}/payment-qr/extract-account', [PaymentQrAction::class, 'extractAccount']);
+        $app->put    ('/api/purchase-invoices/{id:[0-9]+}/payment-account', [PaymentQrAction::class, 'updateAccount']);
 
         // Pravidelné fakturace (recurring templates)
         $app->get    ('/api/recurring',                       [RecurringTemplateAction::class, 'list']);

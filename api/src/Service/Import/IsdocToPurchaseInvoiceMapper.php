@@ -97,6 +97,18 @@ final class IsdocToPurchaseInvoiceMapper
             'items'                 => $items,
         ];
 
+        // Platební účet dodavatele z ISDOC <PaymentMeans> — pro „Zaplatit pomocí QR".
+        // Repository nastaví source/checked_at jen pokud je účet skutečně použitelný.
+        $isdocPayment = (array) ($parsed['payment'] ?? []);
+        $payload['payment'] = [
+            'account_number'  => $isdocPayment['account_number'] ?? null,
+            'bank_code'       => $isdocPayment['bank_code'] ?? null,
+            'iban'            => $isdocPayment['iban'] ?? null,
+            'bic'             => $isdocPayment['bic'] ?? null,
+            'variable_symbol' => $isdocPayment['variable_symbol'] ?? null,
+            'source'          => 'isdoc',
+        ];
+
         // Dedup guard — pokud (supplier, vendor, vendor_invoice_number, issue_date) tuple
         // už v systému je, vrátíme existující ID místo házení SQL duplicate key error.
         $existingId = $this->repo->findIdByVendorInvoice(

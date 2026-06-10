@@ -443,8 +443,10 @@ final class PurchaseInvoiceRepository
              advance_paid_amount,
              payment_currency_id, payment_exchange_rate,
              paid_amount_payment_ccy, paid_amount_invoice_ccy, exchange_diff_base,
+             payment_account_number, payment_bank_code, payment_iban, payment_bic,
+             payment_variable_symbol, payment_account_source, payment_account_checked_at,
              status, vat_classification_code, vat_deduction, vat_deduction_percent, tax_deductible, is_fixed_asset, expense_category_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?, ?, ?, ?)';
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "draft", ?, ?, ?, ?, ?, ?, ?)';
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -476,6 +478,7 @@ final class PurchaseInvoiceRepository
             isset($data['paid_amount_payment_ccy']) ? (float) $data['paid_amount_payment_ccy'] : null,
             isset($data['paid_amount_invoice_ccy']) ? (float) $data['paid_amount_invoice_ccy'] : null,
             isset($data['exchange_diff_base']) ? (float) $data['exchange_diff_base'] : null,
+            ...$this->paymentColumns($data),
             isset($data['vat_classification_code']) ? (string) $data['vat_classification_code'] : null,
             in_array($data['vat_deduction'] ?? 'full', ['full', 'none', 'proportional'], true) ? (string) ($data['vat_deduction'] ?? 'full') : 'full',
             max(0.0, min(100.0, (float) ($data['vat_deduction_percent'] ?? 100))),
@@ -486,6 +489,66 @@ final class PurchaseInvoiceRepository
         ]);
 
         return (int) $pdo->lastInsertId();
+    }
+
+    /**
+     * Z payloadu (`$data['payment']`) vytáhne 7 sloupců platebního účtu v pořadí
+     * shodném s INSERT/UPDATE: account_number, bank_code, iban, bic, variable_symbol,
+     * source, checked_at.
+     *
+     * `source` + `checked_at` se nastaví jen když je účet skutečně použitelný
+     * (CZ účet+kód nebo IBAN), případně když volající vynutí `payment['checked']=true`
+     * (lazy AI re-extrakce proběhla bez výsledku → gate proti opakování). Jinak
+     * zůstávají NULL, aby lazy doplnění mohlo později proběhnout.
+     *
+     * @param array<string,mixed> $data
+     * @return array{0:?string,1:?string,2:?string,3:?string,4:?string,5:?string,6:?string}
+     */
+    private function paymentColumns(array $data): array
+    {
+        $p = is_array($data['payment'] ?? null) ? $data['payment'] : [];
+        $account = self::nullableString($p['account_number'] ?? null);
+        $bank    = self::nullableString($p['bank_code'] ?? null);
+        $iban    = self::nullableString($p['iban'] ?? null);
+        $bic     = self::nullableString($p['bic'] ?? null);
+        $vs      = self::nullableString($p['variable_symbol'] ?? null);
+
+        $hasAccount = ($account !== null && $bank !== null) || $iban !== null;
+        $allowed = ['isdoc', 'ai', 'ai_reextract', 'qr_image', 'manual'];
+        $source = ($hasAccount && in_array($p['source'] ?? '', $allowed, true))
+            ? (string) $p['source']
+            : null;
+        $checkedAt = ($hasAccount || !empty($p['checked'])) ? date('Y-m-d H:i:s') : null;
+
+        return [$account, $bank, $iban, $bic, $vs, $source, $checkedAt];
+    }
+
+    private static function nullableString(mixed $v): ?string
+    {
+        if ($v === null) {
+            return null;
+        }
+        $s = trim((string) $v);
+        return $s === '' ? null : $s;
+    }
+
+    /**
+     * Aktualizuje platební účet dodavatele (pro „Zaplatit pomocí QR"). Funguje
+     * v jakémkoli stavu (účet chceme editovat i u received/booked). Použito
+     * dedikovaným endpointem (ruční editace, source='manual') i lazy doplněním
+     * z ISDOC/AI při otevření QR modalu.
+     *
+     * @param array<string,mixed> $payment account_number/bank_code/iban/bic/variable_symbol/source/checked
+     */
+    public function updatePaymentAccount(int $id, array $payment, int $supplierId): void
+    {
+        [$account, $bank, $iban, $bic, $vs, $source, $checkedAt] = $this->paymentColumns(['payment' => $payment]);
+        $this->db->pdo()->prepare(
+            'UPDATE purchase_invoices SET
+                 payment_account_number = ?, payment_bank_code = ?, payment_iban = ?, payment_bic = ?,
+                 payment_variable_symbol = ?, payment_account_source = ?, payment_account_checked_at = ?
+               WHERE id = ? AND supplier_id = ?'
+        )->execute([$account, $bank, $iban, $bic, $vs, $source, $checkedAt, $id, $supplierId]);
     }
 
     /**
@@ -517,6 +580,17 @@ final class PurchaseInvoiceRepository
             throw new \InvalidArgumentException('vendor_invoice_number má max 50 znaků');
         }
 
+        // Platební účet pro QR platbu měníme jen když ho volající explicitně poslal
+        // (editor faktury). Ostatní update cesty `payment` neposílají → účet zůstává.
+        $hasPayment = array_key_exists('payment', $data);
+        $paymentSet = '';
+        $paymentParams = [];
+        if ($hasPayment) {
+            $paymentParams = $this->paymentColumns($data);
+            $paymentSet = ', payment_account_number = ?, payment_bank_code = ?, payment_iban = ?, payment_bic = ?,'
+                . ' payment_variable_symbol = ?, payment_account_source = ?, payment_account_checked_at = ?';
+        }
+
         $sql = 'UPDATE purchase_invoices SET
                 vendor_id = ?, vendor_invoice_number = ?, document_kind = ?,
                 issue_date = ?, tax_date = ?, due_date = ?, received_at = ?,
@@ -527,6 +601,7 @@ final class PurchaseInvoiceRepository
                 payment_currency_id = ?, payment_exchange_rate = ?,
                 paid_amount_payment_ccy = ?, paid_amount_invoice_ccy = ?, exchange_diff_base = ?,
                 vat_classification_code = ?, vat_deduction = ?, vat_deduction_percent = ?, tax_deductible = ?, is_fixed_asset = ?, expense_category_id = ?'
+              . $paymentSet
               . ($hasVarsymbol ? ', varsymbol = ?' : '')
               . ' WHERE id = ? AND supplier_id = ?';
 
@@ -560,6 +635,9 @@ final class PurchaseInvoiceRepository
             !empty($data['is_fixed_asset']) ? 1 : 0,
             isset($data['expense_category_id']) && $data['expense_category_id'] ? (int) $data['expense_category_id'] : null,
         ];
+        if ($hasPayment) {
+            array_push($params, ...$paymentParams);
+        }
         if ($hasVarsymbol) $params[] = $manualVarsymbol;
         $params[] = $id;
         $params[] = $supplierId;

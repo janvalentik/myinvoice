@@ -41,6 +41,8 @@ final class QrPaymentGenerator
         string $varsymbol,
         array $bank,
         string $supplierName = '',
+        ?\DateTimeImmutable $dueDate = null,
+        ?string $message = null,
     ): ?string {
         if ($amount <= 0) {
             return null;
@@ -48,8 +50,8 @@ final class QrPaymentGenerator
 
         try {
             $payload = $currency === 'CZK'
-                ? $this->buildCzk($amount, $varsymbol, $bank)
-                : $this->buildSepa($amount, $varsymbol, $bank, $supplierName);
+                ? $this->buildCzk($amount, $varsymbol, $bank, $dueDate, $message)
+                : $this->buildSepa($amount, $varsymbol, $bank, $supplierName, $message);
         } catch (\Throwable $e) {
             $this->logger->warning('QR generation failed: ' . $e->getMessage(), [
                 'currency' => $currency,
@@ -73,34 +75,50 @@ final class QrPaymentGenerator
         return (new QRCode($options))->render($payload);
     }
 
-    private function buildCzk(float $amount, string $varsymbol, array $bank): ?string
-    {
+    private function buildCzk(
+        float $amount,
+        string $varsymbol,
+        array $bank,
+        ?\DateTimeImmutable $dueDate = null,
+        ?string $message = null,
+    ): ?string {
         $accountNumber = (string) ($bank['account_number'] ?? '');
         $bankCode      = (string) ($bank['bank_code'] ?? '');
-        if ($accountNumber === '' || $bankCode === '') {
+        $iban          = trim(str_replace(' ', '', (string) ($bank['iban'] ?? '')));
+
+        // Preferuj explicitní účet+kód; když máme jen IBAN (typicky přijatá faktura
+        // s jen IBANem), použij IBAN přímo.
+        if ($accountNumber !== '' && $bankCode !== '') {
+            $payment = new CzQrPayment(new CzechIbanAdapter($accountNumber, $bankCode));
+        } elseif ($iban !== '') {
+            $payment = new CzQrPayment(new \Rikudou\Iban\Iban\IBAN($iban));
+        } else {
             return null;
         }
 
-        // rikudou/czqrpayment v5: konstruktor přijímá IbanInterface
-        $payment = new CzQrPayment(new CzechIbanAdapter($accountNumber, $bankCode));
         $payment->setAmount($amount)
             ->setCurrency('CZK')
             ->setVariableSymbol($varsymbol)
             ->setConstantSymbol((string) $this->config->get('qr.czk_constant_symbol', '0308'))
-            ->setDueDate(new \DateTimeImmutable())
-            ->setComment('Faktura ' . $varsymbol);
+            ->setDueDate($dueDate ?? new \DateTimeImmutable())
+            ->setComment($message ?? ('Faktura ' . $varsymbol));
 
         return $payment->getQrString();
     }
 
-    private function buildSepa(float $amount, string $varsymbol, array $bank, string $name): string
-    {
+    private function buildSepa(
+        float $amount,
+        string $varsymbol,
+        array $bank,
+        string $name,
+        ?string $message = null,
+    ): string {
         $iban = trim(str_replace(' ', '', (string) ($bank['iban'] ?? '')));
         if ($iban === '') {
             throw new \RuntimeException('IBAN je povinný pro SEPA QR');
         }
 
-        $remittance = $varsymbol !== '' ? 'Faktura ' . $varsymbol : 'Faktura';
+        $remittance = $message ?? ($varsymbol !== '' ? 'Faktura ' . $varsymbol : 'Faktura');
 
         return (string) (new SepaQrData())
             ->setName($name !== '' ? $name : 'MyInvoice')

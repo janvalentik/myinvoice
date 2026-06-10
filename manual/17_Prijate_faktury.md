@@ -217,6 +217,7 @@ Po uložení / přechodu na detail:
   - Z booked: Označit jako uhrazené / Stornovat
 - Tlačítko **Upravit** je dostupné jen u draft. Po označení jako přijatá je doklad immutable (kromě admin override `?force=1` u received).
 - Tlačítko **Smazat** je dostupné jen u draft. Pro pozdější stavy použij Stornovat.
+- Tlačítko **Zaplatit pomocí QR** (u nezaplacených faktur s kladnou částkou k úhradě) — zobrazí QR platbu dodavateli, viz [§ 17.3.2](#1732-zaplatit-pomoci-qr).
 
 ### 17.3.1 Propojení zálohy s vyúčtovací fakturou (proti dvojímu započtení)
 
@@ -238,6 +239,35 @@ z příjmů). Proto je lze spárovat.
   nepropojené vyúčtovací faktury téhož dodavatele). *(Tlačítka se zobrazí jen když existuje vhodný protějšek.)*
 
 Jedna záloha může být navázaná **jen na jednu** finální fakturu.
+
+### 17.3.2 Zaplatit pomocí QR
+
+U **nezaplacené** přijaté faktury (stav koncept / přijatá / zaúčtovaná) s kladnou
+částkou k úhradě je v hlavičce detailu tlačítko **Zaplatit pomocí QR**. Otevře okno
+s **QR platbou**, kterou naskenuješ v mobilní bankovní aplikaci — pro CZK doklady
+ve formátu **QR Platba (SPAYD)**, pro doklady v cizí měně jako **SEPA (EPC)**.
+
+QR sestavujeme z **platebního účtu dodavatele**, částky k úhradě a variabilního
+symbolu. Účet se získává v tomto pořadí:
+
+1. **Z ISDOC** — pokud má PDF embedded ISDOC přílohu, vezme se z ní účet/IBAN i VS (zdroj „z ISDOC").
+2. **AI rozpoznání** — když uložený účet není a doklad má PDF, lze ho jednorázově
+   **rozpoznat z faktury** (krátký dotaz na Anthropic Claude jen na platební údaje).
+   Spustí se automaticky při otevření okna (vyžaduje nastavený API klíč — viz
+   [AI extrakce](19_AI_extrakce.md)). Proběhne **jen jednou**; pokud účet na dokladu
+   není, příště se už neptáme.
+3. **Ručně** — účet vyplníš/upravíš přímo v okně (tlačítko **Upravit účet**) nebo
+   v editoru faktury v boxu **Platební účet dodavatele**. Stačí buď **číslo účtu +
+   kód banky**, nebo **IBAN** (u zahraničních dodavatelů).
+4. **Obrázek QR z PDF** — když účet nelze získat, ale v PDF je obrázek, který vypadá
+   jako QR kód (čtvercový, černobílý), zobrazí se jako **náhradní řešení** rovnou
+   (kód nerozpoznáváme, jen ho ukážeme k naskenování).
+
+Známý účet se zobrazí i v **detailu** faktury (box *Platební účet dodavatele* vedle
+měny) a předvyplní se v editoru i v okně QR.
+
+> 💡 QR platbu uvidí i uživatel s rolí **jen pro čtení** (pokud je účet uložený);
+> rozpoznání z faktury a ruční úpravu účtu může provést jen uživatel s právem zápisu.
 
 **Co propojení (a zaplacení) ovlivní:**
 

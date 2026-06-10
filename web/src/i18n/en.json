@@ -416,6 +416,34 @@
       "isdoc": "ISDOC XML",
       "pohoda": "Pohoda XML"
     },
+    "qr": {
+      "button": "Pay with QR",
+      "title": "QR code payment",
+      "scanning": "Detecting payment account from the invoice…",
+      "scan_hint": "Scan the QR code in your mobile banking app.",
+      "account": "Account number",
+      "bank_code": "Bank code",
+      "iban": "IBAN",
+      "bic": "BIC / SWIFT",
+      "variable_symbol": "Variable symbol",
+      "source_label": "Account source",
+      "source": {
+        "isdoc": "from ISDOC",
+        "ai": "detected by AI",
+        "ai_reextract": "detected by AI",
+        "qr_image": "QR from PDF",
+        "manual": "entered manually"
+      },
+      "image_fallback_note": "Showing the QR code found in the invoice PDF (account not recognized).",
+      "no_account": "The payment account could not be determined. Enter it manually, or try detecting it from the invoice.",
+      "extract": "Detect account from invoice",
+      "enter_manually": "Enter account manually",
+      "edit": "Edit account",
+      "save": "Save account",
+      "saved": "Payment account saved.",
+      "account_section": "Supplier payment account",
+      "account_section_hint": "Used for QR code payment. Enter account number + bank code, or IBAN (for foreign suppliers)."
+    },
     "new_vendor": "New vendor",
     "vendor_detail": "Vendor detail",
     "filters": {

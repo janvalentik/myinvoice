@@ -175,13 +175,17 @@ JSON schema:
     "email": string|null,
     "phone": string|null,
     "web": string|null,
-    "bank_account": string|null,
     "is_vat_payer": boolean|null
   },
   "customer": {
     "company_name": string|null,
     "ic": string|null,
     "dic": string|null
+  },
+  "payment": {
+    "bank_account": string|null,
+    "iban": string|null,
+    "variable_symbol": string|null
   },
   "vendor_invoice_number": string|null,
   "varsymbol": string|null,
@@ -264,6 +268,16 @@ DŮLEŽITÉ k poli `vendor_invoice_number` (číslo dokladu):
 - Účtenka / paragon NEMUSÍ mít žádné jednoznačné číslo dokladu. Pokud na dokladu
   ŽÁDNÉ použitelné číslo NENÍ → vrať `null`. NEVYMÝŠLEJ ho a NEPOUŽÍVEJ náhražky
   jako číslo pokladny, IČO, DIČ, datum nebo telefon — to číslo dokladu není.
+
+DŮLEŽITÉ k poli `payment` (platební údaje DODAVATELE pro QR platbu):
+- `bank_account` = číslo bankovního účtu dodavatele v ČESKÉM formátu
+  „[předčíslí-]číslo/kód_banky" TAK JAK JE NA DOKLADU (např. „2900123456/2010",
+  „19-2000145399/0800"). Hledej u textu „Bankovní spojení", „Číslo účtu", „Účet",
+  „Account", „Bank account".
+- `iban` = IBAN dodavatele pokud je uveden (např. „CZ65 0800 0000 1920 0014 5399").
+- `variable_symbol` = variabilní symbol platby (VS), typicky shodný s číslem faktury.
+- VŽDY jde o účet PŘÍJEMCE PLATBY = DODAVATELE (vendor), NIKDY odběratele/tenanta.
+- Pokud údaj na dokladu NENÍ → null. Nevymýšlej.
 
 DŮLEŽITÉ k položkám u dobropisu (`document_kind = "credit_note"`):
 - `quantity` a `unit_price_without_vat` vrať jako **kladná čísla** (jak jsou na PDF).
@@ -545,6 +559,98 @@ EOT;
             ];
         } catch (\Throwable $e) {
             $this->logger->error('Anthropic extractPdfTotal failed', ['supplier_id' => $supplierId, 'error' => $e->getMessage()]);
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Lightweight extrakce JEN platebního účtu dodavatele z PDF — pro lazy doplnění
+     * účtu u starých faktur (importovaných ještě bez rozpoznávání účtu), když chce
+     * uživatel „Zaplatit pomocí QR". Stejně levné jako extractPdfTotal (Haiku, krátký
+     * prompt i výstup).
+     *
+     * @return array{ok: bool, bank_account?: ?string, iban?: ?string, variable_symbol?: ?string, error?: string, model?: string, usage?: array}
+     */
+    public function extractPaymentAccount(int $supplierId, string $pdfBytes, ?string $modelOverride = null): array
+    {
+        $creds = $this->getCredentials($supplierId);
+        if ($creds === null) {
+            return ['ok' => false, 'error' => 'Anthropic API key nenastaven pro tohoto suppliera.'];
+        }
+        if (strlen($pdfBytes) > self::MAX_PDF_BYTES) {
+            return ['ok' => false, 'error' => 'PDF přesahuje limit ' . self::MAX_PDF_BYTES . ' B.'];
+        }
+        if (!str_starts_with($pdfBytes, '%PDF')) {
+            return ['ok' => false, 'error' => 'Soubor není validní PDF.'];
+        }
+
+        $model = $modelOverride ?: $creds['default_model'];
+        $base64Pdf = base64_encode($pdfBytes);
+
+        $systemPrompt = <<<'EOT'
+Z PDF faktury vrátíš JEN platební údaje DODAVATELE (příjemce platby) ve formátu JSON.
+Žádný markdown, žádné komentáře.
+
+Schema: {"bank_account": string|null, "iban": string|null, "variable_symbol": string|null}
+- `bank_account` = číslo účtu dodavatele v ČESKÉM formátu „[předčíslí-]číslo/kód_banky"
+  TAK JAK JE NA DOKLADU (např. „2900123456/2010", „19-2000145399/0800"). Hledej
+  u textu „Bankovní spojení", „Číslo účtu", „Účet", „Account".
+- `iban` = IBAN dodavatele pokud je uveden (např. „CZ6508000000192000145399").
+- `variable_symbol` = variabilní symbol platby (VS), typicky shodný s číslem faktury.
+- VŽDY jde o účet PŘÍJEMCE PLATBY = DODAVATELE, NIKDY odběratele.
+- Pokud údaj na dokladu NENÍ → null. NEVYMÝŠLEJ.
+EOT;
+
+        try {
+            ['code' => $code, 'body' => $body] = $this->postWithRetry([
+                'model'      => $model,
+                'max_tokens' => 200,
+                'system'     => $systemPrompt,
+                'messages'   => [[
+                    'role'    => 'user',
+                    'content' => [
+                        [
+                            'type'   => 'document',
+                            'source' => [
+                                'type'       => 'base64',
+                                'media_type' => 'application/pdf',
+                                'data'       => $base64Pdf,
+                            ],
+                        ],
+                        [
+                            'type' => 'text',
+                            'text' => 'Vrať platební údaje dodavatele podle JSON schema.',
+                        ],
+                    ],
+                ]],
+            ], $creds['api_key']);
+            if ($code !== 200) {
+                $msg = is_array($body) ? ($body['error']['message'] ?? 'HTTP ' . $code) : 'HTTP ' . $code;
+                return ['ok' => false, 'error' => $msg];
+            }
+
+            $text = (string) ($body['content'][0]['text'] ?? '');
+            $text = preg_replace('/^```(?:json)?\s*|\s*```\s*$/m', '', $text) ?? $text;
+            $data = json_decode(trim($text), true);
+            if (!is_array($data)) {
+                return ['ok' => false, 'error' => 'Claude vrátil invalid JSON: ' . substr($text, 0, 100)];
+            }
+
+            $this->db->pdo()->prepare(
+                'UPDATE supplier SET anthropic_extractions_count = anthropic_extractions_count + 1 WHERE id = ?'
+            )->execute([$supplierId]);
+
+            $str = static fn ($v) => (is_string($v) && trim($v) !== '') ? trim($v) : null;
+            return [
+                'ok'              => true,
+                'bank_account'    => $str($data['bank_account'] ?? null),
+                'iban'            => $str($data['iban'] ?? null),
+                'variable_symbol' => $str($data['variable_symbol'] ?? null),
+                'model'           => $body['model'] ?? $model,
+                'usage'           => $body['usage'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            $this->logger->error('Anthropic extractPaymentAccount failed', ['supplier_id' => $supplierId, 'error' => $e->getMessage()]);
             return ['ok' => false, 'error' => $e->getMessage()];
         }
     }

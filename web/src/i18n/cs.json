@@ -416,6 +416,34 @@
       "isdoc": "ISDOC XML",
       "pohoda": "Pohoda XML"
     },
+    "qr": {
+      "button": "Zaplatit pomocí QR",
+      "title": "Platba QR kódem",
+      "scanning": "Rozpoznávám platební účet z faktury…",
+      "scan_hint": "Naskenujte QR kód v mobilní bankovní aplikaci.",
+      "account": "Číslo účtu",
+      "bank_code": "Kód banky",
+      "iban": "IBAN",
+      "bic": "BIC / SWIFT",
+      "variable_symbol": "Variabilní symbol",
+      "source_label": "Zdroj účtu",
+      "source": {
+        "isdoc": "z ISDOC",
+        "ai": "rozpoznáno AI",
+        "ai_reextract": "rozpoznáno AI",
+        "qr_image": "QR z PDF",
+        "manual": "zadáno ručně"
+      },
+      "image_fallback_note": "Zobrazen QR kód nalezený v PDF faktury (účet jsme nerozpoznali).",
+      "no_account": "Platební účet se nepodařilo zjistit. Doplňte ho ručně, nebo zkuste rozpoznat z faktury.",
+      "extract": "Rozpoznat účet z faktury",
+      "enter_manually": "Zadat účet ručně",
+      "edit": "Upravit účet",
+      "save": "Uložit účet",
+      "saved": "Platební účet uložen.",
+      "account_section": "Platební účet dodavatele",
+      "account_section_hint": "Použije se pro platbu QR kódem. Vyplňte číslo účtu + kód banky, nebo IBAN (u zahraničních dodavatelů)."
+    },
     "new_vendor": "Nový dodavatel",
     "vendor_detail": "Detail dodavatele",
     "filters": {

@@ -163,6 +163,9 @@ final class IsdocParser
             'project_number' => $projectNumber,
             'client'         => $client,    // AccountingCustomerParty (zákazník)
             'supplier'       => $supplier,  // AccountingSupplierParty (dodavatel — pro purchase invoice mapper)
+            // Platební účet dodavatele z <PaymentMeans> — pro „Zaplatit pomocí QR"
+            // u přijatých faktur (číslo účtu / IBAN / VS).
+            'payment'        => $this->parsePayment($xpath, $root),
             'items'          => $items,
             // Rekapitulace DPH po sazbách z <TaxTotal>/<TaxSubTotal> — pro seed
             // override (PurchaseVatRecapSeeder), aby naše evidence seděla na doklad.
@@ -209,6 +212,32 @@ final class IsdocParser
             $out[$key]['vat']  += abs($vat);
         }
         return $out;
+    }
+
+    /**
+     * Platební údaje dodavatele z `<PaymentMeans>/<Payment>/<Details>`.
+     * Schema generuje BankAccount group jako INLINE elementy (žádný <BankAccount>
+     * wrapper): ID = číslo účtu, BankCode, IBAN, BIC; plus VariableSymbol.
+     * Slouží pro QR platbu u přijatých faktur (zdroj `isdoc`).
+     *
+     * @return array{account_number:?string,bank_code:?string,iban:?string,bic:?string,variable_symbol:?string}
+     */
+    private function parsePayment(\DOMXPath $xpath, \DOMElement $root): array
+    {
+        $base = 'i:PaymentMeans/i:Payment/i:Details/';
+        $account = $this->text($xpath, $base . 'i:ID', $root);
+        $bank    = $this->text($xpath, $base . 'i:BankCode', $root);
+        $iban    = strtoupper((string) preg_replace('/\s+/', '', $this->text($xpath, $base . 'i:IBAN', $root)));
+        $bic     = strtoupper((string) preg_replace('/\s+/', '', $this->text($xpath, $base . 'i:BIC', $root)));
+        $vs      = $this->text($xpath, $base . 'i:VariableSymbol', $root);
+
+        return [
+            'account_number'  => $account !== '' ? $account : null,
+            'bank_code'       => $bank !== '' ? $bank : null,
+            'iban'            => $iban !== '' ? $iban : null,
+            'bic'             => $bic !== '' ? $bic : null,
+            'variable_symbol' => $vs !== '' ? $vs : null,
+        ];
     }
 
     /**
