@@ -3251,6 +3251,8 @@
     "band_band1": "Band 1",
     "band_band2": "Band 2",
     "band_band3": "Band 3",
+    "secondary": "Secondary activity",
+    "secondary_hint": "lower insurance minimums (employment, pension, study…)",
     "spouse": "Spouse tax credit",
     "spouse_hint": "income <68k & child <3 y.",
     "children": "Children",

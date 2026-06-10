@@ -3251,6 +3251,8 @@
     "band_band1": "1. pásmo",
     "band_band2": "2. pásmo",
     "band_band3": "3. pásmo",
+    "secondary": "Vedlejší činnost",
+    "secondary_hint": "nižší minima pojistného (zaměstnání, důchod, studium…)",
     "spouse": "Sleva na manželku/manžela",
     "spouse_hint": "příjem <68k a dítě <3 r.",
     "children": "Počet dětí",

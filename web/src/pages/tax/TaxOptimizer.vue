@@ -172,6 +172,14 @@ async function save() {
 
           <label class="flex items-center justify-between gap-2 py-2 border-t border-neutral-100 cursor-pointer">
             <span class="text-xs font-medium text-neutral-700">
+              {{ t('tax.secondary') }}
+              <small class="block font-normal text-neutral-400">{{ t('tax.secondary_hint') }}</small>
+            </span>
+            <input v-model="profile.is_secondary" type="checkbox" class="rounded border-neutral-300 text-primary-600 shrink-0">
+          </label>
+
+          <label class="flex items-center justify-between gap-2 py-2 border-t border-neutral-100 cursor-pointer">
+            <span class="text-xs font-medium text-neutral-700">
               {{ t('tax.spouse') }}
               <small class="block font-normal text-neutral-400">{{ t('tax.spouse_hint') }}</small>
             </span>
