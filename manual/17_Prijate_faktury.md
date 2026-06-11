@@ -43,12 +43,12 @@ Nad formulářem je **drag & drop zóna**. Pokud máš PDF od dodavatele:
   - **Pokud ne** (běžné PDF bez přílohy) → můžeš použít **AI extrakci přes Anthropic Claude** (viz [AI extrakce](19_AI_extrakce.md)), nebo pole vyplnit ručně.
 - Originál PDF se po prvním uložení faktury automaticky **archivuje** mimo webroot a v detailu si ho můžeš kdykoli stáhnout zpět.
 
-> 💡 Doklad jde nahrát **už při zakládání nové faktury** (po přetažení se ukáže kartička „soubor připraven, nahraje se po uložení") i **z detailu** faktury, která zatím doklad nemá. Kromě PDF lze přetáhnout i **fotku** (JPG/PNG/WEBP/HEIC), systém ji převede na PDF.
+> 💡 Doklad jde nahrát **už při zakládání nové faktury** (po přetažení se ukáže kartička „soubor připraven, nahraje se po uložení") i **z detailu** faktury, která zatím doklad nemá. Kromě PDF lze přetáhnout i **fotku** (JPG/PNG/WEBP/HEIC) — systém ji převede na PDF — nebo přímo **ISDOC / ISDOCX** balíček: ten se rozbalí a naparsuje deterministicky (bez AI), z `.isdocx` se navíc archivuje zabalené PDF pro náhled.
 
 Limity:
 - Max 20 MiB per soubor
-- Akceptujeme pouze application/pdf (magic bytes `%PDF-` se ověřují server-side)
-- SHA-256 deduplikace — stejný PDF už archivovaný u jiné faktury nebude akceptován
+- Akceptujeme PDF, fotku (JPG/PNG/WEBP/HEIC) a ISDOC/ISDOCX (magic bytes se ověřují server-side)
+- SHA-256 deduplikace — stejný doklad už archivovaný u jiné faktury nebude akceptován
 
 ### 17.2.2 Povinná pole
 
@@ -292,7 +292,7 @@ sdílených dokladů, nakonfiguruj **inbox adresář** v `cfg.php`:
 'purchase_invoice' => [
     'inbox_dir'         => 'C:/inetpub/wwwroot/myinvoice.cz/inbox',
     'inbox_recursive'   => true,
-    'allowed_exts'      => ['pdf', 'isdoc', 'xml'],
+    'allowed_exts'      => ['pdf', 'isdoc', 'isdocx', 'xml'],
     'archive_storage'   => __DIR__ . '/storage/purchase-invoices',
 ],
 ```
@@ -302,6 +302,7 @@ V seznamu Přijaté faktury klikni **📥 Nascanovat inbox**:
 - Systém rekurzivně projde nakonfigurovaný adresář.
 - Pro každý soubor spočte SHA-256 — pokud už existuje faktura se stejným otiskem, soubor přeskočí.
 - Z PDF s embedded ISDOC rozpozná data dodavatele a obsah.
+- Samostatné `.isdoc` i `.isdocx` balíčky v inboxu rozbalí a naimportuje přímo (z `.isdocx` navíc archivuje zabalené PDF pro náhled).
 - Plain PDF (bez ISDOC) jsou při scanu inboxu přeskakovány; takový doklad nahraj přes formulář, kde lze použít AI extrakci.
 
 Modal po skončení zobrazí přehled: vytvořeno / přeskočeno / chyby + per-soubor detail.

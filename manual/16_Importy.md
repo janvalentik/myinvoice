@@ -1,4 +1,4 @@
-# 16. Importy (Pohoda XML, ISDOC, PDF/A-3, iDoklad API, Fakturoid API)
+# 16. Importy (Pohoda XML, ISDOC/ISDOCX, PDF/A-3, iDoklad API, Fakturoid API)
 
 Pokud máš historické vystavené faktury v jiném systému (Pohoda, iDoklad,
 Fakturoid, Superfaktura nebo jiný fakturační software podporující ISDOC),
@@ -6,7 +6,7 @@ můžeš je do MyInvoice **naimportovat** — nemusíš je opisovat ručně.
 
 Existují dvě cesty:
 
-1. **Soubor upload** (Pohoda XML, ISDOC, PDF/A-3 s embedded ISDOC) — sekce 17.1–17.7
+1. **Soubor upload** (Pohoda XML, ISDOC, ISDOCX, PDF/A-3 s embedded ISDOC) — sekce 17.1–17.7
 2. **Přímý API import z iDoklad / Fakturoid** (OAuth2 credentials + background job) — sekce 17.8–17.9
 
 > **Importují se jen tvoje vystavené faktury** (ne přijaté, ne nákupní doklady
@@ -22,7 +22,8 @@ Formulář:
 - **Soubory** — přetáhni nebo klikni pro výběr. Akceptuje:
   - `.xml` (Pohoda dataPack)
   - `.isdoc` (ISDOC 6.0.x)
-  - `.pdf` (PDF/A-3 s embedded ISDOC přílohou — viz § 16.6)
+  - `.isdocx` (ISDOC Package — ZIP balíček se strukturovaným ISDOC + PDF; viz § 16.6)
+  - `.pdf` (PDF/A-3 s embedded ISDOC nebo ISDOCX přílohou — viz § 16.6)
   - `.zip` s libovolným počtem těchto souborů uvnitř
 - **Importovat** — odešle a vrátí report (kolik vytvořeno / přeskočeno / chyba).
 
@@ -65,7 +66,7 @@ Po importu vidíš tabulku:
 | Var. symbol | Z faktury |
 | Detail | Link na vytvořenou fakturu, badge `paid`/`issued`, štítky `+ klient` / `+ zakázka` (pokud něco vzniklo). U přeskočených/chybných: důvod. |
 
-## 16.6 PDF/A-3 import (embedded ISDOC)
+## 16.6 PDF/A-3 a ISDOCX import (embedded i samostatný ISDOC)
 
 Většina českých fakturačních systémů (**iDoklad**, **Fakturoid**, **Superfaktura**,
 **Pohoda**, **MyInvoice**) dnes vkládá ISDOC XML přímo do PDF dokumentu jako
@@ -73,6 +74,16 @@ přílohu — viz standard **PDF/A-3** + ISDOC spec. Pokud máš v ruce jen PDF
 faktury (typicky to, co ti přišlo emailem od dodavatele), můžeš ho importovat
 přímo — MyInvoice z něj vytáhne embedded `*.isdoc` přílohu a importuje stejně,
 jako kdybys nahrál samostatný `.isdoc` soubor.
+
+**ISDOCX balíček (ISDOC Package).** Některé systémy fakturu nevkládají do PDF,
+ale balí strukturovaný ISDOC i čitelné PDF do jednoho **ZIP archivu s příponou
+`.isdocx`** (uvnitř `manifest.xml`, vlastní `*.isdoc` a `*.pdf`). MyInvoice takový
+balíček **rozbalí**, vytáhne z něj ISDOC a naimportuje ho stejně jako samostatný
+`.isdoc` — **deterministicky, zdarma a bez AI** — a čitelné PDF z balíčku navíc
+archivuje pro náhled v detailu faktury. Funguje to jak při nahrání samotného
+`.isdocx`, tak když je `.isdocx` přílohou uvnitř PDF/A-3. Hlavní ISDOC se v
+balíčku určí podle `manifest.xml` (`<maindocument>`), s fallbackem na `.isdoc`
+v kořeni archivu (starší balíčky bez manifestu).
 
 **Jak to poznáš, jestli PDF má embedded ISDOC?**
 
@@ -99,6 +110,9 @@ ISDOC přílohu". V tom případě:
   ISDOC PDF spec).
 - ✅ PDF s embedded ISDOC pod jiným jménem (content sniff podle ISDOC
   namespace `http://isdoc.cz/namespace/2013`).
+- ✅ **ISDOCX balíček** (`.isdocx` ZIP s `manifest.xml` + `.isdoc` + PDF) —
+  jako samostatný soubor i jako příloha PDF/A-3. Hlavní ISDOC se určí z
+  manifestu, s fallbackem na `.isdoc` v kořeni archivu.
 - ✅ PDF s *compressed object streams* (`/Type /ObjStm`, PDF 1.5+).
   Spec sice ObjStm zavedlo, ale **stream objekty (a tím i `EmbeddedFile`)
   v ObjStm být nesmí** — vždy zůstávají na top-level, takže náš scanner
