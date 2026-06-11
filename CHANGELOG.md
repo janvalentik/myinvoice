@@ -5,6 +5,17 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.22.0] — 2026-06-11
+
+### Added
+
+- **Podpora formátu ISDOCX (ISDOC Package) ve všech importech (#136).** ISDOCX je ZIP balíček, do kterého řada účetních systémů zabaluje strukturovaný **ISDOC** i **čitelné PDF** faktury najednou. Dosud ho importy neuměly rozbalit a tiše spadly na AI extrakci nebo přeskočení. Nově ho přijmou **všechny** cesty: hromadný import (*Importy → Přijaté i Vystavené*), AI extrakce (*Externí integrace → AI*), nahrání faktury přímo v editoru přijaté faktury (drag & drop) i automatický **sken inbox** adresáře. Z balíčku se ISDOC vytáhne **deterministicky (zdarma, bez AI)** a vytvoří draft faktury, čitelné PDF se uloží pro náhled. Hlavní ISDOC se v balíčku určí podle `manifest.xml` (s fallbackem na `.isdoc` v kořeni archivu). Funguje i `.isdocx` **jako příloha uvnitř PDF/A-3**. Importy nově akceptují příponu `.isdocx` (uživatelé s vlastním `purchase_invoice.allowed_exts` v cfg.php si ji do seznamu doplní).
+
+### Fixed
+
+- **AI špatně rozpoznávala datumy na přijatých fakturách (zaměňovala datum vystavení, DUZP a splatnost).** AI extrakce neměla u datových polí v promptu žádné vodítko, takže role datumů odhadovala podle pozice na dokladu místo podle popisku — na produkci dala DUZP na datum splatnosti, jindy prohodila vystavení a splatnost. **DUZP (datum uskutečnění zdanitelného plnění) je přitom daňově zásadní** — rozhoduje o zařazení do období DPH. Nově prompt mapuje konkrétní české i slovenské popisky („Datum vystavení", „Datum uskut. zdaň. plnění" / „Datum zdanitelného plnění", „Datum splatnosti" …) na správná pole a uplatní logickou kontrolu (splatnost nikdy nepředchází vystavení). Navíc obranný mechanismus na straně serveru automaticky opraví prohozené datum vystavení ↔ splatnost.
+- **Po administrátorské opravě vystavené faktury (force-edit) zůstávalo přegenerované PDF se starými údaji stran (#135).** Force-edit uložil nová data faktury, ale JSON snapshoty stran (odběratel / dodavatel / banka) ponechal beze změny — a protože se u vystavených faktur PDF vykresluje právě z těchto snapshotů, oprava (např. adresy nebo IČO odběratele) se do nově vygenerovaného PDF nepromítla (ač to UI uživateli slibovalo). Nově se snapshoty při force-editu přepíšou z aktuálních dat; původní PDF zůstává v archivu. Historie faktury navíc u opravy uvádí, která konkrétní pole se změnila.
+
 ## [4.21.1] — 2026-06-10
 
 ### Fixed
