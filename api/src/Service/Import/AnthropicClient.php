@@ -216,6 +216,25 @@ JSON schema:
   "supply_nature": "goods"|"services"|"mixed"|null
 }
 
+DŮLEŽITÉ k DATŮM (`issue_date`, `tax_date`, `due_date`) — NEJDŮLEŽITĚJŠÍ, ČTI POZORNĚ:
+- Na faktuře jsou typicky TŘI různá data. Přiřaď je VÝHRADNĚ podle POPISKU u data,
+  NIKDY podle pořadí/pozice na stránce. Stejné datum se může opakovat u více popisků.
+- `issue_date` = DATUM VYSTAVENÍ dokladu. Popisky: „Datum vystavení", „Vystaveno",
+  „Datum vystavení dokladu", „Vystavená dňa" / „Dátum vystavenia" (SK), „Date of issue",
+  „Invoice date", „Issued".
+- `tax_date` = DUZP = DATUM USKUTEČNĚNÍ ZDANITELNÉHO PLNĚNÍ. Popisky: „Datum uskutečnění
+  zdanitelného plnění", „Datum uskut. zdaň. plnění", „Den uskut. zdaň. plnění", „DUZP",
+  „Datum zdanitelného plnění", „Datum plnění", „Datum dodání", „Datum dodávky" /
+  „Dátum dodania" (SK), „Date of supply", „Tax point". Pokud na dokladu NENÍ → vrať null
+  (systém pak použije datum vystavení). DUZP je daňově zásadní — přiřaď ho PŘESNĚ podle
+  tohoto popisku, nezaměňuj ho se splatností ani vystavením.
+- `due_date` = DATUM SPLATNOSTI. Popisky: „Datum splatnosti", „Splatnost", „Splatno do",
+  „Splatné do" (SK), „Zaplaťte do", „Úhrada do", „Due date", „Payment due", „Date due".
+- LOGICKÁ KONTROLA (uplatni po přiřazení): splatnost je platební lhůta = vystavení + N dní,
+  takže `due_date` je VŽDY ≥ `issue_date` (NIKDY dřív než vystavení). `tax_date` (DUZP) bývá
+  shodné nebo blízké datu vystavení. Pokud ti z přiřazení vyjde splatnost DŘÍVE než vystavení,
+  spletl ses v popiscích — přečti data znovu a oprav přiřazení.
+
 DŮLEŽITÉ k poli `document_kind`:
 - Pokud nadpis / hlavička PDF obsahuje "Opravný daňový doklad", "Dobropis",
   "Opravná faktura", "Credit note", "Storno faktura", "Storno doklad",
