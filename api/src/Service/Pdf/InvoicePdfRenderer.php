@@ -539,6 +539,34 @@ final class InvoicePdfRenderer
             || !empty($invoice['bank_snapshot']);
         if (!$hasAny) return $invoice;
 
+        return $this->writeSnapshots($invoice);
+    }
+
+    /**
+     * Přepíše snapshoty (supplier/client/bank) z aktuálních live dat — voláno při
+     * admin force-editu VYSTAVENÉ faktury, aby se opravené údaje stran (adresa/IČO/
+     * název odběratele, banka) promítly do nově generovaného PDF.
+     *
+     * Narozdíl od refreshSnapshots() (regenerate cesta, jen drafty) tahle metoda
+     * ZÁMĚRNĚ přepíše snapshot i u issued/sent/paid faktury — je to vědomá oprava
+     * dokladu, kterou UI uživateli avizuje („Změny přepíšou snapshoty"). Auditní
+     * stopu (kdo/kdy/co) zajišťuje volající přes ActivityLogger.
+     */
+    public function rebuildSnapshots(int $invoiceId): void
+    {
+        $invoice = $this->repo->find($invoiceId);
+        if ($invoice === null) return;
+        $this->writeSnapshots($invoice);
+    }
+
+    /**
+     * Postaví snapshoty z live dat a uloží do invoices. Sdílené jádro pro
+     * refreshSnapshots() (drafty) i rebuildSnapshots() (force-edit vystavené).
+     *
+     * @return array  invoice array s aktualizovanými snapshoty (in-memory)
+     */
+    private function writeSnapshots(array $invoice): array
+    {
         try {
             $built = $this->snapshots->build(
                 (int) $invoice['client_id'],
