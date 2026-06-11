@@ -740,6 +740,11 @@ final class InvoiceRepository
         return (int) $pdo->lastInsertId();
     }
 
+    /**
+     * POZN.: seznam editovatelných sloupců drž v sync s UpdateInvoiceAction::diffFields()
+     * (audit „co se změnilo" v historii faktury). Přidáš-li sem user-facing sloupec,
+     * přidej ho i tam, jinak ho audit detail tiše neuvede.
+     */
     public function updateDraft(int $id, array $data): void
     {
         // Varsymbol — měníme jen pokud je v payloadu klíč 'varsymbol' (allow null = vyčištění,

@@ -124,20 +124,80 @@ final class UpdateInvoiceAction
         // Force update vystavené faktury → revenue cache musí přijmout nové total/currency
         $this->stats->recomputeForInvoiceId($id);
 
+        // Force-edit vystavené faktury: přepiš snapshoty z opravených live dat, aby se
+        // změny v údajích odběratele/dodavatele/banky promítly do nově generovaného PDF.
+        // UI to uživateli avizuje („Změny přepíšou snapshoty"). U draftu se snapshoty
+        // nepoužívají (renderer bere live data), takže rebuild řešíme jen pro vystavené.
+        if ($existing['status'] !== 'draft') {
+            $this->pdf->rebuildSnapshots($id);
+        }
+
         // Invalidate cached PDF — data faktury se změnila, starý soubor je nepoužitelný.
         // Cache freshness check v rendereru zohledňuje jen mtime šablon/CSS, ne dat,
         // takže bez explicit invalidate by se starý PDF dál servíroval.
         $this->pdf->invalidate($id, 'invalidate_update');
 
+        $invoice = $this->repo->find($id);
+
+        // Audit detail: která pole se opravila (zobrazí se v historii u faktury).
+        $changed = self::diffFields($existing, $invoice);
+        $payload = $changed !== [] ? ['changed' => $changed] : null;
+
         $ip = $this->ipMatcher->clientIpFromRequest($request->getServerParams());
         $action = ($existing['status'] !== 'draft') ? 'invoice.force_updated' : 'invoice.updated';
-        $this->logger->log($action, $user['id'] ?? null, 'invoice', $id, null, $ip, $request->getHeaderLine('User-Agent'));
+        $this->logger->log($action, $user['id'] ?? null, 'invoice', $id, $payload, $ip, $request->getHeaderLine('User-Agent'));
 
-        $invoice = $this->repo->find($id);
         if ($rateMeta !== null) {
             $invoice['_meta'] = ['exchange_rate' => $rateMeta];
         }
         return Json::ok($response, $invoice);
+    }
+
+    /**
+     * Porovná starou a novou verzi faktury a vrátí sémantické klíče změněných polí
+     * (frontend je lokalizuje přes invoice.changed_fields.*). Slouží jako audit detail
+     * v activity logu — „co konkrétně se opravilo".
+     *
+     * @return list<string>
+     */
+    private static function diffFields(array $old, array $new): array
+    {
+        // Sloupce porovnávané pro audit. Sufix *_id se v UI klíči zkracuje na čitelný
+        // název (client_id → client); ostatní pole se mapují sama na sebe. Drž v sync
+        // s editovatelnými sloupci v InvoiceRepository::updateDraft().
+        $columns = [
+            'client_id', 'currency_id', 'project_id', 'revenue_category_id',
+            'issue_date', 'tax_date', 'due_date', 'varsymbol',
+            'invoice_type', 'payment_method', 'note_above_items', 'note_below_items',
+            'discount_percent', 'advance_paid_amount', 'reverse_charge',
+            'prices_include_vat', 'vat_classification_code', 'income_tax_exempt', 'language',
+        ];
+
+        $changed = [];
+        foreach ($columns as $col) {
+            // String cast sjednotí int/float/null/bool porovnání napříč PDO casty.
+            if ((string) ($old[$col] ?? '') !== (string) ($new[$col] ?? '')) {
+                $changed[] = preg_replace('/_id$/', '', $col); // client_id → client
+            }
+        }
+        if (self::itemsChanged((array) ($old['items'] ?? []), (array) ($new['items'] ?? []))) {
+            $changed[] = 'items';
+        }
+        return $changed;
+    }
+
+    /** Porovná položky podle uživatelsky viditelných polí (popis/množství/cena/sazba). */
+    private static function itemsChanged(array $old, array $new): bool
+    {
+        $project = static fn (array $it): array => [
+            (string) ($it['description'] ?? ''),
+            (string) ($it['quantity'] ?? ''),
+            (string) ($it['unit'] ?? ''),
+            (string) ($it['unit_price_without_vat'] ?? ''),
+            (string) ($it['vat_rate_id'] ?? ''),
+        ];
+
+        return array_map($project, array_values($old)) !== array_map($project, array_values($new));
     }
 
     /**

@@ -366,7 +366,19 @@ function actionColor(a: string): string {
 function payloadText(payload: any): string {
   if (!payload) return ''
   return Object.entries(payload)
-    .map(([k, v]) => k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v)))
+    .map(([k, v]) => {
+      // 'changed' = seznam sémantických klíčů polí (z editace faktury) → přelož na
+      // čitelné názvy, ať historie ukáže „změněno: odběratel, poznámka pod položkami".
+      if (k === 'changed' && Array.isArray(v)) {
+        const names = v.map((f) => {
+          const key = `invoice.changed_fields.${f}`
+          const label = t(key) as string
+          return label === key ? String(f) : label
+        })
+        return `${t('invoice.changed_label')}: ${names.join(', ')}`
+      }
+      return k + '=' + (typeof v === 'object' ? JSON.stringify(v) : String(v))
+    })
     .join(' · ')
 }
 
