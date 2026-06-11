@@ -133,6 +133,39 @@ final class PdfIsdocExtractorTest extends TestCase
         self::assertStringContainsString('<ID>OCTET-1</ID>', $result);
     }
 
+    public function testExtractsIsdocFromEmbeddedIsdocxPackage(): void
+    {
+        // Issue #136 — příloha PDF/A-3 je `.isdocx` (ZIP balíček s manifest + .isdoc + PDF),
+        // ne holé .isdoc XML. Extractor musí ZIP rozbalit a vrátit vnitřní ISDOC.
+        $isdocXml = '<?xml version="1.0"?>'
+            . '<Invoice xmlns="http://isdoc.cz/namespace/2013"><ID>ISDOCX-1</ID></Invoice>';
+        $isdocxZip = $this->buildIsdocxZip($isdocXml);
+        $pdf = $this->buildMinimalPdfWithIsdoc($isdocxZip, 'Vendor 12345678.isdocx');
+
+        $result = $this->extractor->extract($pdf);
+        self::assertNotNull($result);
+        self::assertStringContainsString('http://isdoc.cz/namespace/2013', $result);
+        self::assertStringContainsString('<ID>ISDOCX-1</ID>', $result);
+    }
+
+    /**
+     * Sestaví ISDOCX balíček (ZIP s manifest.xml + .isdoc + PDF) pro embedded test.
+     */
+    private function buildIsdocxZip(string $isdocXml): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'isdocx-fixture-');
+        $zip = new \ZipArchive();
+        $zip->open($tmp, \ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.xml', '<manifest xmlns="http://isdoc.cz/namespace/2013/manifest">'
+            . '<maindocument filename="vendor.isdoc"/></manifest>');
+        $zip->addFromString('vendor.isdoc', $isdocXml);
+        $zip->addFromString('vendor.pdf', "%PDF-1.4\nhuman readable\n%%EOF");
+        $zip->close();
+        $bytes = (string) file_get_contents($tmp);
+        @unlink($tmp);
+        return $bytes;
+    }
+
     /**
      * Vytvoří minimální PDF skeleton s ISDOC XML jako PDF/A-3 attachment.
      * Není to plně validní PDF (chybí xref, validní catalog), ale obsahuje

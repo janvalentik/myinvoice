@@ -159,7 +159,7 @@ async function runScan() {
           <input
             type="file"
             multiple
-            accept=".xml,.isdoc,.zip,.pdf,application/xml,application/zip,application/x-isdoc,application/pdf"
+            accept=".xml,.isdoc,.isdocx,.zip,.pdf,application/xml,application/zip,application/x-isdoc,application/pdf"
             @change="onPick"
             class="hidden"
           />
@@ -220,7 +220,7 @@ async function runScan() {
           <input
             type="file"
             multiple
-            accept=".xml,.isdoc,.zip,.pdf,application/xml,application/zip,application/x-isdoc,application/pdf"
+            accept=".xml,.isdoc,.isdocx,.zip,.pdf,application/xml,application/zip,application/x-isdoc,application/pdf"
             @change="onPick"
             class="hidden"
           />

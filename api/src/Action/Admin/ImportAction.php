@@ -23,6 +23,8 @@ use Psr\Http\Message\UploadedFileInterface;
  * Podporuje:
  *   - .xml (Pohoda dataPack)
  *   - .isdoc (ISDOC 6.x)
+ *   - .isdocx (ISDOC Package — ZIP s vnitřním .isdoc + PDF, issue #136)
+ *   - .pdf (PDF/A-3 s embedded ISDOC / .isdocx přílohou)
  *   - .zip s libovolným počtem .xml / .isdoc uvnitř
  *
  * Vrací JSON s reportem (created/skipped/failed per soubor).

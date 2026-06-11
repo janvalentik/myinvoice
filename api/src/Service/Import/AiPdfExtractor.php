@@ -59,6 +59,16 @@ final class AiPdfExtractor
      */
     public function extractAndCreate(int $supplierId, int $userId, string $pdfBytes, ?string $modelOverride = null, ?string $originalFilename = null): array
     {
+        // ISDOCX balíček (ZIP s vnitřním .isdoc + čitelným PDF) nahraný napřímo →
+        // deterministický import přes ISDOC parser (0 AI cost), PDF z balíčku archivujeme.
+        // Magic check je levný; unwrap zapíše temp jen pro skutečný ZIP.
+        if (IsdocxExtractor::isZip($pdfBytes)) {
+            $pkg = (new IsdocxExtractor())->unwrap($pdfBytes);
+            if ($pkg !== null) {
+                return $this->createFromIsdocx($pkg, $supplierId, $userId, $originalFilename);
+            }
+        }
+
         // Obrázek (fotka z telefonu, issue #75) → normalizuj na PDF; downstream
         // (ISDOC, AI, archivace, preview) pak pracuje výhradně s PDF.
         if (!str_starts_with($pdfBytes, '%PDF')) {
@@ -245,6 +255,66 @@ final class AiPdfExtractor
                 'source'  => 'create_failed',
             ];
         }
+    }
+
+    /**
+     * Vytvoří draft přijaté faktury z rozbaleného ISDOCX balíčku. Vnitřní ISDOC
+     * parsujeme stejně jako embedded ISDOC (deterministicky, bez AI), čitelné PDF
+     * z balíčku archivujeme pro náhled. Dedup běží na vnitřním PDF (totožné jako
+     * kdyby přišel samotný .pdf / ISDOC.PDF); balíček bez PDF se nededupuje hashem.
+     *
+     * @param array{isdoc:string, isdoc_name:string, pdf:?string, pdf_name:?string} $pkg
+     * @return array{ok:bool, purchase_invoice_id?:int, vendor_id?:int, source:string, error?:string, duplicate?:bool, message?:string}
+     */
+    private function createFromIsdocx(array $pkg, int $supplierId, int $userId, ?string $originalFilename): array
+    {
+        $innerPdf = $pkg['pdf'];
+
+        // Dedup na vnitřním PDF (stejný klíč jako u běžného PDF importu).
+        if ($innerPdf !== null) {
+            $existingId = $this->repo->findIdByPdfHash($supplierId, hash('sha256', $innerPdf));
+            if ($existingId !== null) {
+                return [
+                    'ok'                  => true,
+                    'purchase_invoice_id' => $existingId,
+                    'source'              => 'duplicate',
+                    'duplicate'           => true,
+                    'message'             => 'ISDOCX je již importován jako faktura #' . $existingId,
+                ];
+            }
+        }
+
+        try {
+            $parsed = $this->isdoc->parse($pkg['isdoc']);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'ISDOCX: vnitřní ISDOC se nepodařilo načíst: ' . $e->getMessage(), 'source' => 'isdocx_invalid'];
+        }
+        if (empty($parsed['invoices']) || isset($parsed['invoices'][0]['__error'])) {
+            $err = $parsed['invoices'][0]['__error'] ?? 'ISDOCX neobsahuje fakturu';
+            return ['ok' => false, 'error' => (string) $err, 'source' => 'isdocx_invalid'];
+        }
+
+        try {
+            $r = $this->isdocMapper->map($parsed['invoices'][0], $supplierId, $userId);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'ISDOCX → faktura selhala: ' . $e->getMessage(), 'source' => 'isdocx_map_failed'];
+        }
+
+        if ($innerPdf !== null) {
+            $pdfName = $pkg['pdf_name']
+                ?? ($originalFilename !== null && $originalFilename !== ''
+                    ? preg_replace('/\.isdocx?$/i', '.pdf', $originalFilename)
+                    : null)
+                ?: 'isdocx-imported.pdf';
+            $this->attachPdf((int) $r['purchase_invoice_id'], $supplierId, $innerPdf, $pdfName);
+        }
+
+        return [
+            'ok'                  => true,
+            'purchase_invoice_id' => (int) $r['purchase_invoice_id'],
+            'vendor_id'           => $r['vendor_id'] ?? null,
+            'source'              => 'isdocx',
+        ];
     }
 
     /**

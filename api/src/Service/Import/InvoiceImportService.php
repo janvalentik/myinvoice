@@ -79,6 +79,20 @@ final class InvoiceImportService
         // 1. Rozbalení ZIPů na ploché soubory.
         $flat = [];
         foreach ($files as $f) {
+            // ISDOCX balíček (ZIP s .isdoc + PDF + manifest) → vytáhni vnitřní .isdoc.
+            // Musí předcházet obecnému isZip(): jinak by se rozbalil jako bundle a
+            // manifest.xml / PDF by dělaly šum. PDF z balíčku batch import nearchivuje
+            // (stejně jako u holého .isdoc); pro náhled slouží upload přes AI/dropzone.
+            if ($this->isIsdocx($f['name'], $f['content'])) {
+                $pkg = (new IsdocxExtractor())->unwrap($f['content']);
+                if ($pkg !== null) {
+                    $flat[] = ['name' => $f['name'] . '/' . $pkg['isdoc_name'], 'content' => $pkg['isdoc']];
+                } else {
+                    // Nepodařilo se rozbalit → necháme na parseRaw čitelnou chybu.
+                    $flat[] = $f;
+                }
+                continue;
+            }
             if ($this->isZip($f['name'], $f['content'])) {
                 foreach ($this->unzip($f['content']) as $sub) {
                     $flat[] = ['name' => $f['name'] . '/' . $sub['name'], 'content' => $sub['content']];
@@ -567,8 +581,21 @@ final class InvoiceImportService
         return (string) $ic;
     }
 
+    /**
+     * ISDOCX balíček (ISDOC Package) — ZIP s vnitřním `.isdoc`. Poznáme ho podle
+     * přípony `.isdocx` (content je ZIP magic, ale `.isdocx` NEchceme rozbalovat
+     * generickým unzip()em — má vlastní strukturu manifest+PDF).
+     */
+    private function isIsdocx(string $name, string $content): bool
+    {
+        return str_ends_with(strtolower($name), '.isdocx')
+            && IsdocxExtractor::isZip($content);
+    }
+
     private function isZip(string $name, string $content): bool
     {
+        // `.isdocx` je sice ZIP, ale má vlastní cestu (isIsdocx) — sem nepatří.
+        if (str_ends_with(strtolower($name), '.isdocx')) return false;
         if (str_ends_with(strtolower($name), '.zip')) return true;
         // Magic bytes — PK\x03\x04 nebo PK\x05\x06 (empty zip).
         // PDF má sice taky neuzipped magic, ale začíná `%PDF-`, takže nedojde
@@ -633,6 +660,9 @@ final class InvoiceImportService
             }
             // Skip složky a non-XML/ISDOC
             if (str_ends_with($name, '/')) continue;
+            // ISDOCX manifest (pokud balíček přišel pojmenovaný jako .zip) není faktura
+            // — přeskočíme, ať neparsujeme manifest jako ISDOC a netvoříme failed řádek.
+            if (strtolower(basename($name)) === 'manifest.xml') continue;
             $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
             if (!in_array($ext, ['xml', 'isdoc'], true)) continue;
 

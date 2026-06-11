@@ -394,7 +394,7 @@ function onAiDrop(e: DragEvent) {
 
   const pdfs = files.filter(f =>
     f.type === 'application/pdf' || f.type.startsWith('image/') ||
-    /\.(pdf|jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(f.name))
+    /\.(pdf|jpe?g|png|webp|heic|heif|gif|bmp|isdoc|isdocx)$/i.test(f.name))
   if (pdfs.length === 0) {
     toast.error(t('integrations.ai.only_pdf'))
     return
@@ -944,7 +944,7 @@ onUnmounted(() => {
               ? 'border-primary-500 bg-primary-50'
               : 'border-neutral-300 hover:border-primary-400 hover:bg-primary-50/30'"
             @dragenter="onAiDragEnter" @dragover="onAiDragOver" @dragleave="onAiDragLeave" @drop="onAiDrop">
-            <input type="file" accept="application/pdf,.pdf,image/*" @change="onAiPdfPick" class="hidden" />
+            <input type="file" accept="application/pdf,.pdf,image/*,.isdoc,.isdocx" @change="onAiPdfPick" class="hidden" />
             <svg class="w-8 h-8 mx-auto text-neutral-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 0 1-.88-7.9 5 5 0 0 1 9.9-1A5.5 5.5 0 0 1 18.5 16H17m-5-4v9m0-9l-3 3m3-3l3 3" />
             </svg>

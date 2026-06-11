@@ -10,10 +10,14 @@ namespace MyInvoice\Service\Import;
  * Vstup je raw PDF (typicky vyrobený mPDFem přes SetAssociatedFiles, ale parser
  * pracuje s libovolným PDF, který má `/Type /EmbeddedFile` objekty s FlateDecode
  * streamem). Identifikujeme ISDOC dvojkrokem:
- *   1) primárně podle filename (`*.isdoc`) v souvisejícím FileSpec dict,
+ *   1) primárně podle filename (`*.isdoc` i `*.isdocx`) v souvisejícím FileSpec dict,
  *   2) content sniffem nadekomprimovaného streamu (ISDOC namespace
  *      `http://isdoc.cz/namespace/2013` + `<Invoice`) jako záchrana, kdyby
  *      filename byl jiný nebo chyběl.
+ *
+ * Příloha může být i ISDOCX balíček (ZIP s `.isdoc` + PDF + manifest.xml, issue
+ * #136) — v tom případě po dekompresi PDF streamu dostaneme ZIP (PK\x03\x04),
+ * který rozbalíme přes {@see IsdocxExtractor} a vrátíme vnitřní `.isdoc`.
  *
  * Vrátí XML string nebo null, pokud PDF žádný ISDOC neobsahuje.
  *
@@ -56,13 +60,25 @@ final class PdfIsdocExtractor
             }
         }
 
+        $isdocx = new IsdocxExtractor();
         foreach ($ordered as $stream) {
-            $xml = $this->tryInflate($stream);
-            if ($xml === null) {
-                continue;
-            }
-            if ($this->looksLikeIsdoc($xml)) {
-                return $xml;
+            // Příloha může být uložená komprimovaně (PDF /FlateDecode) nebo syrově;
+            // ISDOCX balíček je navíc sám o sobě ZIP. Zkusíme oba payloady.
+            foreach ([$stream, $this->tryInflate($stream)] as $payload) {
+                if ($payload === null || $payload === '') {
+                    continue;
+                }
+                // ISDOCX (ZIP balíček) → rozbal a vrať vnitřní .isdoc XML.
+                if (IsdocxExtractor::isZip($payload)) {
+                    $pkg = $isdocx->unwrap($payload);
+                    if ($pkg !== null) {
+                        return $pkg['isdoc'];
+                    }
+                    continue;
+                }
+                if ($this->looksLikeIsdoc($payload)) {
+                    return $payload;
+                }
             }
         }
 
@@ -183,7 +199,8 @@ final class PdfIsdocExtractor
         //
         // Strategie: pro každý filename s `.isdoc` najdi nejbližší následující
         // `/EF << ... >>` blok a vytáhni první `\d+ 0 R` referenci uvnitř.
-        $fileRe = '#/(?:F|UF)\s*\(([^)]*\.isdoc)\)#i';
+        // Akceptuj `.isdoc` i `.isdocx` (ISDOC Package jako příloha PDF/A-3, issue #136).
+        $fileRe = '#/(?:F|UF)\s*\(([^)]*\.isdocx?)\)#i';
         if (preg_match_all($fileRe, $pdf, $matches, PREG_OFFSET_CAPTURE)) {
             foreach ($matches[0] as $i => $hit) {
                 $pos = $hit[1];

@@ -120,7 +120,7 @@ final class PurchaseInvoiceInboxScanner
         }
 
         $recursive = (bool) $this->config->get('purchase_invoice.inbox_recursive', true);
-        $allowedExts = (array) $this->config->get('purchase_invoice.allowed_exts', ['pdf', 'isdoc', 'xml']);
+        $allowedExts = (array) $this->config->get('purchase_invoice.allowed_exts', ['pdf', 'isdoc', 'isdocx', 'xml']);
         $allowedExts = array_map('strtolower', $allowedExts);
 
         $created = 0; $skipped = 0; $failed = 0;
@@ -275,6 +275,11 @@ final class PurchaseInvoiceInboxScanner
                     // Archive PDF — uložení do storage + metadata (pdf_hash dedup)
                     if ($ext === 'pdf') {
                         $this->archivePdf($result['purchase_invoice_id'], $supplierId, $real, $sha, $size);
+                    } elseif ($ext === 'isdocx') {
+                        // ISDOCX nese čitelné PDF uvnitř → archivuj ho pro náhled.
+                        // pdf_hash = hash celého .isdocx (= klíč scannerova dedupu nahoře),
+                        // ať se re-scan téhož souboru přeskočí.
+                        $this->archiveIsdocxInnerPdf($result['purchase_invoice_id'], $supplierId, $real, $sha);
                     }
                     $created++;
                     $createdInThisFile++;
@@ -344,6 +349,12 @@ final class PurchaseInvoiceInboxScanner
             if ($bytes === false) return null;
             return $this->pdfExtractor->extract($bytes);
         }
+        if ($ext === 'isdocx') {
+            $bytes = @file_get_contents($path);
+            if ($bytes === false) return null;
+            $pkg = (new IsdocxExtractor())->unwrap($bytes);
+            return $pkg['isdoc'] ?? null;
+        }
         if ($ext === 'isdoc' || $ext === 'xml') {
             $bytes = @file_get_contents($path);
             if ($bytes === false) return null;
@@ -360,15 +371,7 @@ final class PurchaseInvoiceInboxScanner
      */
     private function archivePdf(int $purchaseInvoiceId, int $supplierId, string $sourcePath, string $sha256, int $size): void
     {
-        $archiveRoot = (string) $this->config->get('purchase_invoice.archive_storage', '');
-        if ($archiveRoot === '') {
-            $uploads = (string) $this->config->get('storage.uploads_dir', '');
-            $archiveRoot = $uploads !== '' ? dirname($uploads) . '/purchase-invoices'
-                : \MyInvoice\Infrastructure\Config\RuntimePaths::storage('purchase-invoices');
-        }
-        $tenantDir = $archiveRoot . DIRECTORY_SEPARATOR . 'supplier-' . $supplierId;
-        if (!is_dir($tenantDir)) @mkdir($tenantDir, 0755, true);
-
+        $tenantDir = $this->archiveTenantDir($supplierId);
         $diskName = substr($sha256, 0, 16) . '.pdf';
         $diskPath = $tenantDir . DIRECTORY_SEPARATOR . $diskName;
         if (!is_file($diskPath)) {
@@ -378,6 +381,46 @@ final class PurchaseInvoiceInboxScanner
         $relPath = 'supplier-' . $supplierId . '/' . $diskName;
         $originalName = basename($sourcePath);
         $this->purchaseRepo->setPdfMetadata($purchaseInvoiceId, $supplierId, $relPath, $sha256, $size, $originalName);
+    }
+
+    /**
+     * Archivuje čitelné PDF vytažené z ISDOCX balíčku. Soubor na disku jsou
+     * vnitřní PDF bajty (pro náhled), ale `pdf_hash` = hash celého `.isdocx`
+     * (= klíč, kterým scanner deduplikuje při příštím běhu).
+     */
+    private function archiveIsdocxInnerPdf(int $purchaseInvoiceId, int $supplierId, string $sourcePath, string $isdocxSha256): void
+    {
+        $bytes = @file_get_contents($sourcePath);
+        if ($bytes === false) return;
+        $pkg = (new IsdocxExtractor())->unwrap($bytes);
+        if ($pkg === null || $pkg['pdf'] === null) return; // balíček bez vnitřního PDF
+        $innerPdf = $pkg['pdf'];
+
+        $tenantDir = $this->archiveTenantDir($supplierId);
+        $diskName = substr($isdocxSha256, 0, 16) . '.pdf';
+        $diskPath = $tenantDir . DIRECTORY_SEPARATOR . $diskName;
+        if (!is_file($diskPath)) {
+            @file_put_contents($diskPath, $innerPdf);
+        }
+
+        $relPath = 'supplier-' . $supplierId . '/' . $diskName;
+        $this->purchaseRepo->setPdfMetadata(
+            $purchaseInvoiceId, $supplierId, $relPath, $isdocxSha256, strlen($innerPdf), basename($sourcePath),
+        );
+    }
+
+    /** Adresář archivu pro daného tenanta (vytvoří ho, pokud chybí). */
+    private function archiveTenantDir(int $supplierId): string
+    {
+        $archiveRoot = (string) $this->config->get('purchase_invoice.archive_storage', '');
+        if ($archiveRoot === '') {
+            $uploads = (string) $this->config->get('storage.uploads_dir', '');
+            $archiveRoot = $uploads !== '' ? dirname($uploads) . '/purchase-invoices'
+                : \MyInvoice\Infrastructure\Config\RuntimePaths::storage('purchase-invoices');
+        }
+        $tenantDir = $archiveRoot . DIRECTORY_SEPARATOR . 'supplier-' . $supplierId;
+        if (!is_dir($tenantDir)) @mkdir($tenantDir, 0755, true);
+        return $tenantDir;
     }
 
     private function emptyResult(string $inboxDir, bool $dryRun, array $details): array
