@@ -244,8 +244,9 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
 
     /**
      * Česká spořitelna nerozlišuje příjem/výdej znaménkem, ale řádkem
-     * „Směr platby: příchozí/odchozí". Odchozí platbu ulož se záporným znaménkem
-     * (konzistentní s GPC), ať se nepáruje proti pohledávkám.
+     * „Směr platby: příchozí/odchozí" (Fio labelem „Výdaj na kontě").
+     * Odchozí platbu ulož se záporným znaménkem (konzistentní s GPC),
+     * ať se nepáruje proti pohledávkám.
      */
     protected function applyDirection(float $amount, string $direction): float
     {
@@ -253,7 +254,7 @@ abstract class AbstractBankEmailNoticeParser implements BankEmailNoticeParserInt
         if ($direction === '') {
             return $amount;
         }
-        if (preg_match('/odchoz|výdej|vydej|debet|odepsán|odepsan|outgoing/u', $direction) === 1) {
+        if (preg_match('/odchoz|výdej|vydej|výdaj|vydaj|debet|odepsán|odepsan|outgoing/u', $direction) === 1) {
             return -abs($amount);
         }
         return abs($amount);
