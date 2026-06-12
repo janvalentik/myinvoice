@@ -5,6 +5,19 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.25.0] — 2026-06-12
+
+### Security
+
+- **API tokeny (PAT) jsou nově omezené jen na veřejné API.** Osobní přístupový token dosáhne pouze na dokumentovaný veřejný subset `/api/v1/*` (faktury, klienti, přijaté faktury, dokumenty, reporty, číselníky …) — pokus o interní nebo administrátorské endpointy (`/api/admin/*`, správa uživatelů a tokenů, citlivá nastavení podpisů / brandingu / IMAP) vrátí `403 token_endpoint_forbidden`, a to i u tokenu vytvořeného administrátorem. Případně uniklý token tak nedává přístup k celému účtu, ale jen ke čtení/zápisu veřejných dat v rozsahu svého scope. Výchozí scope nově vytvořeného tokenu je navíc `read` (dříve `read_write`) — princip nejmenšího oprávnění.
+- **Zpřísnění rolí (RBAC) na čtení.** Dosud procházel přes middleware každý požadavek GET pro všechny role a ochranu administrátorských endpointů zajišťovala pouze kontrola uvnitř konkrétní akce. Nově middleware povoluje GET jen na vyjmenované datové a exportní skupiny a administrátorské endpointy i citlivá nastavení blokuje už na vstupu (obrana do hloubky proti případné budoucí chybě v jednotlivé akci).
+- **Veřejné schvalování výkazu je odolné proti souběhu a zahlcení.** Rozhodnutí (schválit / zamítnout) je nově atomické — dva souběžné požadavky se stejným odkazem už nemohou fakturu vystavit a odeslat dvakrát. Veřejné schvalovací endpointy mají navíc limit počtu požadavků na IP adresu.
+- **Drobná zpevnění (defense-in-depth):** stahování příloh a archivních PDF posílá `X-Content-Type-Options: nosniff` a restriktivní CSP; diagnostika v `/api/health` (včetně upozornění na klíč šifrování) je nově jen pro přihlášené; redakce tajemství v nastavení dodavatele pokrývá i případné budoucí sloupce; ošetření neznámé velikosti při nahrávání bankovních výpisů; escapování zástupných znaků (`%`, `_`) ve fulltextovém hledání dokumentů; `LIBXML_NONET` při parsování odpovědi z registru plátců DPH; ověření vlastnictví cílové entity při propojování dokumentu.
+
+### Changed
+
+- **Účetní (role „účetní") může nově plně spravovat přijaté faktury** přes API (vytváření, úpravy, položky, PDF, přechody stavu, párování záloh) — dosud kvůli chybějícímu pravidlu v RBAC tyto operace propadaly do administrátorského omezení.
+
 ## [4.24.0] — 2026-06-12
 
 ### Added
