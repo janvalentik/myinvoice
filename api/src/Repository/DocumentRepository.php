@@ -156,7 +156,9 @@ final class DocumentRepository
         // neumí LIMIT s parametrem typu string. Placeholdery jsou poziční (?),
         // protože MySQL native prepare nepovoluje opakování pojmenovaného placeholderu.
         $lim = max(1, min(500, $limit));
-        $like = '%' . $q . '%';
+        // Escapuj LIKE wildcardy (%/_) — jinak `q=%%%…` vynutí full scan content_text
+        // (slow-query DoS) a nekonzistentní match. MATCH AGAINST params zůstávají raw.
+        $like = '%' . addcslashes($q, '%_\\') . '%';
 
         if (mb_strlen($q) >= 3) {
             $sql = 'SELECT ' . self::COLS . ',

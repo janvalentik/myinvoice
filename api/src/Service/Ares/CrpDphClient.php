@@ -129,7 +129,9 @@ final class CrpDphClient
 
         $prev = libxml_use_internal_errors(true);
         $dom = new \DOMDocument();
-        $ok = $dom->loadXML($xml);
+        // LIBXML_NONET — zakázat síťový přístup při parsování (defenzivní parita
+        // s ISDOC/Pohoda parsery; externí entity jsou na PHP 8 default off, host je pinned).
+        $ok = $dom->loadXML($xml, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
         libxml_clear_errors();
         libxml_use_internal_errors($prev);
         if (!$ok) {

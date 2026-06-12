@@ -61,11 +61,14 @@ final class DeletePurchaseInvoicePdfAction
               WHERE id = ? AND supplier_id = ?'
         )->execute([$id, $supplierId]);
 
-        // Smazat fyzický soubor JEN POKUD ho už nepoužívá jiná faktura (dedup případ)
+        // Smazat fyzický soubor JEN POKUD ho už nepoužívá jiná faktura TÉHOŽ dodavatele
+        // (dedup případ). Soubory jsou uložené per-supplier (supplier-{id}/{hash}.pdf),
+        // takže scope na supplier_id zabrání tomu, aby identické PDF u jiného dodavatele
+        // bránilo smazání vlastního souboru (orphan na disku).
         $stmt = $this->db->pdo()->prepare(
-            'SELECT COUNT(*) FROM purchase_invoices WHERE pdf_hash = ? AND id != ?'
+            'SELECT COUNT(*) FROM purchase_invoices WHERE pdf_hash = ? AND supplier_id = ? AND id != ?'
         );
-        $stmt->execute([$hash, $id]);
+        $stmt->execute([$hash, $supplierId, $id]);
         $stillUsed = (int) $stmt->fetchColumn();
 
         $fileDeleted = false;

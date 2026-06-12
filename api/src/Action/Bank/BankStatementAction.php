@@ -90,8 +90,11 @@ final class BankStatementAction
         }
 
         // Limit velikosti — GPC výpisy bývají max stovky kB. 5 MiB je více než dost a chrání před DoS.
+        // Pozn.: getSize() může být null (neznámá délka) → fallback na stream, a po
+        // načtení ještě backstop přes strlen, aby null-size upload neprošel.
         $maxSize = 5 * 1024 * 1024;
-        if (($file->getSize() ?? 0) > $maxSize) {
+        $declaredSize = $file->getSize() ?? $file->getStream()->getSize();
+        if ($declaredSize !== null && $declaredSize > $maxSize) {
             return Json::error($response, 'file_too_large', 'Soubor je příliš velký (max 5 MiB).', 413);
         }
 
@@ -104,6 +107,9 @@ final class BankStatementAction
         }
 
         $content = (string) $file->getStream()->getContents();
+        if (strlen($content) > $maxSize) {
+            return Json::error($response, 'file_too_large', 'Soubor je příliš velký (max 5 MiB).', 413);
+        }
         if (strlen($content) < 50) {
             return Json::error($response, 'empty_file', 'Soubor je prázdný.', 400);
         }
@@ -373,8 +379,10 @@ final class BankStatementAction
         }
 
         // PDF výpisy bývají do pár MB; 10 MiB je bezpečný strop (MEDIUMBLOB zvládá 16 MiB).
+        // getSize() může být null → fallback na stream + backstop přes strlen níže.
         $maxSize = 10 * 1024 * 1024;
-        if (($file->getSize() ?? 0) > $maxSize) {
+        $declaredSize = $file->getSize() ?? $file->getStream()->getSize();
+        if ($declaredSize !== null && $declaredSize > $maxSize) {
             return Json::error($response, 'file_too_large', 'Soubor je příliš velký (max 10 MiB).', 413);
         }
 
@@ -384,6 +392,9 @@ final class BankStatementAction
         }
 
         $content = (string) $file->getStream()->getContents();
+        if (strlen($content) > $maxSize) {
+            return Json::error($response, 'file_too_large', 'Soubor je příliš velký (max 10 MiB).', 413);
+        }
         // Magic bytes — PDF musí začínat "%PDF-" (případně s BOM/whitespace na začátku).
         if (!str_starts_with(ltrim($content, "\x00\x09\x0a\x0d\x20\xef\xbb\xbf"), '%PDF-')) {
             return Json::error($response, 'invalid_pdf', 'Soubor není platné PDF.', 400);

@@ -55,7 +55,8 @@ final class CreateTokenAction
         $supplierId = isset($body['supplier_id']) && $body['supplier_id'] !== ''
             ? (int) $body['supplier_id']
             : null;
-        $scope = (string) ($body['scope'] ?? 'read_write');
+        // Default least-privilege: bez explicitního scope je token jen pro čtení.
+        $scope = (string) ($body['scope'] ?? 'read');
         $expiresRaw = trim((string) ($body['expires_at'] ?? ''));
         $totpCode = trim((string) ($body['totp_code'] ?? ''));
 

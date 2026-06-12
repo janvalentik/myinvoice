@@ -86,7 +86,11 @@ final class PublicApprovalDecideAction
             if (mb_strlen($reason) > 2000) {
                 $reason = mb_substr($reason, 0, 2000);
             }
-            $this->repo->setApprovalDecision($invoiceId, 'rejected', $decidedBy, $reason);
+            // Atomicky — jen vítěz závodu pokračuje (TOCTOU guard).
+            if (!$this->repo->decideIfRequested($invoiceId, $token, 'rejected', $decidedBy, $reason)) {
+                return Json::error($response, 'token_invalid_or_expired',
+                    'Tento odkaz byl již použit nebo není platný.', 404);
+            }
             $this->logger->log('invoice.approval_rejected', null, 'invoice', $invoiceId, [
                 'reason' => $reason,
                 'by' => 'public',
@@ -104,7 +108,12 @@ final class PublicApprovalDecideAction
         if ($approveComment !== '' && mb_strlen($approveComment) > 2000) {
             $approveComment = mb_substr($approveComment, 0, 2000);
         }
-        $this->repo->setApprovalDecision($invoiceId, 'approved', $decidedBy, $approveComment !== '' ? $approveComment : null);
+        // Atomicky — jen vítěz závodu pokračuje (jinak by AutoIssueAndSendService
+        // mohl fakturu vystavit a odeslat dvakrát při souběžných requestech).
+        if (!$this->repo->decideIfRequested($invoiceId, $token, 'approved', $decidedBy, $approveComment !== '' ? $approveComment : null)) {
+            return Json::error($response, 'token_invalid_or_expired',
+                'Tento odkaz byl již použit nebo není platný.', 404);
+        }
         $this->logger->log('invoice.approval_approved', null, 'invoice', $invoiceId, [
             'by' => 'public',
             'decided_by_email' => $decidedBy,

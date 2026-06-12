@@ -517,9 +517,20 @@ final class SettingsAction
         ];
         // Bezpečnost: do API NIKDY neposílat žádná tajemství. Redakce vzorem `*_enc`
         // je odolná vůči nově přidaným šifrovaným sloupcům (původní explicitní výčet
-        // nechával unikat idoklad/fakturoid/anthropic credentials).
+        // nechával unikat idoklad/fakturoid/anthropic credentials). Doplněno o
+        // obecné secret-ish názvy, aby se případný budoucí tajný sloupec BEZ přípony
+        // `_enc` taky neprosákl (defense-in-depth — allowlist by byl křehčí, supplier
+        // má desítky legitimních polí, které FE potřebuje).
         foreach (array_keys($row) as $k) {
-            if (str_ends_with((string) $k, '_enc')) {
+            $lk = strtolower((string) $k);
+            if (str_ends_with($lk, '_enc')
+                || str_contains($lk, 'password')
+                || str_contains($lk, 'secret')
+                || str_contains($lk, 'api_key')
+                || str_contains($lk, 'access_token')
+                || str_contains($lk, 'passphrase')
+                || str_contains($lk, 'private_key')
+            ) {
                 unset($row[$k]);
             }
         }

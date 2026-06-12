@@ -567,3 +567,263 @@ Všechny 4 nálezy ověřené jako reálné v `v3.5.0` a opravené v `v3.5.1`.
 **Test:** 241 PHPUnit testů (~520 assertions), všechny zelené (+16 nových).
 Plus regression guard struktura — pokud někdo v budoucnu znovu otevře jeden
 z těchto sinkú, testy ho chytí v CI.
+
+---
+
+# Čtvrtý interní audit (2026-06-12) — externí zneužitelnost dat
+
+> **Zadání majitele:** ověřit nemožnost zneužít data **zvenčí** a dostat se k fakturám,
+> dokumentům a klientům. Připomínka: `supplier_id` viditelné napříč přihlášenými uživateli
+> je **by design** (jedna instalace, sdílení uživatelé, více dodavatelských firem) — to se
+> neřeší. Audit cílí na (a) neautentizovanou plochu, (b) přístup k souborům zvenčí,
+> (c) IDOR/path-traversal, (d) injekce/RCE/SSRF, (e) únik tajemství, (f) eskalaci práv
+> nad rámec role.
+>
+> **Metoda:** review modelem **Fable 5** (`claude-fable-5`), 6 paralelních auditních
+> průchodů (dokumenty, neautentizovaná plocha, PAT+RBAC, přijaté faktury+soubory,
+> SQLi+mass-assignment, integrace+tajemství+RCE) + manuální ověření klíčových nálezů na
+> úrovni `file:line`. Pokrývá funkce přidané od minulého auditu (v3.5.1 → v4.24): sekce
+> Dokumenty, přijaté faktury, AI extrakce, QR platby, IMAP avíza, PAT public API, CRM.
+>
+> **Celkový verdikt:** **žádný P0**. Aplikace je z pohledu externí zneužitelnosti ve
+> velmi dobrém stavu — veškerá data i soubory jsou za `AuthMiddleware`, IIS blokuje přímý
+> přístup ke `storage/`, repozitáře jsou důsledně parametrizované, žádné `eval`/SSRF přes
+> uživatelské URL, tajemství šifrovaná at-rest. Nálezy se týkají hlavně **rozsahu PAT
+> tokenů (P1)**, neautentizovaného schvalovacího toku (P2) a křehkosti RBAC (P2 latentní).
+
+## P1 — Vysoká
+
+### NX-P1-1 — Personal Access Token (PAT) = plná role tvůrce na celém interním API, mimo CSRF i 2FA  ✅ *(opraveno 2026-06-12)*
+- **Soubory:** `api/src/Action/Auth/Tokens/CreateTokenAction.php:58` (default scope `read_write`),
+  `api/src/Middleware/ApiScopeMiddleware.php:42-54` (řeší jen read/read_write, **ne cestu**),
+  `api/src/Middleware/ApiVersionRewriteMiddleware.php:31-34` (`/api/v1/*` → `/api/*`, stejný handler),
+  `api/src/Middleware/RoleMiddleware.php:119-131` (admin token = „smí všechno", token nemá vlastní strop role),
+  `api/src/Service/Auth/ApiTokenService.php:98-108` (token dědí živou `users.role`),
+  `api/src/Middleware/CsrfMiddleware.php` (bearer přeskakuje CSRF), `RequireTotpMiddleware.php` (bearer přeskakuje vynucenou 2FA).
+- **Problém:** Veřejné API je dokumentované (OpenAPI) jako read-only kurátorovaný subset
+  `/api/v1/*`. Ve skutečnosti je `/api/v1/` jen kosmetický alias — `ApiVersionRewrite` přepíše
+  cestu na `/api/*` a token může volat i `/api/*` přímo. Žádný middleware neomezuje, **které
+  cesty** smí bearer token zasáhnout. Token nese **plnou živou roli uživatele**, který ho
+  vytvořil. Výchozí scope je navíc `read_write`.
+- **Útok / dopad:** Únik PAT (z CI proměnné, logu integrace, .env na klientovi, screenshotu)
+  = headless plný přístup k účtu. `read` token admina přečte `/api/admin/users`,
+  `/api/admin/activity-log`, všechna data všech dodavatelů; `read_write` token (default!) admina
+  zmůže vše co admin v UI — `/api/admin/users` (založení admina), `/api/admin/email-templates`
+  (Twig úprava), `/api/admin/update/trigger`, `/api/settings/*`, smazání dat — **bez CSRF tokenu
+  a bez 2FA**. Uživatel přitom čeká „omezený API klíč na čtení". Toto je nejvýznamnější
+  externí vektor: jeden uniklý řetězec ≠ jen read-only veřejná data, ale celý účet.
+- **Návrh opravy:**
+  1. **Path allowlist pro bearer** — nový check (v `ApiScopeMiddleware` nebo `RoleMiddleware`),
+     který bearer requesty pustí jen na dokumentovaný veřejný subset (`/api/v1/*` resp. mapu
+     povolených `/api/*` cest); `/api/admin/*`, `/api/settings/*`, `/api/auth/tokens` → 403.
+  2. **Strop role tokenu** — token nikdy nedostane admin-tier endpointy, i když ho vytvořil
+     admin (nebo zavést explicitní per-token scope nad rámec read/read_write).
+  3. **Default scope `read`** v `CreateTokenAction` (opt-in k zápisu).
+  4. Zvážit odmítnutí vydání tokenu uživateli bez TOTP, když je `auth.require_totp` zapnuté
+     (token jinak obchází 2FA bránu).
+- **Pozn.:** Hygiena tokenu jinak solidní — 256bit `random_bytes`, ukládá se jen `sha256`,
+  plaintext jednou, nikdy nelogován; expiry/revoke/`is_active` vynuceny v SQL; step-up TOTP
+  při vytváření; supplier-bound token nemůže přeskočit do jiné firmy. Problém je výhradně
+  **rozsah autority** vydaného tokenu.
+
+## P2 — Střední
+
+### NX-P2-1 — RBAC `GET *` blanket: čtecí autorizace zcela delegovaná na Action vrstvu  ✅ *(opraveno 2026-06-12)*
+- **Soubor:** `api/src/Middleware/RoleMiddleware.php:87` (`READONLY_RULES = ['GET *', …]`).
+- **Problém:** První readonly pravidlo `GET *` znamená, že **každý GET projde RoleMiddlewarem
+  pro všechny role** (readonly i accountant). Middleware tedy na čtení neposkytuje žádnou
+  ochranu — bezpečnost stojí výhradně na vlastním `guard()`/`isAdmin()` v každém Action.
+- **Stav (ověřeno):** Všechny dnešní admin/citlivé GET endpointy mají vlastní kontrolu role
+  a vrací 403 pro readonly — ověřeno endpoint po endpointu: `UserAdminAction::list`,
+  `ListActivityLogAction`, `ListSentEmailsAction`, `SmtpLogAnalysisAction`,
+  `EmailTemplateAction::list/get`, `CronJobsAction`, `*CredentialsAction::status`,
+  `UpdateAction::status`, `ApprovalListAction`, `BankEmailNoticeAction::overview`.
+  **Stahování podpisového certifikátu** (`SigningProfilesAction::credentialCertificate`)
+  vrací **jen metadata** (fingerprint/subject/platnost), nikdy P12/klíč, a readonly dostane 404.
+- **Riziko:** Není dnes exploitovatelné, ale je to **defense-in-depth díra** — jakýkoli budoucí
+  admin GET, který zapomene vlastní check, je tiše vystaven readonly uživateli (a dle NX-P1-1
+  i read-scope tokenu readonly uživatele).
+- **Návrh:** Nahradit `GET *` explicitním allowlistem GET cest (data + exporty) a nechat
+  `/api/admin/*` a citlivé `/api/settings/*` propadnout do admin-only fallbacku → middleware
+  i Action enforce-ují v hloubce.
+
+### NX-P2-2 — Veřejné schvalovací endpointy: bez rate-limitu + neatomické rozhodnutí (TOCTOU)  ✅ *(opraveno 2026-06-12)*
+- **Soubory:** `api/src/Middleware/RateLimitMiddleware.php:107-167` (žádné pravidlo pro
+  `/api/public/approval/*`; obecné per-user buckety vyžadují `userId>0`, což je pro anonymní
+  cestu nikdy), `api/src/Action/Approval/PublicApprovalDecideAction.php:51-115`,
+  `api/src/Repository/InvoiceRepository.php:1220-1234` (`setApprovalDecision` dělá bezpodmínečný UPDATE).
+- **Problém A (rate-limit):** GET i `decide` na `/api/public/approval/{token}` jsou bez
+  jakéhokoli throttle. Token je `random_bytes(24)` = 96 bit → brute-force **neproveditelný**
+  (proto ne výš), ale zůstává neomezený anonymní DoS (každý GET = 2 indexované dotazy +
+  načtení work-reportu) a obejití zamýšleného CAPTCHA limitu.
+- **Problém B (TOCTOU):** `decide` je neatomické read-then-write — kontrola
+  `approval_status === 'requested'` a následný UPDATE jsou oddělené, bez transakce/zámku a
+  `setApprovalDecision` updatuje bezpodmínečně. Dva souběžné `approve` se stejným tokenem oba
+  projdou → faktura se může **vystavit a odeslat e-mailem dvakrát** (přes `AutoIssueAndSendService`).
+- **Návrh:** (A) IP-bucket pravidlo pro `/api/public/approval/` v `ruleFor()` (např. 30/min/IP).
+  (B) Atomický UPDATE: `… SET approval_status=?, approval_token=NULL WHERE id=? AND approval_status='requested'`
+  a pokračovat jen při `rowCount()===1` (nebo `SELECT … FOR UPDATE` v transakci).
+
+### NX-P2-3 — IMAP avíza: admin může nasměrovat server na libovolný host:port (SSRF primitiv)  ⚠️ *(P3 pro single-tenant)*
+- **Soubory:** `api/src/Service/Bank/EmailNotice/WebklexImapMailboxClient.php:120-132`
+  (host/port/`validate_cert` doslova z nastavení, bez allowlistu),
+  `api/src/Action/Bank/BankEmailNoticeAction.php:130-147,291-304` (`browseImapFolders` merguje
+  host přímo z těla requestu — bez uložení).
+- **Problém:** `POST /api/settings/bank-email-notices/imap/test`, `…/imap-accounts/folders`,
+  `…/{id}/test`, `…/scan` otevřou TCP spojení na zadaný host. Admin může poslat
+  `{host:"169.254.169.254",port:80}` → interní port-scan / connection oracle; `validate_cert=false`
+  umožní MITM odchyt IMAP hesla. `test()` vrací i raw text výjimky klientovi (info leak).
+- **Stav:** **Pouze admin** (RoleMiddleware admin fallback + in-action `role==='admin'`).
+  Pro self-hosted single-tenant (admin = provozovatel infry) je to **P3**. **P2 jen** pokud
+  by model hrozeb zahrnoval nedůvěryhodné/sdílené adminy (SaaS) — role je globální, ne per-tenant.
+- **Návrh:** volitelný egress allowlist IMAP hostů; nevracet raw text výjimky; zvážit vynucené
+  `validate_cert=true`.
+
+## P3 — Nízká / defense-in-depth
+
+- **NX-P3-1** — `DocumentRepository::search` (**`api/src/Repository/DocumentRepository.php:159`**)
+  neescapuje LIKE wildcardy (`%`/`_`). Není SQLi (hodnota bindovaná), ale `q=%%%…` vynutí full
+  scan `content_text` (slow-query DoS) a nekonzistentní match. Všude jinde se používá
+  `addcslashes($q,'%_\\')`. Fix: `'%' . addcslashes($q,'%_\\') . '%'` (MATCH AGAINST nechat raw).
+- **NX-P3-2** — CAPTCHA je defaultně no-op (`captcha.provider='none'`) a i nakonfigurovaná má
+  `fail_open=true` (**`api/src/Service/Captcha/TurnstileVerifier.php:28-44`**). Pro `decide`
+  (NX-P2-2) je CAPTCHA jediný throttle a je vypnutá. Návrh: doporučit v produkci
+  `captcha.provider=turnstile`, pro approval zvážit `fail_open=false`.
+- **NX-P3-3** — Bank upload obejití velikostního limitu při `getSize()===null`
+  (**`api/src/Action/Bank/BankStatementAction.php:94` a `:377`**): `($file->getSize() ?? 0) > $max`
+  s null projde a celý soubor se načte do paměti. `UploadPurchaseInvoicePdfAction` to řeší
+  fallbackem na stream-size — sjednotit. Reálně ohraničeno PHP `post_max_size`.
+- **NX-P3-4** — `DownloadAttachmentAction` (**`:51-58`**) a `DownloadArchivedPdfAction` servírují
+  bez per-response `X-Content-Type-Options: nosniff`/CSP (na rozdíl od `DocumentFileAction`,
+  které přidává `Content-Security-Policy: default-src 'none'; sandbox`). Dnes kryté globálním
+  nosniff v `web.config`/`.htaccess` + MIME whitelistem při uploadu. Návrh: přidat nosniff+CSP
+  přímo na response (nezáviset na web-server vrstvě).
+- **NX-P3-5** — `GET /api/settings/supplier`/`/api/suppliers` (**`SettingsAction.php:518-526`**)
+  redaguje sloupce **konvencí přípony `_enc`** (+ explicitně `idoklad_access_token`). Tajemství
+  neuniká, ale readonly vidí semi-citlivé identifikátory (`fakturoid_client_id/email/slug`,
+  `idoklad_client_id`) a **budoucí tajný sloupec bez přípony `_enc` by tiše unikl**. Návrh:
+  explicitní allowlist vracených polí místo `SELECT *` + denylist.
+- **NX-P3-6** — `/api/health` (**`HealthAction.php:33-40`**) anonymně leakuje dostupnost DB/Redis
+  + warning o klíči šifrování. Drobná rekognoskace; zvážit gate za auth nebo zúžení payloadu.
+- **NX-P3-7** — `CrpDphClient::parseResponse` (**`:130-137`**) volá `loadXML` bez `LIBXML_NONET`.
+  Na PHP 8.5 jsou externí entity default off a host je pinned (vládní registr), takže riziko
+  zanedbatelné — přidat `LIBXML_NONET` defenzivně (parita s ISDOC/Pohoda parsery).
+- **NX-P3-8** — `SecretEncryption::decrypt` (**`:45-48`**) vrací neprefixované hodnoty jako legacy
+  plaintext (zpětná kompatibilita) — exploitovatelné jen po kompromitaci DB; legacy řádky nemají
+  integritu. Po doběhnutí migrace zvážit tvrdé odmítnutí neprefixovaných hodnot.
+- **NX-P3-9** — `DocumentsAction::addLink` (**`:209-224`**) neověří, že cílová entita (`entity_id`)
+  patří aktuálnímu dodavateli (dokument ano). Read-back je bezpečný (`labelFor` scope-uje a vrací
+  `#id`), takže jen vznikne dangling link. Návrh: validovat vlastnictví `entity_id` před `attach()`.
+- **NX-P3-10** — `DeletePurchaseInvoicePdfAction` (**`:65-69`**) počítá „soubor ještě používán
+  jinde" globálně bez `supplier_id` filtru → při identickém PDF u dvou dodavatelů zůstane vlastní
+  fyzický soubor jako orphan (žádné cizí smazání — `@unlink` je realpath-confined na vlastní dir).
+  Hygiena: scope-ovat count na `AND supplier_id = ?`.
+- **NX-P3-11** — Amplifikace zdrojů u ZIP importu (**`ZipImporter` `MAX_ENTRIES=5000`**) — 5000
+  drobných obrázků = 5000 thumbnail/text-extraction průchodů; a `UploadDocumentAction` nemá
+  agregátní cap na součet bajtů jedné multipart dávky (jen per-file + count 2000). Ohraničeno
+  PHP ini; návrh: snížit `MAX_ENTRIES`/agregátní rozpočet bajtů, throttle thumbnailů.
+
+## By-design / informational (bez opravy)
+
+- **SupplierScopeMiddleware** (`:74-81`) přijme jakýkoli existující `supplier_id`
+  z `X-Supplier-Id`/`?supplier_id=` bez kontroly členství uživatele → každý přihlášený
+  (i **readonly**) je čtenářem všech firem. **Potvrzeno majitelem jako by design.** Upozornění:
+  od zavedení sekce **Dokumenty** to znamená, že readonly vidí i libovolné nahrané soubory
+  (vč. ZFO z datové schránky) všech firem — vědomé rozhodnutí. PAT s `supplier_id=null` (default)
+  také pivotuje mezi firmami; bound token ne.
+- ~~**RoleMiddleware ACCOUNTANT_RULES** nemá záznam pro `/api/purchase-invoices` → accountant
+  nemůže mutovat přijaté faktury.~~ ✅ **Opraveno 2026-06-12** — přidáno
+  `'* #^/api/purchase-invoices(/|$)#'` do `ACCOUNTANT_RULES` (účetní má teď plnou CRUD na
+  přijatých fakturách). Selhávalo uzavřeně, takže šlo o funkční mezeru, ne bezpečnostní díru.
+- **Cron runner** (`RunCronJobAction`) a **`/api/admin/update/trigger`** (`UpdateAction`) — žádné
+  RCE: cron jméno proti statickému allowlistu `CronCatalog` + `escapeshellarg`; update jen zapíše
+  JSON flag (`storage/upgrade-requested.json`), `target_version` se nikdy nedostane do shellu.
+
+## Pozitivní nálezy (co drží)
+
+- **Žádné neautentizované čtení dat** — všechny `/api/documents*`, `/api/invoices*`,
+  `/api/clients*`, `/api/purchase-invoices*` jsou mimo `PUBLIC_PATHS` → 401 bez session/bearer.
+- **IIS `web.config`** blokuje přímý přístup ke `storage/`, `private/`, `db/`, `log/`, `source/`,
+  `tools/`, `api/src`, `api/vendor`, plus `.env/.sql/.pem/.log/cfg.php/*.md`. Nahrané soubory
+  tečou výhradně přes API s auth + ownership scope, nikdy přímým URL.
+- **Path-traversal uzavřen** — Dokumenty jsou content-addressed (sha256 jako jméno na disku,
+  nikdy user-input), `assertInsideBase()` + case-insensitive compare na Windows; přijaté PDF/
+  výpisy přes `realpath()` prefix check; přílohy/výpisy jako DB BLOB. Zip-slip i zip-bomb
+  ošetřeny (entry count, total uncompressed, per-entry, ratio guard, streamed abort), XXE v ZFO
+  i import parserech odmítá `<!DOCTYPE` + `LIBXML_NONET`.
+- **IDOR** — všechny read/download/mutate dle `{id}` scope-ují `WHERE supplier_id=?` /
+  `SupplierGuard::owns`; bank-tx tamper fix (TA-P0-1) intaktní ve všech metodách včetně
+  `createPurchaseInvoice`.
+- **SQLi** — napříč repozitáři důsledně prepared statements (`ATTR_EMULATE_PREPARES=false`),
+  žádný `PDO::quote` v dynamickém SQL; ORDER BY/sloupce whitelistované přes `match()`, IN(…)
+  přes placeholdery, LIMIT/OFFSET int-cast nebo `bindValue(PARAM_INT)`. **Žádná injekce.**
+- **Mass-assignment** — supplier whitelist stále bez `logo_path`/`signature_path`; žádný endpoint
+  nedovolí z těla nastavit `supplier_id`/`user_id`/`role`/`*_enc`/`paid_total`/`status`.
+- **Tajemství at-rest** — AES-256-GCM, čerstvý nonce per encrypt, auth tag, formát `enc:v1:…`;
+  všechny integrační klíče (Anthropic/iDoklad/Fakturoid/IMAP/TOTP/podpisové passphrase) šifrované,
+  v GET odpovědích jen maskovaný status, nikde nelogované. SMTP heslo jen z configu, ne v DB.
+- **Žádný SSRF přes uživatelské URL** — base URL všech integrací (Anthropic/iDoklad/Fakturoid/
+  ČNB/ARES/CRPDPH/GitHub) jsou hardcoded konstanty; user-řízené jsou jen bezpečné parametry
+  (model v body, urlencode-ovaný slug, digit-only IČO/DIČ, formátované datum).
+- **Reset hesla / session** — token 256bit, ukládá se jen sha256, single-use + 60 min TTL,
+  invalidace starších + všech sessions; session token 64hex, `hash_equals`, `__Host-` cookie.
+
+## Doporučené pořadí oprav
+
+| Priorita | Akce | Stav |
+|---|---|---|
+| **P1** | NX-P1-1 — path/role scope pro PAT (+ default scope `read`) | ✅ hotovo |
+| **P2** | NX-P2-2 — atomický approval `decide` + rate-limit `/api/public/approval/*` | ✅ hotovo |
+| **P2** | NX-P2-1 — zúžit RBAC `GET *` na explicitní allowlist | ✅ hotovo |
+| **P2** | (bonus) accountant CRUD na `/api/purchase-invoices` (funkční mezera) | ✅ hotovo |
+| P3 | NX-P3-1 — LIKE escape v `DocumentRepository::search` | ✅ hotovo |
+| P3 | NX-P3-3/4/6 — nosniff/CSP na download, bank size guard, supplier redakce | ✅ hotovo |
+| P3 | NX-P3-5/7/8 — health gate, `LIBXML_NONET` CRPDPH | ✅ hotovo |
+| P3 | NX-P3-9/10 — addLink ownership, purchase PDF dedup scope | ✅ hotovo |
+| — | NX-P3-11 — ZIP entry-count amplifikace | ⏸ ponecháno (ohraničeno PHP ini, nízká priorita) |
+| — | NX-P2-3 — IMAP egress allowlist | ⏸ jen pokud SaaS/nedůvěryhodní admini |
+
+## Implementace fixů (2026-06-12) — souhrn
+
+Review i implementace proběhly modelem **Fable 5**. Žádné API routy ani dokumentované
+schéma se neměnily → `openapi.yaml` netknuto. Testy: **Unit 863 zelených** (4 skip = DB/
+integration), **Architecture 6 zelených**, lint všech 16 změněných souborů čistý.
+
+- [x] **NX-P1-1** — `ApiScopeMiddleware`: nový `BEARER_ALLOWED` path allowlist (zrcadlí
+  veřejný subset `openapi.yaml`); bearer mimo subset → `403 token_endpoint_forbidden`
+  (vyhodnoceno PŘED scope, takže ani admin token se nedostane na `/api/admin/*`,
+  `/api/auth/*` mimo `api-me`, ani na signing/email-branding/IMAP nastavení).
+  `CreateTokenAction` default scope `read_write` → `read`. (Vydání tokenu bez TOTP při
+  `auth.require_totp` už blokuje `RequireTotpMiddleware` — netřeba duplikovat.)
+  Test: `ApiScopeMiddlewareTest` (9 testů).
+- [x] **NX-P2-1 + bonus** — `RoleMiddleware`: blanket `'GET *'` nahrazeno explicitním
+  allowlistem datových/exportních skupin; `/api/admin/*` (mimo export carve-outy) a citlivá
+  nastavení propadnou do admin-only fallbacku. Přidáno `/api/purchase-invoices` do
+  `ACCOUNTANT_RULES` (+ čtení signing settings a import-job statusu pro účetního).
+  Test: rozšířený `RoleMiddlewareTest` (+6 testů).
+- [x] **NX-P2-2** — `InvoiceRepository::decideIfRequested()` (atomický UPDATE s
+  `WHERE … AND approval_token = ? AND approval_status = 'requested'`, vrací rowCount===1);
+  `PublicApprovalDecideAction` ho používá v obou větvích (jen vítěz závodu pokračuje →
+  žádné dvojí vystavení/odeslání). `RateLimitMiddleware` nové pravidlo
+  `approval_per_min_per_ip` (default 30/min/IP) pro `/api/public/approval/*` + klíč v
+  `cfg.sample.php`.
+- [x] **NX-P3-1** — `DocumentRepository::search`: `addcslashes($q,'%_\\')` v LIKE větvích.
+- [x] **NX-P3-3** — `DownloadAttachmentAction` + `DownloadArchivedPdfAction`:
+  `X-Content-Type-Options: nosniff` + `Content-Security-Policy: default-src 'none'; sandbox`.
+- [x] **NX-P3-4** — `BankStatementAction` (upload GPC i PDF): `getSize()` null fallback na
+  stream + backstop přes `strlen` po načtení.
+- [x] **NX-P3-5** — `HealthAction`: diagnostické `warnings` (vč. secret-key warning) jen pro
+  přihlášené; anonymní healthcheck dostane jen status/db/redis/time.
+- [x] **NX-P3-6** — `SettingsAction` supplier redakce rozšířena o secret-ish názvy
+  (`password`/`secret`/`api_key`/`access_token`/`passphrase`/`private_key`) nad rámec `*_enc`.
+- [x] **NX-P3-7** — `CrpDphClient::parseResponse`: `loadXML(..., LIBXML_NONET | …)`.
+- [x] **NX-P3-9** — `DocumentLinkRepository::entityBelongsToSupplier()` + volání v
+  `DocumentsAction::addLink` (cizí/neexistující entita → 404, žádná dangling vazba).
+- [x] **NX-P3-10** — `DeletePurchaseInvoicePdfAction`: dedup count scope-ovaný na `supplier_id`.
+
+Regression guard: `tests/Unit/Security/SecurityHardening202606Test.php` (code-inspection,
+13 testů) — uzamyká fixy v CI.
+
+> Implementováno commitnutelně, ale **bez commitu** (čeká na souhlas). NX-P3-11 (ZIP
+> amplifikace) a NX-P2-3 (IMAP egress allowlist) ponechány jako vědomé „won't fix teď"
+> (ohraničené PHP ini / relevantní jen pro nedůvěryhodné adminy).

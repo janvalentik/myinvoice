@@ -64,6 +64,10 @@ final class RoleMiddleware implements MiddlewareInterface
         '* #^/api/clients(/|$)#',
         '* #^/api/projects(/|$)#',
         '* #^/api/invoices(/|$)#',
+        // Přijaté faktury — účetní smí plnou CRUD (vč. items, PDF, transition,
+        // payment-qr, link-advance). Bez tohoto pravidla padaly všechny non-GET
+        // na purchase-invoices do admin-only fallbacku (funkční mezera).
+        '* #^/api/purchase-invoices(/|$)#',
         '* #^/api/work-reports(/|$)#',
         '* #^/api/bank-statements(/|$)#',
         '* #^/api/bank-transactions(/|$)#',
@@ -75,20 +79,66 @@ final class RoleMiddleware implements MiddlewareInterface
         // Vlastní podpisové profily účetních; Action vrstva hlídá feature flag i owner_user_id.
         '* #^/api/settings/signing/profiles(/|$)#',
         '* #^/api/settings/pdf-signing/user-defaults(/|$)#',
-        // ZIP export může i účetní (read of mass PDF)
+        // Čtení globálního nastavení podepisování (SigningProfilesAction::settings = admin|accountant)
+        'GET #^/api/settings/signing$#',
+        // ZIP export + stav import jobu může i účetní (read)
         'GET #^/api/admin/invoices-zip$#',
+        'GET #^/api/admin/imports/[0-9]+$#',
     ];
 
     /**
      * Endpointy povolené i pro 'readonly' (GET data + self-service).
      * Pokud match, povoleno všem rolím (tj. i readonly).
+     *
+     * POZOR: dříve zde bylo blanket `'GET *'`, které pouštělo KAŽDÝ GET pro všechny
+     * role — čtecí autorizace tak stála výhradně na vlastním guardu v Action vrstvě.
+     * Zúženo na explicitní allowlist datových/exportních skupin, aby `/api/admin/*`
+     * (mimo export carve-outy) a citlivá nastavení (signing/pdf-signing/email-branding/
+     * bank-email-notices) propadla do admin-only fallbacku → middleware blokuje
+     * non-admin GET i kdyby Action zapomněl vlastní kontrolu (defense-in-depth).
+     * Allowlist je záměrně velkorysý na byznys data (readonly = čtení + export všeho
+     * krom administrace); jemnější admin/accountant/readonly rozlišení uvnitř settings
+     * řeší Action.
      */
     private const READONLY_RULES = [
-        'GET *', // všechny GETy: čtení dat je dovolené
+        // Self-service / connection test (zbytek je v PUBLIC_OR_SELF)
+        'GET #^/api/auth/(me|api-me|tokens)(/|$)#',
+        'GET #^/api/auth/totp/status$#',
+        // Byznys data
+        'GET #^/api/clients(/|$)#',
+        'GET #^/api/projects(/|$)#',
+        'GET #^/api/invoices(/|$)#',
+        'GET #^/api/purchase-invoices(/|$)#',
+        'GET #^/api/recurring(/|$)#',
+        'GET #^/api/bank-statements(/|$)#',
+        'GET #^/api/bank-transactions(/|$)#',
+        'GET #^/api/documents(/|$)#',
+        'GET #^/api/document-folders(/|$)#',
+        'GET #^/api/suppliers(/|$)#',
+        'GET #^/api/search$#',
+        // Dashboardy / CRM / reporty / daňový optimalizátor (čtení)
+        'GET #^/api/dashboard(/|$)#',
+        'GET #^/api/crm(/|$)#',
+        'GET #^/api/reports(/|$)#',
+        'GET #^/api/tax(/|$)#',
+        // Číselníky
+        'GET #^/api/codebooks(/|$)#',
+        'GET #^/api/expense-categories(/|$)#',
+        'GET #^/api/revenue-categories(/|$)#',
+        'GET #^/api/vat-classifications(/|$)#',
+        // Nastavení — jen čtení supplier + číselníkové sekce; signing/pdf-signing/
+        // email-branding/bank-email-notices NEdáváme readonly (admin/accountant only).
+        'GET #^/api/settings/supplier$#',
+        'GET #^/api/settings/currencies(/|$)#',
+        'GET #^/api/settings/vat-rates(/|$)#',
+        'GET #^/api/settings/units(/|$)#',
+        'GET #^/api/settings/countries(/|$)#',
+        // Admin endpointy typu „export = čtení" (povolené i nižším rolím)
+        'GET #^/api/admin/export$#',
+        'GET #^/api/admin/invoices-zip$#',
         // Měsíční export = čtení (sbalí existující doklady do ZIP), jen kvůli
         // délce renderování běží jako background job — start/cancel/smazání jobu
-        // jsou operační stav exportu, ne mutace business dat. Bez těchto pravidel
-        // by POST/DELETE spadly do admin-only fallbacku, přestože MonthlyExportAction
+        // jsou operační stav exportu, ne mutace business dat. MonthlyExportAction
         // má vlastní guard admin/accountant/readonly („export = čtení").
         'POST #^/api/reports/monthly-export/start$#',
         'POST #^/api/reports/monthly-export/jobs/[0-9]+/cancel$#',

@@ -55,6 +55,11 @@ final class DownloadAttachmentAction
             ->withHeader('Content-Disposition', $disposition)
             ->withHeader('Content-Length', (string) filesize($path))
             ->withHeader('Cache-Control', 'no-store')
+            // Defense-in-depth: nezáviset jen na globálním nosniff z web.config —
+            // zabraň MIME sniffingu a aktivnímu obsahu přímo na response (parita
+            // s DocumentFileAction).
+            ->withHeader('X-Content-Type-Options', 'nosniff')
+            ->withHeader('Content-Security-Policy', "default-src 'none'; sandbox")
             ->withBody($stream);
     }
 }

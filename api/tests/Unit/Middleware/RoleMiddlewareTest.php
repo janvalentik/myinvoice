@@ -134,6 +134,117 @@ final class RoleMiddlewareTest extends TestCase
         }
     }
 
+    /**
+     * Readonly smí GET na všech datových skupinách (čtení + export je dovolené).
+     */
+    public function testReadonlyCanReadBusinessData(): void
+    {
+        foreach ([
+            '/api/clients', '/api/clients/5', '/api/projects', '/api/invoices',
+            '/api/invoices/5/pdf', '/api/purchase-invoices', '/api/purchase-invoices/5/our-pdf',
+            '/api/recurring', '/api/bank-statements', '/api/bank-transactions/5/match-candidates',
+            '/api/documents', '/api/documents/5/download', '/api/document-folders',
+            '/api/suppliers', '/api/search', '/api/dashboard/summary', '/api/crm/overview',
+            '/api/reports/dphkh1/preview', '/api/tax/analysis', '/api/codebooks/currencies',
+            '/api/expense-categories', '/api/revenue-categories', '/api/vat-classifications',
+            '/api/settings/supplier', '/api/settings/currencies', '/api/admin/export',
+            '/api/admin/invoices-zip',
+        ] as $path) {
+            $response = $this->middleware()->process(
+                $this->request('GET', $path, 'readonly'),
+                $this->okHandler(),
+            );
+            self::assertSame(204, $response->getStatusCode(), "readonly GET $path");
+        }
+    }
+
+    /**
+     * Klíčová regrese: GET na admin/citlivé endpointy musí být pro non-admin
+     * blokované UŽ middlewarem (ne jen guardem v Action) — pojistka proti
+     * budoucímu admin GET, který zapomene vlastní kontrolu.
+     */
+    public function testNonAdminCannotReadAdminEndpoints(): void
+    {
+        foreach (['readonly', 'accountant'] as $role) {
+            foreach ([
+                '/api/admin/users',
+                '/api/admin/activity-log',
+                '/api/admin/sent-emails',
+                '/api/admin/cron-jobs',
+                '/api/admin/approvals',
+                '/api/admin/email-templates',
+                '/api/admin/email-templates/invoice_send/cs',
+                '/api/admin/update/status',
+                '/api/admin/smtp-log-analysis',
+                '/api/admin/imports/idoklad/credentials',
+                '/api/settings/bank-email-notices',
+                '/api/settings/email-branding/preview',
+            ] as $path) {
+                $response = $this->middleware()->process(
+                    $this->request('GET', $path, $role),
+                    $this->okHandler(),
+                );
+                self::assertSame(403, $response->getStatusCode(), "$role GET $path");
+            }
+        }
+    }
+
+    public function testAdminCanReadAdminEndpoints(): void
+    {
+        $response = $this->middleware()->process(
+            $this->request('GET', '/api/admin/users', 'admin'),
+            $this->okHandler(),
+        );
+        self::assertSame(204, $response->getStatusCode());
+    }
+
+    /**
+     * Oprava funkční mezery: účetní smí plnou CRUD na přijatých fakturách.
+     */
+    public function testAccountantCanMutatePurchaseInvoices(): void
+    {
+        foreach ([
+            ['POST', '/api/purchase-invoices'],
+            ['PUT', '/api/purchase-invoices/5'],
+            ['PUT', '/api/purchase-invoices/5/items'],
+            ['POST', '/api/purchase-invoices/5/transition'],
+            ['POST', '/api/purchase-invoices/5/pdf'],
+            ['DELETE', '/api/purchase-invoices/5'],
+        ] as [$method, $path]) {
+            $response = $this->middleware()->process(
+                $this->request($method, $path, 'accountant'),
+                $this->okHandler(),
+            );
+            self::assertSame(204, $response->getStatusCode(), "accountant $method $path");
+        }
+    }
+
+    public function testReadonlyCannotMutatePurchaseInvoices(): void
+    {
+        $response = $this->middleware()->process(
+            $this->request('POST', '/api/purchase-invoices', 'readonly'),
+            $this->okHandler(),
+        );
+        self::assertSame(403, $response->getStatusCode());
+    }
+
+    public function testAccountantCanReadImportJobStatusAndSigningSettings(): void
+    {
+        foreach (['/api/admin/imports/42', '/api/settings/signing'] as $path) {
+            $response = $this->middleware()->process(
+                $this->request('GET', $path, 'accountant'),
+                $this->okHandler(),
+            );
+            self::assertSame(204, $response->getStatusCode(), "accountant GET $path");
+        }
+        // readonly na import job status nemá co dělat
+        $response = $this->middleware()->process(
+            $this->request('GET', '/api/admin/imports/42', 'readonly'),
+            $this->okHandler(),
+        );
+        self::assertSame(403, $response->getStatusCode());
+    }
+
     private function middleware(): RoleMiddleware
     {
         return new RoleMiddleware(new ResponseFactory());

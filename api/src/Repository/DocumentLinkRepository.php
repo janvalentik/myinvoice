@@ -35,6 +35,27 @@ final class DocumentLinkRepository
         return $out;
     }
 
+    /**
+     * Ověří, že cílová entita existuje a patří danému dodavateli (scope guard pro
+     * zakládání vazby). Zrcadlí WHERE klauzule z labelFor(). Projects nemají
+     * supplier_id → scope přes klienta.
+     */
+    public function entityBelongsToSupplier(string $type, int $id, int $supplierId): bool
+    {
+        if (!in_array($type, self::ENTITY_TYPES, true) || $id <= 0) {
+            return false;
+        }
+        $sql = match ($type) {
+            'client'           => 'SELECT 1 FROM clients WHERE id = ? AND supplier_id = ? LIMIT 1',
+            'invoice'          => 'SELECT 1 FROM invoices WHERE id = ? AND supplier_id = ? LIMIT 1',
+            'purchase_invoice' => 'SELECT 1 FROM purchase_invoices WHERE id = ? AND supplier_id = ? LIMIT 1',
+            'project'          => 'SELECT 1 FROM projects p JOIN clients c ON c.id = p.client_id WHERE p.id = ? AND c.supplier_id = ? LIMIT 1',
+        };
+        $stmt = $this->db->pdo()->prepare($sql);
+        $stmt->execute([$id, $supplierId]);
+        return $stmt->fetchColumn() !== false;
+    }
+
     public function attach(int $documentId, string $entityType, int $entityId): void
     {
         if (!in_array($entityType, self::ENTITY_TYPES, true)) return;

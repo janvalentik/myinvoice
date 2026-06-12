@@ -1,0 +1,152 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MyInvoice\Tests\Unit\Middleware;
+
+use MyInvoice\Middleware\ApiScopeMiddleware;
+use MyInvoice\Middleware\AuthMiddleware;
+use PHPUnit\Framework\TestCase;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Slim\Psr7\Factory\ResponseFactory;
+use Slim\Psr7\Factory\ServerRequestFactory;
+
+final class ApiScopeMiddlewareTest extends TestCase
+{
+    public function testSessionRequestPassesThroughEvenOnAdminPath(): void
+    {
+        // Non-bearer (session) request — ApiScope ho neřeší vůbec.
+        $req = (new ServerRequestFactory())
+            ->createServerRequest('GET', '/api/admin/users')
+            ->withAttribute(AuthMiddleware::ATTR_METHOD, 'session');
+        $r = $this->middleware()->process($req, $this->okHandler());
+        self::assertSame(204, $r->getStatusCode());
+    }
+
+    public function testBearerReadCanGetPublicResource(): void
+    {
+        $r = $this->middleware()->process(
+            $this->bearer('GET', '/api/clients', 'read'),
+            $this->okHandler(),
+        );
+        self::assertSame(204, $r->getStatusCode());
+    }
+
+    public function testBearerReadCanGetApiMe(): void
+    {
+        $r = $this->middleware()->process(
+            $this->bearer('GET', '/api/auth/api-me', 'read'),
+            $this->okHandler(),
+        );
+        self::assertSame(204, $r->getStatusCode());
+    }
+
+    public function testBearerBlockedFromAdminEndpoint(): void
+    {
+        $r = $this->middleware()->process(
+            $this->bearer('GET', '/api/admin/users', 'read'),
+            $this->okHandler(),
+        );
+        self::assertSame(403, $r->getStatusCode());
+        self::assertSame('token_endpoint_forbidden', $this->errorCode($r));
+    }
+
+    public function testBearerReadWriteStillBlockedFromAdminEndpoint(): void
+    {
+        // Path allowlist se vyhodnocuje PŘED scope — i read_write token admina
+        // se na /api/admin nedostane.
+        $r = $this->middleware()->process(
+            $this->bearer('POST', '/api/admin/users', 'read_write'),
+            $this->okHandler(),
+        );
+        self::assertSame(403, $r->getStatusCode());
+        self::assertSame('token_endpoint_forbidden', $this->errorCode($r));
+    }
+
+    public function testBearerBlockedFromTokenManagementAndSensitiveSettings(): void
+    {
+        foreach ([
+            '/api/auth/tokens',
+            '/api/auth/login',
+            '/api/settings/signing',
+            '/api/settings/signing/profiles/1/credentials/certificate',
+            '/api/settings/bank-email-notices',
+            '/api/settings/email-branding/preview',
+        ] as $path) {
+            $r = $this->middleware()->process(
+                $this->bearer('GET', $path, 'read'),
+                $this->okHandler(),
+            );
+            self::assertSame(403, $r->getStatusCode(), "bearer GET $path");
+            self::assertSame('token_endpoint_forbidden', $this->errorCode($r), "bearer GET $path");
+        }
+    }
+
+    public function testBearerReadCannotWriteAllowedResource(): void
+    {
+        // Path je povolená, ale read scope nesmí POST → insufficient_scope (NE path).
+        $r = $this->middleware()->process(
+            $this->bearer('POST', '/api/clients', 'read'),
+            $this->okHandler(),
+        );
+        self::assertSame(403, $r->getStatusCode());
+        self::assertSame('insufficient_scope', $this->errorCode($r));
+    }
+
+    public function testBearerReadWriteCanWriteAllowedResource(): void
+    {
+        $r = $this->middleware()->process(
+            $this->bearer('POST', '/api/clients', 'read_write'),
+            $this->okHandler(),
+        );
+        self::assertSame(204, $r->getStatusCode());
+    }
+
+    public function testBearerCanReadPublicSettingsSubset(): void
+    {
+        foreach ([
+            '/api/settings/supplier',
+            '/api/settings/currencies',
+            '/api/settings/vat-rates',
+            '/api/settings/units',
+            '/api/settings/countries',
+        ] as $path) {
+            $r = $this->middleware()->process(
+                $this->bearer('GET', $path, 'read'),
+                $this->okHandler(),
+            );
+            self::assertSame(204, $r->getStatusCode(), "bearer GET $path");
+        }
+    }
+
+    private function middleware(): ApiScopeMiddleware
+    {
+        return new ApiScopeMiddleware(new ResponseFactory());
+    }
+
+    private function bearer(string $method, string $path, string $scope): ServerRequestInterface
+    {
+        return (new ServerRequestFactory())
+            ->createServerRequest($method, $path)
+            ->withAttribute(AuthMiddleware::ATTR_METHOD, 'bearer')
+            ->withAttribute(AuthMiddleware::ATTR_API_TOKEN, ['scope' => $scope]);
+    }
+
+    private function errorCode(ResponseInterface $response): ?string
+    {
+        $body = json_decode((string) $response->getBody(), true);
+        return $body['error']['code'] ?? null;
+    }
+
+    private function okHandler(): RequestHandlerInterface
+    {
+        return new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return (new ResponseFactory())->createResponse(204);
+            }
+        };
+    }
+}

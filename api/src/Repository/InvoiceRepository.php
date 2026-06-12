@@ -1234,6 +1234,35 @@ final class InvoiceRepository
     }
 
     /**
+     * Atomické rozhodnutí pro VEŘEJNÝ schvalovací tok (bez auth). Na rozdíl od
+     * `setApprovalDecision` je UPDATE podmíněný `approval_token = ? AND
+     * approval_status = 'requested'`, takže dva souběžné `decide` se stejným
+     * tokenem serializuje DB — vyhraje právě jeden (rowCount === 1), druhý dostane
+     * rowCount 0 a NESMÍ pokračovat (jinak by se faktura vystavila/poslala 2×).
+     *
+     * @return bool true pokud tento request rozhodnutí skutečně zapsal (vyhrál závod)
+     */
+    public function decideIfRequested(int $invoiceId, string $token, string $newStatus, ?string $decidedBy, ?string $rejectionReason): bool
+    {
+        if (!in_array($newStatus, ['approved', 'rejected'], true)) {
+            throw new \InvalidArgumentException("Invalid approval status: $newStatus");
+        }
+        $stmt = $this->db->pdo()->prepare(
+            "UPDATE invoices
+                SET approval_status = ?,
+                    approval_token = NULL,
+                    approval_decided_at = NOW(),
+                    approval_decided_by_email = ?,
+                    approval_rejection_reason = ?
+              WHERE id = ?
+                AND approval_token = ?
+                AND approval_status = 'requested'"
+        );
+        $stmt->execute([$newStatus, $decidedBy, $rejectionReason, $invoiceId, $token]);
+        return $stmt->rowCount() === 1;
+    }
+
+    /**
      * Reset approval na 'none' (pro admin „Změnit stav" → none). Token zneplatněn.
      */
     public function resetApproval(int $invoiceId): void

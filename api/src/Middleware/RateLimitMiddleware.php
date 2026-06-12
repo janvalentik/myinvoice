@@ -139,6 +139,13 @@ final class RateLimitMiddleware implements MiddlewareInterface
             return ['rl:setup-ares:ip:' . $this->ipBucket($ip), 10, 60]; // 10/min/IP
         }
 
+        // Veřejné schvalování výkazu (bez auth, jen token) — IP bucket proti
+        // anonymnímu DoS / opakovaným pokusům (GET i decide). userId je tu vždy 0,
+        // takže generic per-user limit níže by se neuplatnil.
+        if (str_starts_with($path, '/api/public/approval/')) {
+            return ['rl:approval:ip:' . $this->ipBucket($ip), (int) ($rl['approval_per_min_per_ip'] ?? 30), 60];
+        }
+
         // ARES / VIES / CRPDPH lookups (per user) — chrání 24h cache před zaplněním
         if (in_array($path, ['/api/clients/lookup-ares', '/api/clients/lookup-vies', '/api/clients/lookup-bank'], true) && $userId > 0) {
             return ['rl:ares:user:' . $userId, (int) ($rl['ares_per_min_per_user'] ?? 30), 60];

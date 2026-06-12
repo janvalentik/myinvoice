@@ -219,6 +219,11 @@ final class DocumentsAction
         if (!in_array($type, DocumentLinkRepository::ENTITY_TYPES, true) || $eid <= 0) {
             return Json::error($response, 'bad_entity', 'Neplatná vazba.', 400);
         }
+        // Ověř, že cílová entita patří aktuálnímu dodavateli — jinak by vznikla
+        // dangling/cizí vazba (read-back je sice scoped, ale nezakládáme smetí).
+        if (!$this->links->entityBelongsToSupplier($type, $eid, $sid)) {
+            return Json::error($response, 'not_found', 'Propojená entita nenalezena.', 404);
+        }
         $this->links->attach($id, $type, $eid);
         return Json::ok($response, ['links' => $this->links->linksForDocument($id, $sid)]);
     }

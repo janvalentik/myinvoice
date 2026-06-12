@@ -74,6 +74,9 @@ final class DownloadArchivedPdfAction
             ->withHeader('Content-Disposition', $disposition)
             ->withHeader('Content-Length', (string) filesize($path))
             ->withHeader('Cache-Control', 'no-store')
+            // Defense-in-depth: nosniff + sandbox přímo na response (parita s DocumentFileAction)
+            ->withHeader('X-Content-Type-Options', 'nosniff')
+            ->withHeader('Content-Security-Policy', "default-src 'none'; sandbox")
             ->withBody($stream);
     }
 }
