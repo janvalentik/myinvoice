@@ -206,6 +206,28 @@ final class PohodaExporterSchemaTest extends TestCase
         self::assertSame('529.20', $this->xpathOne($xml, '//inv:invoiceSummary/inv:homeCurrency/typ:priceHighVAT'));
     }
 
+    public function testReceivedForeignInvoiceEmitsForeignBlockAndCzkHomeCurrency(): void
+    {
+        // Cizoměnová přijatá faktura: foreignCurrency nese měnu + kurz + celkem v EUR;
+        // homeCurrency je přepočtená na CZK (kurz 25), ne cizoměnové hodnoty.
+        $xml = $this->exporter->buildXml([$this->receivedInvoice([
+            'currency'      => 'EUR',
+            'exchange_rate' => 25.0,
+        ])], $this->purchaseCfg());
+
+        $this->assertValidPohoda($xml);
+        // foreignCurrency: měna + celková částka v EUR.
+        self::assertSame('EUR', $this->xpathOne(
+            $xml, '//inv:invoiceSummary/inv:foreignCurrency/typ:currency/typ:ids'));
+        self::assertSame('3049.20', $this->xpathOne(
+            $xml, '//inv:invoiceSummary/inv:foreignCurrency/typ:priceSum'));
+        // homeCurrency je v CZK = EUR × 25 (ne cizoměnových 2520/529,20).
+        self::assertSame('63000.00', $this->xpathOne(
+            $xml, '//inv:invoiceSummary/inv:homeCurrency/typ:priceHigh'));
+        self::assertSame('13230.00', $this->xpathOne(
+            $xml, '//inv:invoiceSummary/inv:homeCurrency/typ:priceHighVAT'));
+    }
+
     // ─── Obálka dataPack (regrese: žádný zanořený dataPack) ───
 
     public function testBulkDataPackIsFlatWithoutNestedDataPack(): void

@@ -322,14 +322,23 @@ final class PohodaXmlExporter
             $totals = $invoice['totals'] ?? [];
             $bd = $invoice['vat_breakdown'] ?? [];
 
-            // homeCurrency = vždy v CZK. Pro CZK fakturu z totals/vat_breakdown,
-            // pro foreign fakturu z czk_recap (přepočet ČNB kurzem). Když czk_recap
-            // chybí (foreign faktura bez kurzu — legacy), padáme na 1:1 z totals
-            // (uživatel by měl doplnit kurz; export jinak nemá CZK účetní hodnoty).
+            // homeCurrency = VŽDY v CZK. Pro CZK fakturu z totals/vat_breakdown, pro
+            // foreign fakturu primárně z czk_recap (přepočet ČNB kurzem po sazbách).
+            // Když czk_recap chybí (typicky přijaté faktury), přepočteme buckety z měny
+            // dokladu na CZK kurzem — jinak by homeCurrency nesla cizoměnové částky
+            // označené jako CZK. (Pohoda u cizoměnového dokladu CZK stranu sice ignoruje
+            // a dopočítá z foreignCurrency × kurz, ale nesmí tam být chybná měna.)
             $homeCurrency = $dom->createElementNS(self::NS_INV, 'inv:homeCurrency');
-            $homeBuckets  = $isForeign && !empty($invoice['czk_recap'])
-                ? $this->bucketsFromCzkRecap($invoice['czk_recap'], $this->highBoundary($invoice))
-                : $this->bucketsFromBreakdown($bd, $this->highBoundary($invoice));
+            if ($isForeign && !empty($invoice['czk_recap'])) {
+                $homeBuckets = $this->bucketsFromCzkRecap($invoice['czk_recap'], $this->highBoundary($invoice));
+            } else {
+                $homeBuckets = $this->bucketsFromBreakdown($bd, $this->highBoundary($invoice));
+                if ($isForeign && $exchangeRate > 0.0) {
+                    foreach ($homeBuckets as $k => $v) {
+                        $homeBuckets[$k] = $v * $exchangeRate;
+                    }
+                }
+            }
 
             $this->el($dom, $homeCurrency, self::NS_TYP, 'typ:priceNone',    $this->fmt($homeBuckets['none']));
             $this->el($dom, $homeCurrency, self::NS_TYP, 'typ:priceLow',     $this->fmt($homeBuckets['low']));

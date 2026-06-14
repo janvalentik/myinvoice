@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.26.2] — 2026-06-14
+
+### Fixed
+
+- **Cizoměnová přijatá faktura v Pohoda XML měla souhrn `homeCurrency` v měně dokladu místo v CZK.** Tuzemský souhrn má být vždy v korunách, ale u přijatých faktur (které nemají předpočítanou CZK rekapitulaci jako vydané) nesl částky v cizí měně označené jako CZK. Nově se přepočtou kurzem na CZK. Cizoměnový blok `foreignCurrency` (měna, kurz, celková částka) byl v pořádku už předtím. **Vydaných faktur se to netýkalo** — ty mají CZK rekapitulaci počítanou kurzem ČNB po jednotlivých sazbách.
+
 ## [4.26.1] — 2026-06-14
 
 ### Fixed
