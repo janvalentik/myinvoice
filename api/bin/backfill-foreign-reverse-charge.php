@@ -14,42 +14,40 @@ declare(strict_types=1);
  * z EU, na povinnosti nic nemění — naopak je to důvod reverse charge.
  *
  * Import (AiPdfExtractor + PurchaseInvoiceRepository::defaultClassificationCode)
- * tyto doklady zařazoval špatně. Tři vzorce chyb:
+ * tyto doklady (BEZ vyčíslené DPH) zařazoval špatně:
  *   (1) mimo-EU + 0 % → kód 25 ("dovoz ZBOŽÍ ze 3. země", ř. 7) místo služby (ř. 12);
  *   (2) dodavatel-neplátce → vat_deduction='none' → celý doklad VYPADL z přiznání
- *       (chybí na ř. 12 i ř. 43 i v obratu), ač nárok na odpočet je;
- *   (3) EU služba s FIKTIVNÍ českou DPH (Apple/Google: brutto rozsekáno na základ +
- *       21 % „DPH") zařazená jako tuzemský doklad (ř. 40). Zahraniční dodavatel bez
- *       CZ registrace ale českou DPH naúčtovat nemůže → ta „DPH" je import artefakt.
+ *       (chybí na ř. 12 i ř. 43 i v obratu), ač nárok na odpočet je.
+ *
+ * POZOR — doklad, kde zahraniční dodavatel REÁLNĚ NAÚČTOVAL DPH (Apple, Google …),
+ * NENÍ reverse charge: jde nejčastěji o českou DPH přes OSS jako B2C (chybí tvé DIČ,
+ * dodavatel tě vzal jako spotřebitele). Taková CZ DPH NENÍ odpočitatelná a samovyměřovat
+ * se nesmí (dvojí zdanění) — celá částka je náklad, doklad patří „bez nároku na odpočet"
+ * a do DPH přiznání nevstupuje. Skript ho proto NEopravuje, jen vypíše k ruční kontrole.
  *
  * CO SKRIPT DĚLÁ
  * --------------
- * Najde přijaté faktury, které jsou JISTĚ zahraniční reverse charge:
+ * Najde přijaté faktury od zahraničních dodavatelů:
  *   - dodavatel mimo CZ (countries.iso2 <> 'CZ'),
  *   - dodavatel NENÍ registrovaný k české DPH (dic prázdné nebo ne 'CZ…') — tím se
  *     vyloučí zahraniční firmy s CZ registrací, které účtují českou DPH (Amazon EU
  *     S.à r.l. s CZ DIČ apod. → ty patří na ř. 40, ne do RC),
  *   - není to zálohová výzva (document_kind <> 'advance') ani stornovaný.
  *
- * Pro každý takový doklad:
+ * Doklad BEZ vyčíslené DPH (total_vat = 0) = skutečný reverse charge → opraví:
  *   - reverse_charge = 1, vat_deduction = 'full' (nárok na odpočet u RC náleží příjemci),
  *   - všem položkám správný klasifikační kód podle povahy plnění:
  *       služba (default) → EU 24e (ř. 5) / 3. země 24 (ř. 12)
  *       zboží (--goods)  → EU 23 (ř. 3) / 3. země 25 (ř. 7)
- *   - FIKTIVNÍ DPH: má-li doklad vyčíslenou DPH ≈ 21 % základu (česká sazba — tedy
- *     import artefakt, ne reálná zahraniční daň), sbalí se do základu
- *     (total_without_vat = total_with_vat, total_vat = 0). Samovyměřená daň se pak
- *     spočítá živě z plného základu. Doklad s NE-21% DPH (reálná cizí daň) se NEsahá
- *     a vypíše varování k ručnímu posouzení.
+ * Doklad S vyčíslenou DPH (OSS B2C / cizí daň) → NEopravuje, jen WARNING k ruční kontrole.
  *
  * Povaha plnění se z dat spolehlivě nepozná → DEFAULT je SLUŽBA (drtivá většina jsou
  * digitální předplatná). Dodavatele dodávající ZBOŽÍ vyjmenuj v --goods.
  *
- * DPH se NEpřepočítává „natvrdo": samovyměřená daň i odpočet se počítají živě ve
- * VatLedgerService z (základ × sazba). Skript mění kódy/příznaky/deduction a u
- * fiktivní DPH základ. Daňový dopad reverse charge je nulový (výstup +X / odpočet
- * −X) → vlastní daňová povinnost se nemění, mění se jen ZAŘAZENÍ na správné řádky a
- * to, že doklad do přiznání vůbec vstoupí.
+ * Částky se NEMĚNÍ: samovyměřená daň i odpočet se počítají živě ve VatLedgerService
+ * z (základ × sazba). Skript mění jen kódy/příznaky/deduction. Daňový dopad reverse
+ * charge je nulový (výstup +X / odpočet −X) → vlastní daňová povinnost se nemění,
+ * mění se jen ZAŘAZENÍ na správné řádky a to, že doklad do přiznání vůbec vstoupí.
  *
  * ⚠️ Už PODANÁ období: skript chytá i historické doklady. Než spustíš --apply na
  *    produkci, omez rozsah přes --from/--to tak, ať nepřepíšeš zařazení v obdobích,
@@ -110,66 +108,54 @@ if (!$docs) {
     exit(0);
 }
 
-$itemStmt = $pdo->prepare("SELECT id, vat_classification_code, total_without_vat, total_vat, total_with_vat
-                             FROM purchase_invoice_items WHERE purchase_invoice_id = ?");
-$updItemCode  = $pdo->prepare("UPDATE purchase_invoice_items SET vat_classification_code = ? WHERE id = ?");
-$updItemMoney = $pdo->prepare("UPDATE purchase_invoice_items SET vat_classification_code = ?, total_without_vat = ?, total_vat = 0 WHERE id = ?");
-$updDoc       = $pdo->prepare("UPDATE purchase_invoices SET reverse_charge = 1, vat_deduction = 'full', vat_classification_code = ? WHERE id = ?");
-$updDocMoney  = $pdo->prepare("UPDATE purchase_invoices SET reverse_charge = 1, vat_deduction = 'full', vat_classification_code = ?, total_without_vat = total_with_vat, total_vat = 0 WHERE id = ?");
+$itemStmt    = $pdo->prepare("SELECT id, vat_classification_code FROM purchase_invoice_items WHERE purchase_invoice_id = ?");
+$updItemCode = $pdo->prepare("UPDATE purchase_invoice_items SET vat_classification_code = ? WHERE id = ?");
+$updDoc      = $pdo->prepare("UPDATE purchase_invoices SET reverse_charge = 1, vat_deduction = 'full', vat_classification_code = ? WHERE id = ?");
 
 $mode = $dryRun ? '[DRY-RUN] ' : '';
 echo "{$mode}Zahraniční reverse-charge doklady: " . count($docs) . "\n";
 echo str_repeat('-', 118) . "\n";
 
-$changed = 0; $itemChanges = 0; $collapsed = 0; $warned = 0;
+$changed = 0; $itemChanges = 0; $warned = 0;
 foreach ($docs as $d) {
+    $vat = (float) $d['total_vat'];
+
+    // Doklad s VYČÍSLENOU DPH od zahraničního dodavatele bez CZ registrace NENÍ reverse
+    // charge: dodavatel daň naúčtoval sám — typicky českou DPH přes OSS jako B2C (chybí
+    // tvé DIČ, vzal tě jako spotřebitele), případně svou národní daň. CZ DPH z OSS NENÍ
+    // odpočitatelná a samovyměřovat ji nesmíš (dvojí zdanění). Takový doklad patří „bez
+    // nároku na odpočet" (celá částka = náklad, mimo DPH přiznání) — necháme ho BEZE
+    // ZMĚNY a jen upozorníme na ruční kontrolu.
+    if (abs($vat) >= 0.005) {
+        printf("  ⚠ t%-2d pi#%-5d %-11s %-16s %s  naúčtovaná DPH %.2f → NENÍ reverse charge (OSS B2C / cizí daň), neodpočitatelné — zkontroluj ručně (bez nároku na odpočet), NEopravuji.\n",
+            $d['supplier_id'], $d['id'], (string) $d['taxd'], substr((string) $d['vendor'], 0, 16), $d['iso2'], $vat);
+        $warned++;
+        continue;
+    }
+
+    // vat == 0 → skutečný reverse charge (samovyměření + zrcadlový odpočet, net nula).
     $isGoods = in_array((int) $d['vendor_id'], $goodsIds, true);
     // Cílový kód: služba → EU 24e / 3. země 24; zboží → EU 23 / 3. země 25.
     $target = $isGoods
         ? ((int) $d['is_eu'] === 1 ? '23' : '25')
         : ((int) $d['is_eu'] === 1 ? '24e' : '24');
 
-    // Fiktivní DPH? (≈ 21 % základu = import artefakt; jiná sazba = reálná cizí daň → ruka)
-    $base = (float) $d['total_without_vat'];
-    $vat  = (float) $d['total_vat'];
-    $doCollapse = false;
-    if (abs($vat) >= 0.005) {
-        $ratio = $base != 0.0 ? $vat / $base : 0.0;
-        if (abs($ratio - 0.21) < 0.01) {
-            $doCollapse = true;
-        } else {
-            printf("  ⚠ t%-2d pi#%-5d %-11s %-16s DPH %.2f (%.1f%%) NENÍ 21%% — reálná cizí daň? PŘESKOČENO, posuď ručně.\n",
-                $d['supplier_id'], $d['id'], (string) $d['taxd'], substr((string) $d['vendor'], 0, 16), $vat, $ratio * 100);
-            $warned++;
-            continue;
-        }
-    }
-
     $itemStmt->execute([$d['id']]);
-    $items = $itemStmt->fetchAll(\PDO::FETCH_ASSOC);
-
-    $itemFixes = []; // [id, oldCode, newBase|null]
-    foreach ($items as $it) {
-        $codeFix = (string) $it['vat_classification_code'] !== $target;
-        $newBase = $doCollapse ? (float) $it['total_with_vat'] : null;
-        $moneyFix = $doCollapse && (
-            abs((float) $it['total_without_vat'] - (float) $it['total_with_vat']) >= 0.005
-            || abs((float) $it['total_vat']) >= 0.005
-        );
-        if ($codeFix || $moneyFix) {
-            $itemFixes[] = [(int) $it['id'], (string) $it['vat_classification_code'], $moneyFix ? $newBase : null];
+    $itemFixes = []; // [id, oldCode]
+    foreach ($itemStmt->fetchAll(\PDO::FETCH_ASSOC) as $it) {
+        if ((string) $it['vat_classification_code'] !== $target) {
+            $itemFixes[] = [(int) $it['id'], (string) $it['vat_classification_code']];
         }
     }
     $dedFix = $d['vat_deduction'] !== 'full';
     $rcFix  = (int) $d['reverse_charge'] !== 1;
-    if (!$itemFixes && !$dedFix && !$rcFix && !$doCollapse) {
+    if (!$itemFixes && !$dedFix && !$rcFix) {
         continue; // idempotent
     }
 
     $flags = [];
-    if ($rcFix)      $flags[] = 'rc→1';
-    if ($dedFix)     $flags[] = $d['vat_deduction'] . '→full';
-    if ($doCollapse) $flags[] = sprintf('DPH %.2f→základ %.2f', $vat, (float) $d['total_with_vat']);
+    if ($rcFix)  $flags[] = 'rc→1';
+    if ($dedFix) $flags[] = $d['vat_deduction'] . '→full';
     $arrows = array_map(fn ($f) => ($f[1] === '' ? '∅' : $f[1]) . "→{$target}", $itemFixes);
 
     printf("  t%-2d pi#%-5d %-11s %-16s %s [%s] %s | %s\n",
@@ -180,12 +166,8 @@ foreach ($docs as $d) {
     if (!$dryRun) {
         $pdo->beginTransaction();
         try {
-            foreach ($itemFixes as $f) {
-                if ($f[2] !== null) $updItemMoney->execute([$target, $f[2], $f[0]]);
-                else                $updItemCode->execute([$target, $f[0]]);
-            }
-            if ($doCollapse) $updDocMoney->execute([$target, $d['id']]);
-            else             $updDoc->execute([$target, $d['id']]);
+            foreach ($itemFixes as $f) { $updItemCode->execute([$target, $f[0]]); }
+            $updDoc->execute([$target, $d['id']]);
             $pdo->commit();
         } catch (\Throwable $e) {
             $pdo->rollBack();
@@ -194,12 +176,11 @@ foreach ($docs as $d) {
     }
     $changed++;
     $itemChanges += count($itemFixes);
-    if ($doCollapse) $collapsed++;
 }
 
 echo str_repeat('-', 118) . "\n";
-echo "Dokladů k opravě: {$changed}  (položek: {$itemChanges}, z toho sbalená fiktivní DPH: {$collapsed} dokladů)\n";
-if ($warned)   echo "Přeskočeno (cizí daň ≠ 21 %): {$warned} — posuď ručně.\n";
+echo "Reverse charge opraveno: {$changed} dokladů (položek: {$itemChanges}).\n";
+if ($warned)   echo "K ruční kontrole (zahr. dodavatel naúčtoval DPH → OSS B2C / neodpočitatelné): {$warned}.\n";
 if ($goodsIds) echo "Bráno jako ZBOŽÍ: dodavatelé #" . implode(',', $goodsIds) . "\n";
 if ($dryRun) {
     echo "\nDRY-RUN — nic nezapsáno. Pro zápis přidej --apply (zvaž --from kvůli už podaným obdobím).\n";
