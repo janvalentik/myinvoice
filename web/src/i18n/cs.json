@@ -241,6 +241,7 @@
     "fuel_desc": "Druh paliva",
     "fuel_desc_placeholder": "např. Nafta, Natural 95",
     "odometer": "Tachometr",
+    "odometer_estimate_hint": "Orientačně dle knihy jízd (vyplň pro přesnost).",
     "no_assignment": "Bez přiřazení",
     "confirm_delete_fueling": "Opravdu smazat toto tankování?",
     "source": { "manual": "ruční", "invoice": "faktura", "axigon": "Axigon", "axigon_ai": "Axigon (AI)", "import": "import" },
@@ -249,6 +250,7 @@
     "backfill": "Vytěžit historii",
     "backfill_running": "Zpracovávám…",
     "backfill_done": "Vytěženo {n} tankování z historie.",
+    "backfill_updated": "Doplněny litry u {n} tankování.",
     "no_fuel_invoices": "Žádné faktury od benzínek. Označte dodavatele jako benzínku v jeho detailu.",
     "scanned": "{n} tankování",
     "no_pdf": "bez PDF",
@@ -262,7 +264,8 @@
     "reassign": "Přiřadit",
     "recognize": "Rozpoznat",
     "scan_failed": "Tankování se nepodařilo rozpoznat.",
-    "scan_done": "Rozpoznáno {n} tankování ({parser})."
+    "scan_done": "Rozpoznáno {n} tankování ({parser}).",
+    "scan_updated": "Doplněny údaje (litry) u {n} tankování."
   },
   "nav": {
     "dashboard": "Přehled", "invoices": "Vydané faktury", "clients": "Klienti",

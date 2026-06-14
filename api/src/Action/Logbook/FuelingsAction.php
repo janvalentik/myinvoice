@@ -11,6 +11,7 @@ use MyInvoice\Repository\CarRepository;
 use MyInvoice\Repository\FuelingRepository;
 use MyInvoice\Service\ActivityLogger;
 use MyInvoice\Service\IpMatcher;
+use MyInvoice\Service\Logbook\FuelingOdometerEstimator;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -29,6 +30,7 @@ final class FuelingsAction
         private readonly CarRepository $cars,
         private readonly ActivityLogger $logger,
         private readonly IpMatcher $ipMatcher,
+        private readonly FuelingOdometerEstimator $odometer,
     ) {}
 
     public function list(Request $request, Response $response): Response
@@ -36,7 +38,8 @@ final class FuelingsAction
         $supplierId = SupplierGuard::currentId($request);
         $q = $request->getQueryParams();
         $filters = array_intersect_key($q, array_flip(['car_id', 'source', 'vendor_id', 'year', 'month', 'date_from', 'date_to', 'unassigned']));
-        return Json::ok($response, $this->repo->listForTenant($supplierId, $filters));
+        $rows = $this->odometer->annotate($supplierId, $this->repo->listForTenant($supplierId, $filters));
+        return Json::ok($response, $rows);
     }
 
     public function get(Request $request, Response $response, array $args): Response
@@ -44,7 +47,7 @@ final class FuelingsAction
         $supplierId = SupplierGuard::currentId($request);
         $f = $this->repo->find((int) ($args['id'] ?? 0), $supplierId);
         if ($f === null) return Json::error($response, 'not_found', 'Tankování nenalezeno.', 404);
-        return Json::ok($response, $f);
+        return Json::ok($response, $this->odometer->annotate($supplierId, [$f])[0]);
     }
 
     public function create(Request $request, Response $response): Response

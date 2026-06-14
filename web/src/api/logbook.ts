@@ -108,6 +108,7 @@ export interface Fueling {
   amount_with_vat: number
   currency: string
   odometer: number | null
+  odometer_estimated: number | null
   station: string | null
   vendor_id: number | null
   vendor_name: string | null
@@ -182,6 +183,7 @@ export interface ScanResult {
   invoice_id: number
   created: number
   duplicates: number
+  updated?: number
   fuel_rows: number
   parser: string
   status: string
@@ -195,6 +197,7 @@ export interface BackfillReport {
   processed: number
   created: number
   duplicates: number
+  updated: number
   remaining: number
 }
 

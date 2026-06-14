@@ -113,6 +113,7 @@ async function downloadExport(format: 'xlsx' | 'pdf') {
 // ── Ruční tankování ─────────────────────────────────────────────
 const open = ref(false)
 const saving = ref(false)
+const odometerHint = ref<number | null>(null) // orientační tachometr z knihy jízd
 const draft = reactive<FuelingPayload & { id: number }>({
   id: 0, car_id: null, fueled_date: new Date().toISOString().slice(0, 10), fueled_time: '',
   fuel_type: '', quantity: null, unit: 'l', unit_price: null, amount_with_vat: 0, currency: 'CZK',
@@ -126,6 +127,7 @@ function newFueling() {
     fuel_type: '', quantity: null, unit: 'l', unit_price: null, amount_with_vat: 0, currency: 'CZK',
     odometer: null, station: '', note: '',
   })
+  odometerHint.value = null
   open.value = true
 }
 
@@ -135,6 +137,7 @@ function editFueling(f: Fueling) {
     fuel_type: f.fuel_type ?? '', quantity: f.quantity, unit: f.unit, unit_price: f.unit_price,
     amount_with_vat: f.amount_with_vat, currency: f.currency, odometer: f.odometer, station: f.station ?? '', note: f.note ?? '',
   })
+  odometerHint.value = f.odometer_estimated ?? null
   open.value = true
 }
 
@@ -212,6 +215,7 @@ async function assign(inv: FuelInvoice) {
     const carId = assignCar[inv.id] ? Number(assignCar[inv.id]) : null
     const r = await logbookApi.assignFuelInvoice(inv.id, carId)
     if (r.status === 'failed') toast.error(t('logbook.scan_failed'))
+    else if (r.created === 0 && (r.updated ?? 0) > 0) toast.success(t('logbook.scan_updated', { n: r.updated }))
     else toast.success(t('logbook.scan_done', { n: r.created, parser: r.parser }))
     await loadInvoices()
     await load()
@@ -223,14 +227,17 @@ async function assign(inv: FuelInvoice) {
 async function backfillHistory() {
   backfilling.value = true
   let totalCreated = 0
+  let totalUpdated = 0
   try {
-    // Opakuj dokud zbývají nevytěžené faktury (dávkově po 25).
+    // Opakuj dokud zbývají nevytěžené / nedoplněné faktury (dávkově po 25).
     for (let guard = 0; guard < 200; guard++) {
       const r = await logbookApi.backfillFuelInvoices(25)
       totalCreated += r.created
+      totalUpdated += r.updated ?? 0
       if (r.remaining <= 0 || r.processed === 0) break
     }
-    toast.success(t('logbook.backfill_done', { n: totalCreated }))
+    toast.success(t('logbook.backfill_done', { n: totalCreated })
+      + (totalUpdated > 0 ? ' ' + t('logbook.backfill_updated', { n: totalUpdated }) : ''))
     await loadInvoices()
     await load()
   } catch (e: any) {
@@ -424,7 +431,10 @@ const sourceBadge: Record<string, string> = {
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.odometer') }}</label>
-              <input v-model.number="draft.odometer" type="number" min="0" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+              <input v-model.number="draft.odometer" type="number" min="0"
+                :placeholder="odometerHint != null ? `≈ ${odometerHint.toLocaleString('cs-CZ')}` : ''"
+                class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+              <p v-if="draft.odometer == null && odometerHint != null" class="text-xs text-neutral-400 mt-0.5">{{ t('logbook.odometer_estimate_hint') }}</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.amount') }} *</label>

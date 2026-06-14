@@ -26,7 +26,9 @@ final class SummaryFuelParser implements FuelStatementParser
 
     public function parse(array $invoice, ?string $pdfBytes): ?array
     {
-        $issueDate = (string) ($invoice['issue_date'] ?? '');
+        // Datum plnění = DUZP (tax_date) → datum vystavení; bez transakčního data je DUZP nejblíž realitě.
+        $issueDate = (string) ($invoice['tax_date'] ?? '');
+        if ($issueDate === '') $issueDate = (string) ($invoice['issue_date'] ?? '');
         if ($issueDate === '') return null;
         $currency = (string) ($invoice['currency'] ?? 'CZK');
         $items = is_array($invoice['items'] ?? null) ? $invoice['items'] : [];

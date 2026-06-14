@@ -241,6 +241,7 @@
     "fuel_desc": "Fuel type",
     "fuel_desc_placeholder": "e.g. Diesel, Petrol 95",
     "odometer": "Odometer",
+    "odometer_estimate_hint": "Estimated from the trip log (fill in for accuracy).",
     "no_assignment": "No assignment",
     "confirm_delete_fueling": "Really delete this refuelling?",
     "source": { "manual": "manual", "invoice": "invoice", "axigon": "Axigon", "axigon_ai": "Axigon (AI)", "import": "import" },
@@ -249,6 +250,7 @@
     "backfill": "Backfill history",
     "backfill_running": "Processing…",
     "backfill_done": "Extracted {n} refuellings from history.",
+    "backfill_updated": "Filled liters for {n} refuellings.",
     "no_fuel_invoices": "No gas-station invoices. Mark a supplier as a gas station in their detail.",
     "scanned": "{n} refuellings",
     "no_pdf": "no PDF",
@@ -262,7 +264,8 @@
     "reassign": "Assign",
     "recognize": "Recognize",
     "scan_failed": "Could not recognize refuellings.",
-    "scan_done": "Recognized {n} refuellings ({parser})."
+    "scan_done": "Recognized {n} refuellings ({parser}).",
+    "scan_updated": "Filled in details (liters) for {n} refuellings."
   },
   "nav": {
     "dashboard": "Dashboard", "invoices": "Issued invoices", "clients": "Clients",

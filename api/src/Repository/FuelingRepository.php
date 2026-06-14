@@ -71,15 +71,25 @@ final class FuelingRepository
     }
 
     /**
-     * Insert z parseru faktury — idempotentní (INSERT IGNORE na UNIQUE(supplier_id, dedup_hash)).
-     * Vrací nové id, nebo 0 když už existoval (duplicate dedup_hash).
+     * Insert z parseru faktury — idempotentní (UNIQUE(supplier_id, dedup_hash)). Při duplicitě
+     * DOPLNÍ dříve chybějící litry / jednotkovou cenu (re-sken doplní starší záznamy bez množství),
+     * ale NIKDY nepřepíše už vyplněné hodnoty (COALESCE drží existující).
+     *
+     * Vrací: >0 = id nově vloženého; -1 = doplněn existující; 0 = beze změny (true duplicate).
      */
     public function insertScanned(int $supplierId, array $data, ?int $userId): int
     {
         $pdo = $this->db->pdo();
-        $stmt = $pdo->prepare('INSERT IGNORE INTO ' . substr($this->insertSql(), strlen('INSERT INTO ')));
+        $sql = $this->insertSql()
+            . ' ON DUPLICATE KEY UPDATE
+                  quantity   = COALESCE(quantity, VALUES(quantity)),
+                  unit_price = COALESCE(unit_price, VALUES(unit_price))';
+        $stmt = $pdo->prepare($sql);
         $stmt->execute($this->bind($supplierId, $data, $userId));
-        return $stmt->rowCount() > 0 ? (int) $pdo->lastInsertId() : 0;
+        $rc = $stmt->rowCount();
+        // MariaDB affected-rows: 1 = nový insert, 2 = update existujícího, 0 = beze změny.
+        if ($rc === 1) return (int) $pdo->lastInsertId();
+        return $rc >= 2 ? -1 : 0;
     }
 
     public function update(int $id, int $supplierId, array $data): bool
@@ -199,6 +209,7 @@ final class FuelingRepository
             'amount_with_vat'            => (float) $r['amount_with_vat'],
             'currency'                   => (string) $r['currency'],
             'odometer'                   => $r['odometer'] !== null ? (int) $r['odometer'] : null,
+            'odometer_estimated'         => isset($r['odometer_estimated']) && $r['odometer_estimated'] !== null ? (int) $r['odometer_estimated'] : null,
             'station'                    => $r['station'] !== null ? (string) $r['station'] : null,
             'vendor_id'                  => $r['vendor_id'] !== null ? (int) $r['vendor_id'] : null,
             'vendor_name'                => isset($r['vendor_name']) && $r['vendor_name'] !== null ? (string) $r['vendor_name'] : null,

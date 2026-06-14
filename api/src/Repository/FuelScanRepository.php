@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MyInvoice\Repository;
 
 use MyInvoice\Infrastructure\Database\Connection;
+use MyInvoice\Service\Logbook\Fuel\FuelKeywords;
 use PDO;
 
 /**
@@ -102,5 +103,45 @@ final class FuelScanRepository
         $stmt->bindValue(2, max(1, $limit), PDO::PARAM_INT);
         $stmt->execute();
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * ID už vytěžených faktur od benzínek, jejichž tankování postrádají litry, ALE
+     * faktura je má jako položku (str. 1) → lze je doplnit fallbackem. Vynechává ty,
+     * u kterých už dávkový pokus proběhl (liters_attempted=1) — neopakovat donekonečna.
+     *
+     * @return list<int>
+     */
+    public function incompleteInvoiceIds(int $supplierId, int $limit): array
+    {
+        $stmt = $this->db->pdo()->prepare(
+            "SELECT DISTINCT pi.id
+               FROM purchase_invoices pi
+               JOIN clients cl ON cl.id = pi.vendor_id
+               JOIN logbook_fuel_scans s ON s.purchase_invoice_id = pi.id AND s.supplier_id = pi.supplier_id
+               JOIN fuelings f ON f.source_purchase_invoice_id = pi.id AND f.supplier_id = pi.supplier_id
+              WHERE pi.supplier_id = ? AND cl.is_fuel_station = 1 AND pi.document_kind <> 'advance'
+                AND s.liters_attempted = 0
+                AND f.quantity IS NULL
+                AND EXISTS (SELECT 1 FROM purchase_invoice_items it
+                             WHERE it.purchase_invoice_id = pi.id AND it.quantity > 0
+                               AND LOWER(it.description) REGEXP ?)
+              ORDER BY pi.issue_date ASC, pi.id ASC
+              LIMIT ?"
+        );
+        $stmt->bindValue(1, $supplierId, PDO::PARAM_INT);
+        $stmt->bindValue(2, FuelKeywords::SQL_REGEXP, PDO::PARAM_STR);
+        $stmt->bindValue(3, max(1, $limit), PDO::PARAM_INT);
+        $stmt->execute();
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /** Označí, že u faktury už proběhl dávkový pokus o doplnění litrů (ať se neopakuje). */
+    public function markLitersAttempted(int $supplierId, int $purchaseInvoiceId): void
+    {
+        $this->db->pdo()->prepare(
+            'UPDATE logbook_fuel_scans SET liters_attempted = 1
+              WHERE supplier_id = ? AND purchase_invoice_id = ?'
+        )->execute([$supplierId, $purchaseInvoiceId]);
     }
 }

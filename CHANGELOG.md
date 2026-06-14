@@ -5,6 +5,21 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.27.3] — 2026-06-14
+
+### Fixed
+
+- **Tankování z detailních faktur (Axigon) doplní litry.** U staršího „zhuštěného" formátu výpisu nešlo z druhé strany spolehlivě rozdělit množství, takže tankování se načetlo bez litrů. Nově se litry (a jednotková cena) doplní z položek faktury (první strana) — u jedné transakce přesně, u více se úhrn rozdělí poměrně dle částky. Datum tankování se bere z detailu, jinak z DUZP faktury.
+
+### Added
+
+- **Hromadné doplnění litrů u dříve načtených tankování** — tlačítko *Vytěžit historii* nově projede i už zpracované faktury, kterým chybí litry, a doplní je z položek. Každá faktura se zkusí nejvýše jednou (když litry nejsou ani v položkách, příště se přeskočí). *Rozpoznat znovu* doplní litry u konkrétní faktury.
+- **Orientační stav tachometru z knihy jízd.** Když tankování nemá vlastní stav tachometru, odhadne se z jízd téhož vozu. Heuristika rozliší tankování na začátku vs. konci jízdy podle času (je-li k dispozici), jinak podle spotřeby. Odhad se zobrazí (placeholder v editaci) i v exportu (s ≈), neukládá se.
+
+### Changed
+
+- **Export tankování na šířku (A4) s bohatšími sloupci** — přibyly *Jednotková cena*, *Cena bez DPH* a *Tachometr* (XLSX i PDF).
+
 ## [4.27.2] — 2026-06-14
 
 ### Changed

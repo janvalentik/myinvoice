@@ -93,7 +93,8 @@ final class FuelInvoicesAction
             return Json::error($response, 'car_not_found', 'Auto neexistuje.', 404);
         }
 
-        $result = $this->scanner->scanInvoice($supplierId, $invoiceId, $carId, $this->userId($request), false);
+        // force=true → i už vytěženou fakturu znovu projede (doplní dříve chybějící litry).
+        $result = $this->scanner->scanInvoice($supplierId, $invoiceId, $carId, $this->userId($request), true);
         if (empty($result['ok'])) {
             return Json::error($response, 'scan_failed', (string) ($result['error'] ?? 'Vytěžení selhalo.'), 400);
         }
