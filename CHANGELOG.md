@@ -5,20 +5,11 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.27.1] — 2026-06-14
-
-### Fixed
-
-- **Kniha jízd: role „jen čtení" viděla zápisová tlačítka.** V záložkách Automobily, Kniha jízd, Tankování a Kategorie cest se uživateli s rolí *readonly* zobrazovala tlačítka „Nový/Nové…", Import, Upravit, Smazat, „Načíst z faktur" i „Vytěžit historii", přestože je server (RBAC) stejně odmítal. Nově je UI skrývá — readonly má jen pohled a exporty (XLSX/PDF zůstávají dostupné).
-
-### Added
-
-- **Našeptávání míst „Odkud" / „Kam"** v novém záznamu jízdy — pole nabízejí dříve zadaná místa (stejně jako už účel cesty).
-- **Souhrny: druhý graf „Kumulativní km YTD".** Vedle sloupcového grafu najetých km po měsících přibyl čárový graf s nabíhajícím součtem km od začátku roku, letošní vs. minulý rok (styl jako *Kumulativní zisk YTD* na CRM dashboardu).
+## [4.27.2] — 2026-06-14
 
 ### Changed
 
-- **Manuál: kapitoly Dokumenty a Kniha jízd dostaly v nadpisu pořadové číslo** (25., 26.) — sjednoceno se zbytkem manuálu.
+- **Sjednocený toolbar v Knize jízd a Tankování.** Akční tlačítka (Export, Import, Nový záznam, Načíst z faktur) jsou nově uvnitř filtr-boxu zarovnaná doprava — filtry vlevo, akce vpravo v jednom ohraničeném panelu (na mobilu se zalomí pod sebe).
 
 ## [4.27.1] — 2026-06-14
 

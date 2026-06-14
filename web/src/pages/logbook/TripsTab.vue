@@ -249,8 +249,7 @@ function fmtKm(n: number): string { return n.toLocaleString('cs-CZ', { maximumFr
 
 <template>
   <section>
-    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-      <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-3 flex flex-wrap items-center gap-2">
+    <div class="bg-surface border border-neutral-200 rounded-lg shadow-sm p-3 mb-4 flex flex-wrap items-center gap-2">
         <select v-model="filterCar" @change="load" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
           <option value="">{{ t('logbook.all_cars') }}</option>
           <option v-for="c in cars" :key="c.id" :value="c.id">{{ c.registration }}{{ c.name ? ` — ${c.name}` : '' }}</option>
@@ -263,8 +262,7 @@ function fmtKm(n: number): string { return n.toLocaleString('cs-CZ', { maximumFr
           <option :value="''">{{ t('logbook.all_months') }}</option>
           <option v-for="(label, i) in monthOptions" :key="i + 1" :value="i + 1">{{ label }}</option>
         </select>
-      </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2 ml-auto">
         <button @click="openExport" :disabled="trips.length === 0"
           class="cursor-pointer h-9 px-3 text-sm border border-neutral-300 rounded-md hover:bg-neutral-50 inline-flex items-center gap-1.5 disabled:opacity-50">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 16V4m0 12l-4-4m4 4l4-4"/></svg>
