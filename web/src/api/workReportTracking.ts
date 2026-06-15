@@ -48,6 +48,8 @@ export interface WrPreview {
   language: 'cs' | 'en'
   supplier_name: string
   accent_color: string | null
+  /** Logo dodavatele jako data: URI (jen při zapnutém brandingu), jinak null → MyInvoice. */
+  logo_src: string | null
   reports: WrPreviewReport[]
   total_hours: number
   totals_by_currency: Array<{ currency: string; total_amount: number }>
@@ -59,6 +61,7 @@ export interface WrPublicState {
   scope?: 'client' | 'project'
   language?: 'cs' | 'en'
   supplier_name?: string
+  logo_src?: string | null
   masked_emails?: string[]
   captcha_site_key?: string
   captcha_provider?: 'turnstile' | 'none' | string

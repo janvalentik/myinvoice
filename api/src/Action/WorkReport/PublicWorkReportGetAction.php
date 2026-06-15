@@ -68,6 +68,7 @@ final class PublicWorkReportGetAction
             'scope'            => (string) $link['scope'],
             'language'         => $this->service->clientLocale($link),
             'supplier_name'    => (string) (($supplier['display_name'] ?? '') ?: ($supplier['company_name'] ?? '')),
+            'logo_src'         => $this->service->logoSrc($supplier),
             'masked_emails'    => $this->service->maskedEmails($link),
             'captcha_site_key' => (string) $this->config->get('captcha.site_key', ''),
             'captcha_provider' => (string) $this->config->get('captcha.provider', 'none'),

@@ -10,6 +10,7 @@ use MyInvoice\Repository\WorkReportLinkRepository;
 use MyInvoice\Repository\WorkReportRepository;
 use MyInvoice\Service\Branding\AccentColor;
 use MyInvoice\Service\Mail\Mailer;
+use MyInvoice\Service\Mail\SafeLogoPath;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -360,6 +361,7 @@ final class WorkReportLinkService
             'language'             => $client['language'],
             'supplier_name'        => (string) ($supplier['display_name'] ?: ($supplier['company_name'] ?? '')),
             'accent_color'         => !empty($supplier['email_branding_enabled']) ? ($supplier['email_accent_color'] ?? null) : null,
+            'logo_src'             => $this->logoSrc($supplier),
             'reports'              => $reports,
             'total_hours'          => $totalHours,
             'totals_by_currency'   => $totalsByCurrency,
@@ -413,6 +415,82 @@ final class WorkReportLinkService
             $row['email_accent_color'],
         );
         return $row;
+    }
+
+    /**
+     * Logo dodavatele jako `data:` URI pro hlavičku veřejného náhledu — místo
+     * MyInvoice loga (analogie e-mailové hlavičky `_layout.html.twig`).
+     *
+     * Vrací se jen když má dodavatel zapnutý branding (konzistentní s `accent_color`
+     * i e-mailem) a logo soubor existuje; jinak null → frontend zobrazí MyInvoice.
+     *
+     * Web preferuje SVG sidecar (vektor = ostrý při libovolné velikosti, na rozdíl
+     * od e-mailu, kde Outlook/Gmail SVG neumí a používá se PNG) s fallbackem na PNG.
+     * Cesty validuje `SafeLogoPath` (defense-in-depth proti LFI, security report #2).
+     *
+     * @param array<string,mixed>|null $supplier Řádek z loadSupplierVars().
+     */
+    public function logoSrc(?array $supplier): ?string
+    {
+        if ($supplier === null
+            || empty($supplier['email_branding_enabled'])
+            || empty($supplier['logo_path'])
+            || empty($supplier['id'])
+        ) {
+            return null;
+        }
+        $sid = (int) $supplier['id'];
+
+        // SVG sidecar (preferovaný — náhled běží vždy ve světlém režimu).
+        $svgRel = preg_replace('/\.png$/i', '.svg', (string) $supplier['logo_path']);
+        if (is_string($svgRel)) {
+            $svgAbs = SafeLogoPath::resolve($svgRel, $sid);
+            if ($svgAbs !== null) {
+                $bytes = (string) @file_get_contents($svgAbs);
+                if ($bytes !== '') {
+                    return 'data:image/svg+xml;base64,' . base64_encode($this->ensureSvgNamespace($bytes));
+                }
+            }
+        }
+
+        // Fallback PNG.
+        $pngAbs = SafeLogoPath::resolve((string) $supplier['logo_path'], $sid);
+        if ($pngAbs !== null) {
+            $bytes = (string) @file_get_contents($pngAbs);
+            if ($bytes !== '') {
+                return 'data:image/png;base64,' . base64_encode($bytes);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Doplní povinný SVG namespace do kořenového `<svg>`, pokud chybí. Bez něj
+     * prohlížeč standalone SVG (data: URI v `<img>`) odmítne vykreslit (parsuje
+     * se jako přísné XML → naturalWidth=0, rozbitý obrázek); inline v HTML je
+     * parser benevolentní, jako samostatný dokument ne. Některá uložená loga
+     * (optimalizovaný export bez xmlns) ho nemají — mPDF to v PDF toleruje,
+     * prohlížeč ne. Idempotentní.
+     */
+    private function ensureSvgNamespace(string $svg): string
+    {
+        if (!preg_match('/<svg\b[^>]*\bxmlns\s*=/i', $svg)) {
+            $svg = (string) preg_replace(
+                '/<svg\b/i',
+                '<svg xmlns="http://www.w3.org/2000/svg"',
+                $svg,
+                1,
+            );
+        }
+        if (preg_match('/\bxlink:/i', $svg) && !preg_match('/<svg\b[^>]*\bxmlns:xlink\s*=/i', $svg)) {
+            $svg = (string) preg_replace(
+                '/<svg\b/i',
+                '<svg xmlns:xlink="http://www.w3.org/1999/xlink"',
+                $svg,
+                1,
+            );
+        }
+        return $svg;
     }
 
     /** r***@hulan.cz — náznak adresy pro UI bez prozrazení celé adresy. */
