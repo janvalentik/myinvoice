@@ -83,7 +83,7 @@
 </table>
 
 <div class="footer">
-  {{ supplier.company_name }}{% if supplier.web %} · {{ supplier.web }}{% endif %}{% if supplier.email %} · {{ supplier.email }}{% endif %}
+  <span class="footer-name">{{ supplier.company_name }}</span>{% if supplier.web %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.web }}{% endif %}{% if supplier.email %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.email }}{% endif %}
 </div>
 
 </body>

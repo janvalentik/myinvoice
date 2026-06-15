@@ -127,8 +127,8 @@ final class InvoicePdfRenderer
             'margin_left'       => 15,
             'margin_right'      => 15,
             'tempDir'           => $tmpDir,
-            'default_font'      => 'dejavusans',
             'autoPageBreak'     => true,
+            ...MpdfFontConfig::options(),
         ]);
         // PDF metadata — bez Title/Author, aby Chrome viewer nezobrazoval text nad PDF.
         $mpdf->SetTitle('');

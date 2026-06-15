@@ -101,6 +101,8 @@ final class PdfBranding
             . ".isdoc-badge { color: {$color}; background: {$bgSoft}; border-color: {$badgeBorder}; }\n"
             . ".note { border-left-color: {$color}; }\n"
             . ".note.rc-note { border-left-color: #E8A547; }\n"
+            . ".footer { border-top-color: {$lineSoft}; }\n"
+            . ".footer-name { color: {$color}; }\n"
             . ".wr-title, .wr-link { color: {$color}; }\n";
     }
 }

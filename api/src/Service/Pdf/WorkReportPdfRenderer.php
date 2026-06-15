@@ -87,8 +87,8 @@ final class WorkReportPdfRenderer
             'margin_left'   => 15,
             'margin_right'  => 15,
             'tempDir'       => $tmpDir,
-            'default_font'  => 'dejavusans',
             'autoPageBreak' => true,
+            ...MpdfFontConfig::options(),
         ]);
         $mpdf->SetTitle('');
         $mpdf->SetAuthor('');

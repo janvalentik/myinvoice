@@ -46,9 +46,9 @@ final class DphBookPdfRenderer
             'margin_right'  => 8,
             'margin_top'    => 12,
             'margin_bottom' => 12,
-            'default_font'  => 'dejavusans',
             'tempDir'       => $tmpDir,
             'autoPageBreak' => true,
+            ...MpdfFontConfig::options(),
         ]);
         $quarter = $data['period']['quarter'] ?? null;
         $period = $quarter !== null

@@ -12,7 +12,7 @@
 {# ─── PAGE FOOTER (každá stránka) — attribution ─── #}
 <htmlpagefooter name="attribution">
   <div class="page-attribution">
-    {% if locale == 'en' %}Powered by <a href="https://myinvoice.cz/">MyInvoice.cz</a> invoicing system{% else %}Používá fakturační systém <a href="https://myinvoice.cz/">MyInvoice.cz</a>{% endif %}
+    {% if locale == 'en' %}Powered by <a href="https://myinvoice.cz/">MyInvoice.cz</a> invoicing system by <a href="https://mywebdesign.cz/">MyWebdesign.cz</a>{% else %}Používá fakturační systém <a href="https://myinvoice.cz/">MyInvoice.cz</a> od <a href="https://mywebdesign.cz/">MyWebdesign.cz</a>{% endif %}
   </div>
 </htmlpagefooter>
 <sethtmlpagefooter name="attribution" value="on" />
@@ -474,12 +474,12 @@
 </div>
 {% endif %}
 
+<div class="footer">
+  <span class="footer-name">{{ supplier.company_name }}</span>{% if supplier.web %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.web }}{% endif %}{% if supplier.email %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.email }}{% endif %}
+</div>
 {% if supplier.commercial_register %}
 <div class="commercial-register">{{ supplier.commercial_register }}</div>
 {% endif %}
-<div class="footer">
-  {{ supplier.company_name }}{% if supplier.web %} · {{ supplier.web }}{% endif %}{% if supplier.email %} · {{ supplier.email }}{% endif %}
-</div>
 
 {# ─── VÝKAZ VÍCEPRACÍ — 2. stránka ─── #}
 {% if work_report %}
@@ -521,7 +521,7 @@
 <div style="margin-bottom:5mm;">
   <div class="wr-title">{{ work_report.title }}</div>
   <div style="font-size:9pt;color:#5A5470;">
-    {{ t('K faktuře', 'For invoice') }} <span style="font-family:'DejaVu Sans Mono',monospace;">{{ invoice.varsymbol }}</span>
+    {{ t('K faktuře', 'For invoice') }} <span style="font-family:'jetbrainsmono','DejaVu Sans Mono',monospace;">{{ invoice.varsymbol }}</span>
     {% if invoice.project_name %} · {{ t('Zakázka', 'Project') }}: {{ invoice.project_name }}{% endif %}
   </div>
 </div>
@@ -555,12 +555,12 @@
   </tbody>
 </table>
 
+<div class="footer">
+  <span class="footer-name">{{ supplier.company_name }}</span>{% if supplier.web %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.web }}{% endif %}{% if supplier.email %}<span class="footer-dot">&#160;·&#160;</span>{{ supplier.email }}{% endif %}
+</div>
 {% if supplier.commercial_register %}
 <div class="commercial-register">{{ supplier.commercial_register }}</div>
 {% endif %}
-<div class="footer">
-  {{ supplier.company_name }}{% if supplier.web %} · {{ supplier.web }}{% endif %}{% if supplier.email %} · {{ supplier.email }}{% endif %}
-</div>
 {% endif %}
 
 </body>

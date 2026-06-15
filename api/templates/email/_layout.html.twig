@@ -111,10 +111,10 @@
       <p style="max-width:560px;font-size:11px;color:#A7A0BA;margin:16px auto 0;text-align:center;">
         {% if locale == 'en' %}
           This email was sent automatically. If you did not request it, please contact{% if supplier and supplier.email %} <a href="mailto:{{ supplier.email }}" style="color:#7A748C;">{{ supplier.email }}</a>{% else %} the sender{% endif %}.<br>
-          Powered by <a href="https://myinvoice.cz/" style="color:#7A748C;text-decoration:none;">MyInvoice.cz</a> invoicing system.
+          Powered by <a href="https://myinvoice.cz/" style="color:#7A748C;text-decoration:none;">MyInvoice.cz</a> invoicing system by <a href="https://mywebdesign.cz/" style="color:#7A748C;text-decoration:none;">MyWebdesign.cz</a>.
         {% else %}
           Tento email byl odeslán automaticky. Pokud jste o něj nežádali, kontaktujte{% if supplier and supplier.email %} <a href="mailto:{{ supplier.email }}" style="color:#7A748C;">{{ supplier.email }}</a>{% else %} odesílatele{% endif %}.<br>
-          Používá fakturační systém <a href="https://myinvoice.cz/" style="color:#7A748C;text-decoration:none;">MyInvoice.cz</a>.
+          Používá fakturační systém <a href="https://myinvoice.cz/" style="color:#7A748C;text-decoration:none;">MyInvoice.cz</a> od <a href="https://mywebdesign.cz/" style="color:#7A748C;text-decoration:none;">MyWebdesign.cz</a>.
         {% endif %}
       </p>
 

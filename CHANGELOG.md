@@ -5,6 +5,14 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.30.0] — 2026-06-15
+
+### Changed
+
+- **Nový vzhled písma ve všech PDF dokladech.** Faktury, přijaté faktury, výkazy práce, Kniha DPH i kniha jízd se nově sázejí fontem **Montserrat** (text — výraznější, modernější, brandový) a čísla (částky, variabilní symboly, čísla účtů, datumy) fontem **JetBrains Mono** s tabulkovými číslicemi, takže se hodnoty ve sloupcích pěkně zarovnají. Nahrazuje dosavadní DejaVu Sans. Oba fonty jsou volně licencované (SIL OFL) a vkládají se přímo do PDF — dokument vypadá stejně na každém zařízení i tiskárně.
+- **Přepracovaná patička dokladu.** Podpis dodavatele (název firmy · web · e-mail) je nově přehledný blok — název firmy v barvě značky nad jemnou oddělovací linkou a zápis v obchodním rejstříku jako drobný „fine print" pod tím. Sjednoceno mezi fakturou a výkazem práce; respektuje firemní barvu (branding).
+- **Patička s autorstvím systému.** Pata dokladů i e-mailů nově uvádí „Používá fakturační systém **MyInvoice.cz od MyWebdesign.cz**" s odkazem na obě stránky.
+
 ## [4.29.0] — 2026-06-15
 
 ### Added

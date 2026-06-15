@@ -8,6 +8,7 @@ use Mpdf\Mpdf;
 use MyInvoice\Infrastructure\Config\RuntimePaths;
 use MyInvoice\Infrastructure\Database\Connection;
 use MyInvoice\Repository\TripRepository;
+use MyInvoice\Service\Pdf\MpdfFontConfig;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
@@ -136,7 +137,7 @@ final class TripExportService
         $mpdf = new Mpdf([
             'mode' => 'utf-8', 'format' => 'A4-L', 'orientation' => 'L',
             'margin_left' => 8, 'margin_right' => 8, 'margin_top' => 12, 'margin_bottom' => 12,
-            'default_font' => 'dejavusans', 'tempDir' => $tmpDir, 'autoPageBreak' => true,
+            'tempDir' => $tmpDir, 'autoPageBreak' => true, ...MpdfFontConfig::options(),
         ]);
         $mpdf->SetTitle('Kniha jízd' . ($period !== '' ? ' ' . $period : ''));
         $mpdf->SetCreator('MyInvoice.cz');
@@ -148,7 +149,7 @@ final class TripExportService
     {
         $e = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
         $css = '<style>
-            body{font-family:dejavusans;font-size:8.5pt;color:#222}
+            body{font-family:montserrat,dejavusans;font-size:8.5pt;color:#222}
             h1{font-size:15pt;margin:0 0 2px 0}
             .sub{color:#666;font-size:9pt;margin:0 0 8px 0}
             table{width:100%;border-collapse:collapse}
