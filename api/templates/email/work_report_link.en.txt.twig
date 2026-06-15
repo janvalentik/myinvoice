@@ -1,0 +1,18 @@
+{% extends '_layout.txt.twig' %}
+
+{% block content %}
+Hello,
+
+we have prepared an online work report preview{% if scope == 'project' and project_name %} for the project {{ project_name }}{% elseif client_company_name %} for {{ client_company_name }}{% endif %}.
+
+The link below always shows the currently open work reports — hours worked and the running amount to be billed — before they turn into an invoice. The preview updates itself.
+{% if note %}
+---
+{{ note }}
+---
+{% endif %}
+View work report:
+{{ tracking_url }}
+
+The first time you open it, we will ask you to verify — we send a one-time code to your e-mail. After entering it your browser is remembered and the code is no longer required. This link is confidential, please do not share it.
+{% endblock %}

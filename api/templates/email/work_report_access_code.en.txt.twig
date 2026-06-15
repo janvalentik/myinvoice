@@ -1,0 +1,16 @@
+{% extends '_layout.txt.twig' %}
+
+{% block content %}
+Verification code
+-----------------
+
+Hello,
+
+to view the work report preview, enter this verification code:
+
+    {{ code }}
+
+The code is valid for {{ expiresIn|default('15 min') }} and can be used only once. After entering it your browser is remembered and the code is no longer required.
+
+If you did not request the preview, please ignore this e-mail.
+{% endblock %}

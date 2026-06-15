@@ -12,10 +12,12 @@ import MonthlyRevenueChart from '@/components/charts/MonthlyRevenueChart.vue'
 import TopProjectsBarChart from '@/components/charts/TopProjectsBarChart.vue'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
+import SendWorkReportLinkModal from '@/components/modals/SendWorkReportLinkModal.vue'
 
 const { t } = useI18n()
 const toast = useToast()
 const auth = useAuthStore()
+const showWrLinkModal = ref(false)
 
 const route = useRoute()
 const router = useRouter()
@@ -355,16 +357,6 @@ async function deleteClient() {
           class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 rounded-md text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1.5 disabled:opacity-50">
           <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
           {{ vatInfoLoading ? t('common.loading') : t('client.vat_payer_details') }}
-        </button>
-        <button v-if="!client.archived_at && auth.canWrite" @click="archive"
-          class="cursor-pointer px-3 h-9 text-sm border border-warning-500/50 rounded-md text-warning-600 hover:bg-warning-50 inline-flex items-center gap-1.5">
-          <svg class="w-4 h-4 text-warning-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 1 1 0-4h14a2 2 0 1 1 0 4M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8m-9 4h4"/></svg>
-          {{ t('common.archive') }}
-        </button>
-        <button v-else-if="auth.canWrite" @click="unarchive"
-          class="cursor-pointer px-3 h-9 text-sm border border-success-500/50 rounded-md text-success-600 hover:bg-success-50 inline-flex items-center gap-1.5">
-          <svg class="w-4 h-4 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 0 1 8 8v2M3 10l6 6m-6-6l6-6"/></svg>
-          {{ t('common.restore') }}
         </button>
         <button v-if="(canDelete) && auth.canWrite" @click="deleteClient"
           class="cursor-pointer px-3 h-9 text-sm border border-danger-500/50 rounded-md text-danger-500 hover:bg-danger-50 inline-flex items-center gap-1.5">
@@ -890,5 +882,26 @@ async function deleteClient() {
       </div>
     </div>
     <LinkedDocumentsPanel v-if="client" class="mt-4 block" entity-type="client" :entity-id="client.id" />
+
+    <!-- Spodní lišta — méně časté akce -->
+    <div v-if="auth.canWrite" class="bg-surface border border-neutral-200 rounded-lg shadow-sm px-4 py-3 flex flex-wrap items-center gap-2">
+      <button @click="showWrLinkModal = true"
+        class="cursor-pointer px-3 h-9 text-sm border border-primary-500/40 rounded-md text-primary-700 hover:bg-primary-50 inline-flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 015.656 5.656l-1.5 1.5"/></svg>
+        {{ t('workReportTracking.button') }}
+      </button>
+      <button v-if="!client.archived_at" @click="archive"
+        class="cursor-pointer px-3 h-9 text-sm border border-warning-500/50 rounded-md text-warning-600 hover:bg-warning-50 inline-flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-warning-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 1 1 0-4h14a2 2 0 1 1 0 4M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8m-9 4h4"/></svg>
+        {{ t('common.archive') }}
+      </button>
+      <button v-else @click="unarchive"
+        class="cursor-pointer px-3 h-9 text-sm border border-success-500/50 rounded-md text-success-600 hover:bg-success-50 inline-flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 0 1 8 8v2M3 10l6 6m-6-6l6-6"/></svg>
+        {{ t('common.restore') }}
+      </button>
+    </div>
+
+    <SendWorkReportLinkModal v-if="client" :open="showWrLinkModal" scope="client" :entity-id="client.id" @close="showWrLinkModal = false" />
   </div>
 </template>

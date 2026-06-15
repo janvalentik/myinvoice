@@ -84,6 +84,8 @@ const routes: RouteRecordRaw[] = [
   { path: '/reset',  name: 'reset',  component: () => import('@/pages/ResetPassword.vue'),  meta: { public: true } },
   { path: '/approval/:token([a-f0-9]{32,128})', name: 'approval',
     component: () => import('@/pages/ApprovalPublic.vue'), meta: { public: true } },
+  { path: '/work-report/:token([a-f0-9]{32,128})', name: 'work-report-tracking',
+    component: () => import('@/pages/WorkReportTrackingPublic.vue'), meta: { public: true } },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',

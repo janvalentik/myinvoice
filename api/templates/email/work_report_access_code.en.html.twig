@@ -1,0 +1,24 @@
+{% extends '_layout.html.twig' %}
+
+{% block content %}
+<h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#15131D;">Verification code</h1>
+
+<p style="margin:0 0 16px;">Hello,</p>
+
+<p style="margin:0 0 16px;">to view the <strong>work report preview</strong>, enter this verification code:</p>
+
+<p style="margin:24px 0;text-align:center;">
+  <span style="display:inline-block;background:{{ accent_soft }};color:#15131D;font-weight:700;font-size:30px;letter-spacing:8px;padding:14px 28px;border-radius:8px;font-family:monospace;">
+    {{ code }}
+  </span>
+</p>
+
+<p style="margin:0 0 8px;font-size:13px;color:#7A748C;">
+  The code is valid for <strong>{{ expiresIn|default('15 min') }}</strong> and can be used only once.
+  After entering it your browser is remembered and the code is no longer required.
+</p>
+
+<p style="margin:24px 0 0;font-size:13px;color:#7A748C;">
+  <strong>If you did not request the preview</strong>, please ignore this e-mail.
+</p>
+{% endblock %}

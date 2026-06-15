@@ -1,0 +1,44 @@
+{% extends '_layout.html.twig' %}
+
+{% block content %}
+<h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#15131D;">Dobrý den,</h1>
+
+<p style="margin:0 0 16px;">
+  připravili jsme pro Vás <strong>online náhled na výkaz práce</strong>
+  {% if scope == 'project' and project_name %}pro zakázku <strong>{{ project_name }}</strong>{% elseif client_company_name %}pro <strong>{{ client_company_name }}</strong>{% endif %}.
+</p>
+
+<p style="margin:0 0 16px;">
+  Na odkazu níže uvidíte vždy <strong>aktuálně rozpracované výkazy práce</strong> — počet odpracovaných
+  hodin i průběžnou částku k vyúčtování — ještě než z nich vznikne faktura. Náhled se sám aktualizuje,
+  takže máte přehled kdykoliv se podíváte.
+</p>
+
+{% if note %}
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;background:{{ accent_soft }};border-radius:8px;margin:16px 0;">
+  <tr><td style="padding:14px 18px;font-size:14px;color:#403B52;white-space:pre-wrap;">{{ note }}</td></tr>
+</table>
+{% endif %}
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto;">
+  <tr>
+    <td align="center" style="background:{{ accent }};border-radius:10px;">
+      <a href="{{ tracking_url }}"
+         style="display:inline-block;padding:18px 48px;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">
+        Zobrazit výkaz práce
+      </a>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:24px 0 8px;font-size:13px;color:#7A748C;text-align:center;">
+  Nebo odkaz zkopírujte do prohlížeče:<br>
+  <a href="{{ tracking_url }}" style="color:{{ accent }};word-break:break-all;font-family:monospace;font-size:12px;">{{ tracking_url }}</a>
+</p>
+
+<p style="margin:24px 0 0;font-size:13px;color:#5A5470;">
+  Při prvním otevření Vás požádáme o ověření — na Váš e-mail pošleme jednorázový kód.
+  Po jeho zadání si Vás prohlížeč zapamatuje a příště se kód už nevyžaduje.
+  <strong>Odkaz je důvěrný</strong>, prosíme, nesdílejte ho dál.
+</p>
+{% endblock %}

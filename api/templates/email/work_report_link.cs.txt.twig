@@ -1,0 +1,18 @@
+{% extends '_layout.txt.twig' %}
+
+{% block content %}
+Dobrý den,
+
+připravili jsme pro Vás online náhled na výkaz práce{% if scope == 'project' and project_name %} pro zakázku {{ project_name }}{% elseif client_company_name %} pro {{ client_company_name }}{% endif %}.
+
+Na odkazu níže uvidíte vždy aktuálně rozpracované výkazy práce — počet odpracovaných hodin i průběžnou částku k vyúčtování — ještě než z nich vznikne faktura. Náhled se sám aktualizuje.
+{% if note %}
+---
+{{ note }}
+---
+{% endif %}
+Zobrazit výkaz práce:
+{{ tracking_url }}
+
+Při prvním otevření Vás požádáme o ověření — na Váš e-mail pošleme jednorázový kód. Po jeho zadání si Vás prohlížeč zapamatuje a příště se kód už nevyžaduje. Odkaz je důvěrný, prosíme, nesdílejte ho dál.
+{% endblock %}

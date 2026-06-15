@@ -1,0 +1,44 @@
+{% extends '_layout.html.twig' %}
+
+{% block content %}
+<h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#15131D;">Hello,</h1>
+
+<p style="margin:0 0 16px;">
+  we have prepared an <strong>online work report preview</strong>
+  {% if scope == 'project' and project_name %}for the project <strong>{{ project_name }}</strong>{% elseif client_company_name %}for <strong>{{ client_company_name }}</strong>{% endif %}.
+</p>
+
+<p style="margin:0 0 16px;">
+  The link below always shows the <strong>currently open work reports</strong> — hours worked and the
+  running amount to be billed — before they turn into an invoice. The preview updates itself, so you
+  have an overview whenever you look.
+</p>
+
+{% if note %}
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;background:{{ accent_soft }};border-radius:8px;margin:16px 0;">
+  <tr><td style="padding:14px 18px;font-size:14px;color:#403B52;white-space:pre-wrap;">{{ note }}</td></tr>
+</table>
+{% endif %}
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:28px auto;">
+  <tr>
+    <td align="center" style="background:{{ accent }};border-radius:10px;">
+      <a href="{{ tracking_url }}"
+         style="display:inline-block;padding:18px 48px;font-size:17px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;">
+        View work report
+      </a>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:24px 0 8px;font-size:13px;color:#7A748C;text-align:center;">
+  Or copy the link into your browser:<br>
+  <a href="{{ tracking_url }}" style="color:{{ accent }};word-break:break-all;font-family:monospace;font-size:12px;">{{ tracking_url }}</a>
+</p>
+
+<p style="margin:24px 0 0;font-size:13px;color:#5A5470;">
+  The first time you open it, we will ask you to verify — we send a one-time code to your e-mail.
+  After entering it your browser is remembered and the code is no longer required.
+  <strong>This link is confidential</strong>, please do not share it.
+</p>
+{% endblock %}

@@ -118,6 +118,10 @@ use MyInvoice\Action\Invoice\UpdateInvoiceAction;
 use MyInvoice\Action\WorkReport\GetWorkReportAction;
 use MyInvoice\Action\WorkReport\SaveWorkReportAction;
 use MyInvoice\Action\WorkReport\DeleteWorkReportAction;
+use MyInvoice\Action\WorkReport\WorkReportLinkAction;
+use MyInvoice\Action\WorkReport\PublicWorkReportGetAction;
+use MyInvoice\Action\WorkReport\PublicWorkReportRequestCodeAction;
+use MyInvoice\Action\WorkReport\PublicWorkReportVerifyAction;
 use MyInvoice\Action\Project\ArchiveProjectAction;
 use MyInvoice\Action\Project\CreateProjectAction;
 use MyInvoice\Action\Project\DeleteProjectAction;
@@ -241,6 +245,11 @@ final class Routes
         $app->post  ('/api/clients/{id:[0-9]+}/archive',   ArchiveClientAction::class);
         $app->post  ('/api/clients/{id:[0-9]+}/unarchive', ArchiveClientAction::class);
         $app->delete('/api/clients/{id:[0-9]+}',           DeleteClientAction::class);
+        // Sledovací odkaz na výkaz práce (klient — všechny otevřené výkazy klienta)
+        $app->get   ('/api/clients/{id:[0-9]+}/work-report-link',            [WorkReportLinkAction::class, 'getClient']);
+        $app->get   ('/api/clients/{id:[0-9]+}/work-report-link/recipients', [WorkReportLinkAction::class, 'recipientsClient']);
+        $app->post  ('/api/clients/{id:[0-9]+}/work-report-link/send',       [WorkReportLinkAction::class, 'sendClient']);
+        $app->delete('/api/clients/{id:[0-9]+}/work-report-link',            [WorkReportLinkAction::class, 'revokeClient']);
 
         // Projects
         $app->get   ('/api/clients/{client_id:[0-9]+}/projects', ListProjectsAction::class);
@@ -251,6 +260,11 @@ final class Routes
         $app->put   ('/api/projects/{id:[0-9]+}',    UpdateProjectAction::class);
         $app->post  ('/api/projects/{id:[0-9]+}/archive', ArchiveProjectAction::class);
         $app->delete('/api/projects/{id:[0-9]+}',         DeleteProjectAction::class);
+        // Sledovací odkaz na výkaz práce (zakázka — jen otevřené výkazy dané zakázky)
+        $app->get   ('/api/projects/{id:[0-9]+}/work-report-link',            [WorkReportLinkAction::class, 'getProject']);
+        $app->get   ('/api/projects/{id:[0-9]+}/work-report-link/recipients', [WorkReportLinkAction::class, 'recipientsProject']);
+        $app->post  ('/api/projects/{id:[0-9]+}/work-report-link/send',       [WorkReportLinkAction::class, 'sendProject']);
+        $app->delete('/api/projects/{id:[0-9]+}/work-report-link',            [WorkReportLinkAction::class, 'revokeProject']);
 
         // Invoices (M3 — draft + editor + sumace; vystavení/odeslání/PDF přijde v M4)
         $app->get    ('/api/invoices',              ListInvoicesAction::class);
@@ -353,6 +367,11 @@ final class Routes
         // Public schvalovací endpointy (bez auth, jen token)
         $app->get    ('/api/public/approval/{token:[a-f0-9]{32,128}}',          PublicApprovalGetAction::class);
         $app->post   ('/api/public/approval/{token:[a-f0-9]{32,128}}/decide',   PublicApprovalDecideAction::class);
+
+        // Public náhled na výkaz práce (bez auth; token + e-mailová autorizace kódem)
+        $app->get    ('/api/public/work-report/{token:[a-f0-9]{32,128}}',              PublicWorkReportGetAction::class);
+        $app->post   ('/api/public/work-report/{token:[a-f0-9]{32,128}}/request-code', PublicWorkReportRequestCodeAction::class);
+        $app->post   ('/api/public/work-report/{token:[a-f0-9]{32,128}}/verify',       PublicWorkReportVerifyAction::class);
 
         // Dashboard
         $app->get ('/api/dashboard/summary',          SummaryAction::class);
