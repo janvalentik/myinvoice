@@ -140,7 +140,51 @@ schválení se faktura **automaticky vystaví a odešle**.
 Detailní popis workflow schvalování (tlačítka, stavy, public stránka) viz
 kapitola [10. Faktura — editor a výkaz víceprací § 10.7](10_Faktura_editor.md).
 
-## 14.7 Tipy
+## 14.7 Náhled na výkaz práce (sledovací odkaz)
+
+V detailu **klienta** i **zakázky** je dole tlačítko **„Poslat odkaz na sledování
+výkazu práce"**. Vytvoří **trvalý veřejný odkaz**, na kterém klient vidí vždy
+**aktuálně rozpracované (nevyfakturované) výkazy práce** — počet odpracovaných
+hodin i průběžnou částku k vyúčtování — ještě než z nich vznikne faktura.
+
+- **Odkaz na klienta** ukazuje všechny otevřené výkazy klienta (napříč zakázkami).
+- **Odkaz na zakázku** ukazuje jen výkazy té konkrétní zakázky.
+
+Náhled je „živý" — pokaždé zobrazí aktuální stav konceptů faktur s výkazem práce.
+
+### Odeslání odkazu
+
+Po kliknutí na tlačítko se otevře okno s **předvyplněnými příjemci** (e-maily
+klienta, u zakázky i fakturační e-maily zakázky). Příjemce lze upravit, přidat
+kopii (CC/BCC) a krátkou poznámku. Po odeslání se příjemcům doručí e-mail
+s odkazem; tentýž odkaz se ukáže i v okně k ručnímu zkopírování (tlačítko
+**Kopírovat**), spolu s časem posledního odeslání a posledního zobrazení.
+
+### Ověření přístupu
+
+Odkaz je veřejný, ale chráněný:
+
+- Při **prvním** otevření z prohlížeče zadá návštěvník svůj e-mail a MyInvoice
+  na něj pošle **jednorázový ověřovací kód**. Po jeho zadání se přístup uloží do
+  prohlížeče (cookie) a dalších **180 dní** se kód nevyžaduje.
+- Povolené jsou jen **e-maily klienta** (hlavní e-mail + kontakty), u odkazu na
+  zakázku navíc její **fakturační e-maily**. Na stránce se kvůli soukromí
+  zobrazují jen **maskované** adresy (např. `j****@fialka.cz`).
+- **Přihlášený uživatel** (ty nebo účetní) vidí náhled rovnou, bez kódu.
+
+### Zneplatnění
+
+V okně je tlačítko **„Zneplatnit odkaz"** — stávající odkaz okamžitě přestane
+fungovat (i pro všechny, kdo už byli ověření). Při dalším odeslání se vytvoří
+nový.
+
+> 💡 Odkaz je důvěrný — kdokoli, kdo ho má a má přístup k některému povolenému
+> e-mailu, si výkaz zobrazí. Když se dostane k nesprávné osobě, zneplatni ho.
+
+Obě e-mailové šablony („odkaz na sledování" a „ověřovací kód") si můžeš upravit
+v **Nastavení → E-maily → E-mail šablony**.
+
+## 14.8 Tipy
 
 - **Bez zakázky lze fakturovat** — v editoru nech pole „Zakázka" prázdné.
   Užitečné pro jednorázové faktury (poradenství, license).
