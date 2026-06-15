@@ -5,6 +5,13 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.29.0] — 2026-06-15
+
+### Added
+
+- **Kniha jízd nově umí elektromobily i plug-in hybridy.** U vozidla zvol druh paliva *Elektro* nebo *Hybrid* — nabíjení se eviduje v **kWh** místo litrů a spotřeba se počítá v **kWh/100 km**. U plug-in hybridu se palivo (litry) a elektřina (kWh) sledují **odděleně** a v ročním souhrnu se zobrazí dvě spotřeby vedle sebe (litry a kWh se nikdy nesčítají do jedné). Ruční záznam tankování má přepínač jednotky l/kWh, který se předvyplní podle vozidla. Beze změny databáze.
+- **Rozpoznávání přijatých faktur nově zahrnuje nabíjení.** Příznak dodavatele „Benzínka" se rozšířil na **„Čerpací / nabíjecí stanice"** — faktury od provozovatelů nabíjení (ČEZ, PRE, E.ON, Ionity…) účtované v kWh se vytěží stejným tlačítkem *Načíst z faktur* jako tankování a uloží se jako nabíjení v kWh navázané na vozidlo. Roční souhrn a jeho XLSX/PDF export dostaly sloupce *Nabito (kWh)* a *kWh/100 km*; orientační odhad tachometru u nabíjení počítá s elektrickou spotřebou.
+
 ## [4.28.1] — 2026-06-15
 
 ### Fixed

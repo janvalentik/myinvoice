@@ -20,8 +20,10 @@ use MyInvoice\Infrastructure\Database\Connection;
  */
 final class FuelingOdometerEstimator
 {
-    /** Záložní spotřeba (l/100 km), když ji nelze z dat spočítat. */
+    /** Záložní spotřeba paliva (l/100 km), když ji nelze z dat spočítat. */
     private const DEFAULT_CONSUMPTION = 7.0;
+    /** Záložní spotřeba elektřiny (kWh/100 km) pro elektrické dobíjení. */
+    private const DEFAULT_CONSUMPTION_KWH = 18.0;
 
     public function __construct(private readonly Connection $db) {}
 
@@ -43,13 +45,19 @@ final class FuelingOdometerEstimator
         $carIds = array_keys($carIds);
 
         $trips = $this->tripsByCar($supplierId, $carIds);
-        $consumption = $this->consumptionByCar($supplierId, $carIds);
+        // Spotřeba zvlášť pro kapalné palivo (l/100 km) a elektřinu (kWh/100 km) —
+        // u PHEV se litry a kWh nesmí sčítat do jedné spotřeby.
+        $consL   = $this->consumptionByCar($supplierId, $carIds, false);
+        $consKwh = $this->consumptionByCar($supplierId, $carIds, true);
 
         foreach ($fuelings as &$f) {
             if (($f['odometer'] ?? null) !== null) continue;
             $carId = (int) ($f['car_id'] ?? 0);
             if ($carId === 0 || empty($trips[$carId])) continue;
-            $est = self::estimate($f, $trips[$carId], $consumption[$carId] ?? self::DEFAULT_CONSUMPTION);
+            $cons = self::isElectricUnit($f['unit'] ?? null)
+                ? ($consKwh[$carId] ?? self::DEFAULT_CONSUMPTION_KWH)
+                : ($consL[$carId] ?? self::DEFAULT_CONSUMPTION);
+            $est = self::estimate($f, $trips[$carId], $cons);
             if ($est !== null) $f['odometer_estimated'] = $est;
         }
         unset($f);
@@ -113,6 +121,12 @@ final class FuelingOdometerEstimator
         return $x;
     }
 
+    /** Jednotka tankování odpovídá elektrickému dobíjení (kWh)? */
+    private static function isElectricUnit(mixed $unit): bool
+    {
+        return stripos((string) ($unit ?? ''), 'kwh') !== false;
+    }
+
     /** „HH:MM[:SS]" → minuty od půlnoci, jinak null. */
     private static function minutes(mixed $v): ?int
     {
@@ -149,17 +163,21 @@ final class FuelingOdometerEstimator
     }
 
     /**
-     * Spotřeba l/100 km per auto = Σ litry / Σ ujeto * 100 (jinak výchozí).
+     * Spotřeba per auto = Σ množství / Σ ujeto * 100 (jinak výchozí). Pro $electric=true
+     * sčítá jen nabíjení (kWh) → kWh/100 km, jinak jen kapalné palivo → l/100 km.
      *
      * @param list<int> $carIds
      * @return array<int, float>
      */
-    private function consumptionByCar(int $supplierId, array $carIds): array
+    private function consumptionByCar(int $supplierId, array $carIds, bool $electric): array
     {
         $in = implode(',', array_fill(0, count($carIds), '?'));
-        $liters = $this->sumByCar(
+        $unitCond = $electric
+            ? "AND LOWER(unit) LIKE '%kwh%'"
+            : "AND (unit IS NULL OR LOWER(unit) NOT LIKE '%kwh%')";
+        $qty = $this->sumByCar(
             "SELECT car_id, COALESCE(SUM(quantity),0) AS s FROM fuelings
-              WHERE supplier_id = ? AND car_id IN ($in) AND quantity IS NOT NULL GROUP BY car_id",
+              WHERE supplier_id = ? AND car_id IN ($in) AND quantity IS NOT NULL $unitCond GROUP BY car_id",
             $supplierId, $carIds
         );
         $km = $this->sumByCar(
@@ -167,11 +185,12 @@ final class FuelingOdometerEstimator
               WHERE supplier_id = ? AND car_id IN ($in) GROUP BY car_id",
             $supplierId, $carIds
         );
+        $default = $electric ? self::DEFAULT_CONSUMPTION_KWH : self::DEFAULT_CONSUMPTION;
         $out = [];
         foreach ($carIds as $cid) {
-            $l = $liters[$cid] ?? 0.0;
+            $q = $qty[$cid] ?? 0.0;
             $k = $km[$cid] ?? 0.0;
-            $out[$cid] = ($l > 0 && $k > 0) ? $l / $k * 100.0 : self::DEFAULT_CONSUMPTION;
+            $out[$cid] = ($q > 0 && $k > 0) ? $q / $k * 100.0 : $default;
         }
         return $out;
     }

@@ -10,21 +10,28 @@ namespace MyInvoice\Service\Logbook\Fuel;
  */
 final class FuelKeywords
 {
-    /** Pohonné hmoty / palivo (řádek se stane tankováním). */
+    /** Pohonné hmoty / palivo / dobíjení (řádek se stane tankováním/nabíjením). */
     private const FUEL = [
         'nafta', 'diesel', 'benzin', 'natural', 'super', 'premium', 'premiova',
         'adblue', 'ad blue', 'lpg', 'cng', 'phm', 'pohonne hmoty', 'pohonnych hmot', 'palivo',
         'efecta', 'verva', 'miles',
+        // Elektromobilita — nabíjení v kWh (zrcadlí ELECTRIC).
+        'nabij', 'dobij', 'kwh', 'elektromobil', 'wallbox', 'emobility', 'e-mobility', 'charging', 'recharge',
     ];
 
-    /** Nepalivové služby na benzínce (řádek se NEstane tankováním). */
+    /** Elektrické dobíjení (energie v kWh) — podmnožina FUEL, slouží i k volbě jednotky. */
+    private const ELECTRIC = [
+        'nabij', 'dobij', 'kwh', 'elektromobil', 'wallbox', 'emobility', 'e-mobility', 'charging', 'recharge',
+    ];
+
+    /** Nepalivové služby na benzínce/stanici (řádek se NEstane tankováním). */
     private const NON_FUEL = [
         'myti', 'mytí', 'plosna cena', 'plošná cena', 'poplatek', 'dalnicni', 'dálniční',
         'mytne', 'mýtné', 'znamka', 'známka', 'parkovani', 'parkování', 'obcerstveni', 'občerstvení',
     ];
 
-    /** SQL fragment (LOWER(col) REGEXP …) pro hrubý filtr palivových položek na fakturách. */
-    public const SQL_REGEXP = 'benzin|nafta|diesel|natural|adblue|phm|palivo|pohonn|premiov|verva|efecta';
+    /** SQL fragment (LOWER(col) REGEXP …) pro hrubý filtr palivových/nabíjecích položek na fakturách. */
+    public const SQL_REGEXP = 'benzin|nafta|diesel|natural|adblue|phm|palivo|pohonn|premiov|verva|efecta|kwh|nabij|dobij|elektromobil|wallbox';
 
     public static function isFuel(string $text): bool
     {
@@ -50,6 +57,32 @@ final class FuelKeywords
             if (str_contains($n, self::normalize($kw))) return true;
         }
         return false;
+    }
+
+    /** Popis odpovídá elektrickému dobíjení (energie v kWh), ne kapalnému palivu. */
+    public static function isElectric(string $text): bool
+    {
+        $n = self::normalize($text);
+        if ($n === '') return false;
+        foreach (self::ELECTRIC as $kw) {
+            if (str_contains($n, self::normalize($kw))) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Kanonická jednotka tankování/nabíjení: 'kWh' pro elektrické dobíjení, jinak 'l'.
+     * Rozhoduje explicitní jednotka z dokladu (kWh) → jinak povaha popisu (nabíjení…).
+     */
+    public static function canonicalUnit(?string $unit, string $desc = ''): string
+    {
+        $u = str_replace([' ', '.', "\u{00A0}"], '', self::normalize((string) $unit));
+        if (str_contains($u, 'kwh')) return 'kWh';
+        // Bez jednoznačně kapalné jednotky se řídíme popisem (Nabíjení / kWh / wallbox…).
+        if (self::isElectric($desc) && !in_array($u, ['l', 'litr', 'litru', 'litry', 'lt'], true)) {
+            return 'kWh';
+        }
+        return 'l';
     }
 
     /** Odstraní diakritiku, lowercase, sjednotí whitespace. */

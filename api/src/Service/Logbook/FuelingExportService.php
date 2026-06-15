@@ -142,7 +142,7 @@ final class FuelingExportService
                 . '<td>' . $e($this->dateCell($t)) . '</td>'
                 . '<td>' . $e($t['car_registration'] ?? '') . '</td>'
                 . '<td>' . $e($t['fuel_type'] ?? '') . '</td>'
-                . '<td class="r">' . ($t['quantity'] !== null ? $e($this->num((float) $t['quantity']) . ' l') : '') . '</td>'
+                . '<td class="r">' . ($t['quantity'] !== null ? $e($this->num((float) $t['quantity']) . ' ' . ((string) ($t['unit'] ?? 'l') ?: 'l')) : '') . '</td>'
                 . '<td class="r">' . ($t['unit_price'] !== null ? $e($this->num((float) $t['unit_price'])) : '') . '</td>'
                 . '<td class="r">' . ($base !== null ? $e($this->num($base)) : '') . '</td>'
                 . '<td class="r">' . $e($this->money((float) $t['amount_with_vat'], (string) $t['currency'])) . '</td>'

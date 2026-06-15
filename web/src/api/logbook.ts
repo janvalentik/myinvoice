@@ -226,9 +226,14 @@ export interface SummaryVehicle {
   odometer_end: number | null
   fuel_count: number
   liters: number
+  liters_count: number
   liters_incomplete: boolean
+  kwh: number
+  kwh_count: number
+  kwh_incomplete: boolean
   fuel_cost: number
   avg_consumption: number | null
+  avg_consumption_kwh: number | null
   continuity_issues: number
   continuity_detail: Array<{ prev_date: string; prev_end: number; date: string; start: number; gap: number }>
   pausal_months: number
@@ -246,9 +251,12 @@ export interface SummaryTotals {
   private_ratio: number
   fuel_count: number
   liters: number
+  kwh: number
   fuel_cost: number
   avg_consumption: number | null
+  avg_consumption_kwh: number | null
   liters_incomplete: boolean
+  kwh_incomplete: boolean
   continuity_issues: number
 }
 

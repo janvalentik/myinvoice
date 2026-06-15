@@ -120,16 +120,25 @@ const draft = reactive<FuelingPayload & { id: number }>({
   odometer: null, station: '', note: '',
 })
 
+// Výchozí jednotka dle auta: elektromobil nabíjí v kWh, ostatní tankují v litrech.
+function unitForCar(carId: number | null): string {
+  const c = cars.value.find(x => x.id === carId)
+  return c?.fuel_type === 'electric' ? 'kWh' : 'l'
+}
+
 function newFueling() {
   const defCar = cars.value.find(c => c.is_default) ?? (cars.value.length === 1 ? cars.value[0] : null)
   Object.assign(draft, {
     id: 0, car_id: defCar?.id ?? null, fueled_date: new Date().toISOString().slice(0, 10), fueled_time: '',
-    fuel_type: '', quantity: null, unit: 'l', unit_price: null, amount_with_vat: 0, currency: 'CZK',
+    fuel_type: '', quantity: null, unit: unitForCar(defCar?.id ?? null), unit_price: null, amount_with_vat: 0, currency: 'CZK',
     odometer: null, station: '', note: '',
   })
   odometerHint.value = null
   open.value = true
 }
+
+// U nového záznamu přepni jednotku dle vybraného auta (PHEV i tak může uživatel přepnout ručně).
+watch(() => draft.car_id, (cid) => { if (draft.id === 0) draft.unit = unitForCar(cid ?? null) })
 
 function editFueling(f: Fueling) {
   Object.assign(draft, {
@@ -422,12 +431,18 @@ const sourceBadge: Record<string, string> = {
               <input v-model="draft.fueled_time" type="time" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.fuel_desc') }}</label>
-              <input v-model="draft.fuel_type" type="text" maxlength="60" :placeholder="t('logbook.fuel_desc_placeholder')" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ draft.unit === 'kWh' ? t('logbook.charge_desc') : t('logbook.fuel_desc') }}</label>
+              <input v-model="draft.fuel_type" type="text" maxlength="60" :placeholder="draft.unit === 'kWh' ? t('logbook.charge_desc_placeholder') : t('logbook.fuel_desc_placeholder')" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.quantity') }} (l)</label>
-              <input v-model.number="draft.quantity" type="number" min="0" step="0.001" class="w-full h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+              <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.quantity') }}</label>
+              <div class="flex gap-2">
+                <input v-model.number="draft.quantity" type="number" min="0" step="0.001" class="flex-1 min-w-0 h-10 px-3 border border-neutral-300 rounded-md text-sm font-mono" />
+                <select v-model="draft.unit" class="h-10 px-2 w-24 border border-neutral-300 rounded-md bg-surface text-sm">
+                  <option value="l">l</option>
+                  <option value="kWh">kWh</option>
+                </select>
+              </div>
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('logbook.odometer') }}</label>

@@ -77,7 +77,6 @@ final class AxigonStatementParser implements FuelStatementParser
         $currency = (string) ($invoice['currency'] ?? 'CZK');
         foreach ($rows as &$r) {
             $r['currency'] = $currency;
-            $r['unit'] = 'l';
         }
         unset($r);
 
@@ -240,7 +239,7 @@ final class AxigonStatementParser implements FuelStatementParser
             'fueled_time'        => $time,
             'fuel_type'          => $fuelType,
             'quantity'           => $quantity,
-            'unit'               => 'l',
+            'unit'               => FuelKeywords::canonicalUnit(null, (string) $fuelType),
             'unit_price'         => $unitPrice,
             'amount_without_vat' => $base,
             'amount_vat'         => $vat,

@@ -59,15 +59,15 @@ final class FuelTransactionEnricher
     {
         $items = is_array($invoice['items'] ?? null) ? $invoice['items'] : [];
 
-        // Úhrn litrů a jednotková cena per normalizovaný typ paliva z položek faktury.
-        $pool = []; // normType => ['liters' => float, 'unit_price' => ?float]
+        // Úhrn množství (litry/kWh) a jednotková cena per normalizovaný typ paliva z položek faktury.
+        $pool = []; // normType => ['liters' => float, 'unit_price' => ?float, 'unit' => string]
         foreach ($items as $it) {
             $desc = (string) ($it['description'] ?? '');
             if ($desc === '' || !FuelKeywords::isFuel($desc)) continue;
             $qty = isset($it['quantity']) ? (float) $it['quantity'] : 0.0;
             if ($qty <= 0) continue;
             $key = FuelKeywords::normalize($desc);
-            $pool[$key] ??= ['liters' => 0.0, 'unit_price' => null];
+            $pool[$key] ??= ['liters' => 0.0, 'unit_price' => null, 'unit' => FuelKeywords::canonicalUnit($it['unit'] ?? null, $desc)];
             $pool[$key]['liters'] += $qty;
             if ($pool[$key]['unit_price'] === null && isset($it['unit_price_without_vat']) && $it['unit_price_without_vat'] !== null) {
                 $pool[$key]['unit_price'] = (float) $it['unit_price_without_vat'];
@@ -108,7 +108,7 @@ final class FuelTransactionEnricher
                 $qty = round($liters * $share, 2);
                 if ($qty <= 0) continue;
                 $transactions[$i]['quantity'] = $qty;
-                $transactions[$i]['unit'] = 'l';
+                $transactions[$i]['unit'] = $pool[$key]['unit'];
                 $base = (float) ($transactions[$i]['amount_without_vat'] ?? 0);
                 if ($base > 0) {
                     $transactions[$i]['unit_price'] = round($base / $qty, 2);
@@ -123,7 +123,7 @@ final class FuelTransactionEnricher
      * Přiřadí normalizovaný typ paliva transakce ke klíči poolu položek (přesná shoda
      * nebo oboustranné containment, např. „premiova nafta" ⊃ „nafta").
      *
-     * @param array<string,array{liters:float,unit_price:?float}> $pool
+     * @param array<string,array{liters:float,unit_price:?float,unit:string}> $pool
      */
     private function matchPoolKey(string $norm, array $pool): ?string
     {

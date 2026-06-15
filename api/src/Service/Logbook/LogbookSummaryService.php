@@ -65,8 +65,16 @@ final class LogbookSummaryService
             $g = &$this->ensureCar($byCar, $cid, (string) ($f['car_registration'] ?? ''), $f['car_name'] ?? null);
             $g['fuel_count']++;
             $g['fuel_cost'] += (float) $f['amount_with_vat'];
-            if ($f['quantity'] !== null) $g['liters'] += (float) $f['quantity'];
-            else $g['liters_incomplete'] = true;
+            // Elektrické dobíjení (kWh) se eviduje a počítá zvlášť od kapalného paliva (l).
+            if (stripos((string) ($f['unit'] ?? 'l'), 'kwh') !== false) {
+                $g['kwh_count']++;
+                if ($f['quantity'] !== null) $g['kwh'] += (float) $f['quantity'];
+                else $g['kwh_incomplete'] = true;
+            } else {
+                $g['liters_count']++;
+                if ($f['quantity'] !== null) $g['liters'] += (float) $f['quantity'];
+                else $g['liters_incomplete'] = true;
+            }
             unset($g);
         }
 
@@ -123,7 +131,9 @@ final class LogbookSummaryService
                 'trips_count' => 0, 'km' => 0.0,
                 'business_km' => 0.0, 'private_km' => 0.0, 'uncategorized_km' => 0.0,
                 'odometer_start' => null, 'odometer_end' => null,
-                'fuel_count' => 0, 'fuel_cost' => 0.0, 'liters' => 0.0, 'liters_incomplete' => false,
+                'fuel_count' => 0, 'fuel_cost' => 0.0,
+                'liters' => 0.0, 'liters_count' => 0, 'liters_incomplete' => false,
+                'kwh' => 0.0, 'kwh_count' => 0, 'kwh_incomplete' => false,
                 '_months' => [], '_trips' => [],
             ];
         }
@@ -138,10 +148,12 @@ final class LogbookSummaryService
         $business = (float) $g['business_km'];
         $uncat = (float) $g['uncategorized_km'];
         $liters = (float) $g['liters'];
+        $kwh = (float) $g['kwh'];
 
-        // Spotřeba l/100 km — počítáme vždy, když známe nějaké litry i km; pokud litry
-        // nejsou kompletní (některá tankování bez množství), je orientační (UI to označí *).
+        // Spotřeba l/100 km a kWh/100 km — počítáme vždy, když známe nějaké množství i km;
+        // pokud množství není kompletní (některá tankování bez množství), je orientační (UI označí *).
         $consumption = ($km > 0 && $liters > 0) ? ($liters / $km * 100) : null;
+        $consumptionKwh = ($km > 0 && $kwh > 0) ? ($kwh / $km * 100) : null;
 
         // Návaznost tachometru: seřadit jízdy chronologicky a hledat mezery/překryvy.
         $continuity = $this->continuityDetail($g['_trips']);
@@ -165,9 +177,14 @@ final class LogbookSummaryService
             'odometer_end' => $g['odometer_end'],
             'fuel_count' => $g['fuel_count'],
             'liters' => round($liters, 2),
+            'liters_count' => (int) $g['liters_count'],
             'liters_incomplete' => (bool) $g['liters_incomplete'],
+            'kwh' => round($kwh, 2),
+            'kwh_count' => (int) $g['kwh_count'],
+            'kwh_incomplete' => (bool) $g['kwh_incomplete'],
             'fuel_cost' => round((float) $g['fuel_cost'], 2),
             'avg_consumption' => $consumption !== null ? round($consumption, 1) : null,
+            'avg_consumption_kwh' => $consumptionKwh !== null ? round($consumptionKwh, 1) : null,
             'continuity_issues' => count($continuity),
             'continuity_detail' => $continuity,
             'pausal_months' => $months,
@@ -205,22 +222,25 @@ final class LogbookSummaryService
     /** @param list<array<string,mixed>> $vehicles */
     private function totals(array $vehicles): array
     {
-        $km = $business = $private = $uncat = $liters = $cost = 0.0;
-        $trips = $fuel = 0; $issues = 0; $litersIncomplete = false;
+        $km = $business = $private = $uncat = $liters = $kwh = $cost = 0.0;
+        $trips = $fuel = 0; $issues = 0; $litersIncomplete = false; $kwhIncomplete = false;
         foreach ($vehicles as $v) {
             $km += $v['km']; $business += $v['business_km']; $private += $v['private_km'];
-            $uncat += $v['uncategorized_km']; $liters += $v['liters']; $cost += $v['fuel_cost'];
+            $uncat += $v['uncategorized_km']; $liters += $v['liters']; $kwh += $v['kwh']; $cost += $v['fuel_cost'];
             $trips += $v['trips_count']; $fuel += $v['fuel_count']; $issues += $v['continuity_issues'];
             if ($v['liters_incomplete']) $litersIncomplete = true;
+            if ($v['kwh_incomplete']) $kwhIncomplete = true;
         }
         $consumption = ($km > 0 && $liters > 0) ? round($liters / $km * 100, 1) : null;
+        $consumptionKwh = ($km > 0 && $kwh > 0) ? round($kwh / $km * 100, 1) : null;
         return [
             'vehicles_count' => count($vehicles),
             'trips_count' => $trips, 'km' => round($km, 1),
             'business_km' => round($business, 1), 'private_km' => round($private, 1), 'uncategorized_km' => round($uncat, 1),
             'private_ratio' => $km > 0 ? round($private / $km * 100, 1) : 0.0,
-            'fuel_count' => $fuel, 'liters' => round($liters, 2), 'fuel_cost' => round($cost, 2),
-            'avg_consumption' => $consumption, 'liters_incomplete' => $litersIncomplete, 'continuity_issues' => $issues,
+            'fuel_count' => $fuel, 'liters' => round($liters, 2), 'kwh' => round($kwh, 2), 'fuel_cost' => round($cost, 2),
+            'avg_consumption' => $consumption, 'avg_consumption_kwh' => $consumptionKwh,
+            'liters_incomplete' => $litersIncomplete, 'kwh_incomplete' => $kwhIncomplete, 'continuity_issues' => $issues,
         ];
     }
 }

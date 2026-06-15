@@ -6366,9 +6366,14 @@ components:
         odometer_end: { type: integer, nullable: true }
         fuel_count: { type: integer }
         liters: { type: number }
+        liters_count: { type: integer }
         liters_incomplete: { type: boolean }
+        kwh: { type: number, description: Charged energy (kWh) for electric/PHEV vehicles. }
+        kwh_count: { type: integer }
+        kwh_incomplete: { type: boolean }
         fuel_cost: { type: number }
-        avg_consumption: { type: number, nullable: true }
+        avg_consumption: { type: number, nullable: true, description: Fuel consumption l/100 km. }
+        avg_consumption_kwh: { type: number, nullable: true, description: Electric consumption kWh/100 km. }
         continuity_issues: { type: integer }
         continuity_detail:
           type: array
@@ -6395,7 +6400,10 @@ components:
         private_ratio: { type: number }
         fuel_count: { type: integer }
         liters: { type: number }
+        kwh: { type: number, description: Total charged energy (kWh). }
         fuel_cost: { type: number }
         avg_consumption: { type: number, nullable: true }
+        avg_consumption_kwh: { type: number, nullable: true }
         liters_incomplete: { type: boolean }
+        kwh_incomplete: { type: boolean }
         continuity_issues: { type: integer }

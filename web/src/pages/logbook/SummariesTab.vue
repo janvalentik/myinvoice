@@ -86,12 +86,12 @@ function liters(n: number): string { return n.toLocaleString('cs-CZ', { maximumF
             <div class="flex justify-between"><dt class="text-neutral-500">{{ t('logbook.private') }}</dt><dd class="font-mono"><span :class="v.private_km > 0 ? 'text-warning-600' : 'text-neutral-400'">{{ km(v.private_km) }} km</span> <span class="text-neutral-400">({{ v.private_ratio }} %)</span></dd></div>
             <div v-if="v.uncategorized_km > 0" class="flex justify-between"><dt class="text-neutral-500">{{ t('logbook.summary_uncategorized') }}</dt><dd class="font-mono text-neutral-500">{{ km(v.uncategorized_km) }} km</dd></div>
             <div class="flex justify-between border-t border-neutral-100 pt-1.5"><dt class="text-neutral-500">{{ t('logbook.summary_odometer') }}</dt><dd class="font-mono">{{ v.odometer_start != null ? v.odometer_start.toLocaleString('cs-CZ') : '—' }} → {{ v.odometer_end != null ? v.odometer_end.toLocaleString('cs-CZ') : '—' }}</dd></div>
-            <div class="flex justify-between"><dt class="text-neutral-500">{{ t('logbook.summary_fuel') }}</dt><dd class="font-mono text-right">{{ v.fuel_count }}× · {{ liters(v.liters) }} l<span v-if="v.liters_incomplete" class="text-warning-600">*</span> · {{ formatMoney(v.fuel_cost, 'CZK') }}</dd></div>
-            <div class="flex justify-between"><dt class="text-neutral-500">{{ t('logbook.summary_consumption') }}</dt>
-              <dd class="font-mono">
-                <template v-if="v.avg_consumption != null">{{ v.liters_incomplete ? '≈ ' : '' }}{{ v.avg_consumption }} l/100 km<span v-if="v.liters_incomplete" class="text-warning-600" :title="t('logbook.consumption_approx')">*</span></template>
-                <template v-else>—</template>
-              </dd>
+            <div class="flex justify-between"><dt class="text-neutral-500">{{ t('logbook.summary_fuel') }}</dt><dd class="font-mono text-right">{{ v.fuel_count }}× · {{ formatMoney(v.fuel_cost, 'CZK') }}</dd></div>
+            <div v-if="v.liters_count > 0" class="flex justify-between"><dt class="text-neutral-500">{{ t('logbook.summary_fuel_l') }}</dt>
+              <dd class="font-mono text-right">{{ liters(v.liters) }} l<span v-if="v.liters_incomplete" class="text-warning-600">*</span><template v-if="v.avg_consumption != null"><span class="text-neutral-400"> · {{ v.liters_incomplete ? '≈ ' : '' }}{{ v.avg_consumption }} l/100 km</span><span v-if="v.liters_incomplete" class="text-warning-600" :title="t('logbook.consumption_approx')">*</span></template></dd>
+            </div>
+            <div v-if="v.kwh_count > 0" class="flex justify-between"><dt class="text-neutral-500">{{ t('logbook.summary_charging') }}</dt>
+              <dd class="font-mono text-right">{{ liters(v.kwh) }} kWh<span v-if="v.kwh_incomplete" class="text-warning-600">*</span><template v-if="v.avg_consumption_kwh != null"><span class="text-neutral-400"> · {{ v.kwh_incomplete ? '≈ ' : '' }}{{ v.avg_consumption_kwh }} kWh/100 km</span><span v-if="v.kwh_incomplete" class="text-warning-600" :title="t('logbook.consumption_approx')">*</span></template></dd>
             </div>
             <div>
               <div class="flex justify-between">
@@ -121,6 +121,8 @@ function liters(n: number): string { return n.toLocaleString('cs-CZ', { maximumF
           <span>{{ t('logbook.summary_km') }}: <b>{{ km(data.totals.km) }} km</b></span>
           <span>{{ t('logbook.business') }}: <span class="text-success-600">{{ km(data.totals.business_km + data.totals.uncategorized_km) }} km</span></span>
           <span>{{ t('logbook.private') }}: <span :class="data.totals.private_km > 0 ? 'text-warning-600' : ''">{{ km(data.totals.private_km) }} km ({{ data.totals.private_ratio }} %)</span></span>
+          <span v-if="data.totals.liters > 0">{{ t('logbook.summary_fuel_l') }}: {{ liters(data.totals.liters) }} l</span>
+          <span v-if="data.totals.kwh > 0">{{ t('logbook.summary_charging') }}: {{ liters(data.totals.kwh) }} kWh</span>
           <span>{{ t('logbook.summary_fuel') }}: {{ formatMoney(data.totals.fuel_cost, 'CZK') }}</span>
           <span v-if="data.totals.continuity_issues > 0" class="text-warning-600">{{ t('logbook.summary_continuity_warn', { n: data.totals.continuity_issues }) }}</span>
         </div>

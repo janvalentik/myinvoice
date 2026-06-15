@@ -65,7 +65,7 @@ final class AiFuelStatementParser implements FuelStatementParser
             'fueled_time'        => $this->normalizeTime($t['fueled_time'] ?? null),
             'fuel_type'          => $fuelType !== '' ? $fuelType : null,
             'quantity'           => isset($t['quantity']) && $t['quantity'] !== null ? (float) $t['quantity'] : null,
-            'unit'               => 'l',
+            'unit'               => FuelKeywords::canonicalUnit($t['unit'] ?? null, (string) ($fuelType ?? '')),
             'unit_price'         => isset($t['unit_price']) && $t['unit_price'] !== null ? (float) $t['unit_price'] : null,
             'amount_without_vat' => isset($t['amount_without_vat']) && $t['amount_without_vat'] !== null ? (float) $t['amount_without_vat'] : null,
             'amount_vat'         => isset($t['amount_vat']) && $t['amount_vat'] !== null ? (float) $t['amount_vat'] : null,

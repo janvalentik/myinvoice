@@ -20,7 +20,7 @@ final class LogbookSummaryExportService
 {
     private const HEADERS = [
         'Auto', 'Jízd', 'Ujeto (km)', 'Služební (km)', 'Soukromé (km)', 'Soukr. %',
-        'Tach. od', 'Tach. do', 'Tankování (l)', 'Spotřeba (l/100km)', 'Náklad PHM (Kč)',
+        'Tach. od', 'Tach. do', 'Palivo (l)', 'l/100km', 'Nabito (kWh)', 'kWh/100km', 'Náklad energie (Kč)',
         'Návaznost', 'Paušál (Kč)',
     ];
 
@@ -52,8 +52,8 @@ final class LogbookSummaryExportService
 
         $head = 4;
         foreach (self::HEADERS as $i => $h) $sheet->setCellValue([$i + 1, $head], $h);
-        $sheet->getStyle("A{$head}:M{$head}")->getFont()->setBold(true);
-        $sheet->getStyle("A{$head}:M{$head}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('EEEEEE');
+        $sheet->getStyle("A{$head}:O{$head}")->getFont()->setBold(true);
+        $sheet->getStyle("A{$head}:O{$head}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('EEEEEE');
 
         $r = $head + 1;
         foreach ($data['vehicles'] as $v) {
@@ -70,17 +70,19 @@ final class LogbookSummaryExportService
         $sheet->setCellValue("F{$r}", (float) $t['private_ratio']);
         $sheet->setCellValue("I{$r}", (float) $t['liters']);
         $sheet->setCellValue("J{$r}", $t['avg_consumption'] !== null ? (float) $t['avg_consumption'] : '');
-        $sheet->setCellValue("K{$r}", (float) $t['fuel_cost']);
-        $sheet->setCellValue("L{$r}", (int) $t['continuity_issues']);
-        $sheet->getStyle("A{$r}:M{$r}")->getFont()->setBold(true);
+        $sheet->setCellValue("K{$r}", (float) ($t['kwh'] ?? 0));
+        $sheet->setCellValue("L{$r}", isset($t['avg_consumption_kwh']) && $t['avg_consumption_kwh'] !== null ? (float) $t['avg_consumption_kwh'] : '');
+        $sheet->setCellValue("M{$r}", (float) $t['fuel_cost']);
+        $sheet->setCellValue("N{$r}", (int) $t['continuity_issues']);
+        $sheet->getStyle("A{$r}:O{$r}")->getFont()->setBold(true);
 
-        $sheet->getStyle("A{$head}:M{$r}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
-        foreach (range('A', 'M') as $col) $sheet->getColumnDimension($col)->setAutoSize(true);
-        $sheet->getStyle("B{$head}:M{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("A{$head}:O{$r}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+        foreach (range('A', 'O') as $col) $sheet->getColumnDimension($col)->setAutoSize(true);
+        $sheet->getStyle("B{$head}:O{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         // Poznámka
         $note = $r + 2;
-        $sheet->setCellValue("A{$note}", 'Pozn.: paušál na dopravu (5000/4000 Kč/měs) je informativní srovnání, max 3 vozidla, vzájemně vylučuje skutečné výdaje. Spotřeba je orientační (chybí-li u tankování litry). Souhrny jsou počítané z jízd a tankování za rok.');
+        $sheet->setCellValue("A{$note}", 'Pozn.: paušál na dopravu (5000/4000 Kč/měs) je informativní srovnání, max 3 vozidla, vzájemně vylučuje skutečné výdaje. Spotřeba (l/100km i kWh/100km) je orientační (chybí-li u tankování/nabíjení množství). Souhrny jsou počítané z jízd a tankování/nabíjení za rok.');
         $sheet->getStyle("A{$note}")->getFont()->setSize(8)->setItalic(true);
 
         $tmp = tempnam(sys_get_temp_dir(), 'sumexp_') . '.xlsx';
@@ -103,9 +105,11 @@ final class LogbookSummaryExportService
         $sheet->setCellValue("H{$r}", $v['odometer_end'] !== null ? (int) $v['odometer_end'] : '');
         $sheet->setCellValue("I{$r}", (float) $v['liters']);
         $sheet->setCellValue("J{$r}", $v['avg_consumption'] !== null ? (float) $v['avg_consumption'] : '');
-        $sheet->setCellValue("K{$r}", (float) $v['fuel_cost']);
-        $sheet->setCellValue("L{$r}", (int) $v['continuity_issues'] === 0 ? 'OK' : (string) $v['continuity_issues']);
-        $sheet->setCellValue("M{$r}", (int) $v['pausal_year']);
+        $sheet->setCellValue("K{$r}", (float) ($v['kwh'] ?? 0));
+        $sheet->setCellValue("L{$r}", isset($v['avg_consumption_kwh']) && $v['avg_consumption_kwh'] !== null ? (float) $v['avg_consumption_kwh'] : '');
+        $sheet->setCellValue("M{$r}", (float) $v['fuel_cost']);
+        $sheet->setCellValue("N{$r}", (int) $v['continuity_issues'] === 0 ? 'OK' : (string) $v['continuity_issues']);
+        $sheet->setCellValue("O{$r}", (int) $v['pausal_year']);
     }
 
     private function pdf(array $data, int $year, string $supplier): string
@@ -127,13 +131,13 @@ final class LogbookSummaryExportService
     {
         $e = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
         $css = '<style>
-            body{font-family:dejavusans;font-size:8pt;color:#222}
+            body{font-family:dejavusans;font-size:7.5pt;color:#222}
             h1{font-size:14pt;margin:0 0 2px 0}
             .sub{color:#666;font-size:9pt;margin:0 0 8px 0}
             table{width:100%;border-collapse:collapse}
-            th{background:#eee;text-align:right;padding:3px 4px;border:0.5px solid #bbb;font-size:7.5pt}
+            th{background:#eee;text-align:right;padding:2px 3px;border:0.5px solid #bbb;font-size:7pt}
             th.l,td.l{text-align:left}
-            td{padding:2px 4px;border:0.5px solid #ccc;text-align:right}
+            td{padding:2px 3px;border:0.5px solid #ccc;text-align:right}
             tr.tot td{font-weight:bold;border-top:1px solid #555}
             .note{color:#666;font-size:7.5pt;margin-top:8px;font-style:italic}
             .warn{color:#b45309}
@@ -141,7 +145,7 @@ final class LogbookSummaryExportService
         $head = '<h1>Kniha jízd — roční souhrn ' . $e($year) . '</h1><p class="sub">' . $e($supplier) . '</p>';
 
         $h = '<tr><th class="l">Auto</th><th>Jízd</th><th>Ujeto km</th><th>Služební</th><th>Soukromé</th><th>Soukr. %</th>'
-           . '<th>Tach. od</th><th>Tach. do</th><th>Tank. l</th><th>l/100km</th><th>Náklad PHM</th><th>Návaznost</th><th>Paušál</th></tr>';
+           . '<th>Tach. od</th><th>Tach. do</th><th>Palivo l</th><th>l/100km</th><th>Nabito kWh</th><th>kWh/100km</th><th>Náklad energie</th><th>Návaznost</th><th>Paušál</th></tr>';
 
         $body = '';
         foreach ($data['vehicles'] as $v) {
@@ -154,15 +158,17 @@ final class LogbookSummaryExportService
                 . '<td>' . $e($this->n((float) $v['private_ratio'], 1)) . ' %</td>'
                 . '<td>' . ($v['odometer_start'] !== null ? $e($v['odometer_start']) : '—') . '</td>'
                 . '<td>' . ($v['odometer_end'] !== null ? $e($v['odometer_end']) : '—') . '</td>'
-                . '<td>' . $e($this->n((float) $v['liters'], 2)) . ($v['liters_incomplete'] ? '<span class="warn">*</span>' : '') . '</td>'
+                . '<td>' . ((float) $v['liters'] > 0 ? $e($this->n((float) $v['liters'], 2)) . ($v['liters_incomplete'] ? '<span class="warn">*</span>' : '') : '—') . '</td>'
                 . '<td>' . ($v['avg_consumption'] !== null ? $e($this->n((float) $v['avg_consumption'], 1)) : '—') . '</td>'
+                . '<td>' . ((float) ($v['kwh'] ?? 0) > 0 ? $e($this->n((float) $v['kwh'], 2)) . (!empty($v['kwh_incomplete']) ? '<span class="warn">*</span>' : '') : '—') . '</td>'
+                . '<td>' . (isset($v['avg_consumption_kwh']) && $v['avg_consumption_kwh'] !== null ? $e($this->n((float) $v['avg_consumption_kwh'], 1)) : '—') . '</td>'
                 . '<td>' . $e($this->n((float) $v['fuel_cost'], 2)) . '</td>'
                 . '<td' . ((int) $v['continuity_issues'] > 0 ? ' class="warn"' : '') . '>' . ((int) $v['continuity_issues'] === 0 ? 'OK' : $e($v['continuity_issues'])) . '</td>'
                 . '<td>' . $e($this->n((float) $v['pausal_year'], 0)) . '</td>'
                 . '</tr>';
         }
         if ($data['vehicles'] === []) {
-            $body = '<tr><td colspan="13" class="l" style="text-align:center;color:#888;padding:12px">Žádné jízdy v roce ' . $e($year) . '.</td></tr>';
+            $body = '<tr><td colspan="15" class="l" style="text-align:center;color:#888;padding:12px">Žádné jízdy v roce ' . $e($year) . '.</td></tr>';
         } else {
             $t = $data['totals'];
             $body .= '<tr class="tot">'
@@ -175,6 +181,8 @@ final class LogbookSummaryExportService
                 . '<td></td><td></td>'
                 . '<td>' . $e($this->n((float) $t['liters'], 2)) . '</td>'
                 . '<td>' . ($t['avg_consumption'] !== null ? $e($this->n((float) $t['avg_consumption'], 1)) : '—') . '</td>'
+                . '<td>' . $e($this->n((float) ($t['kwh'] ?? 0), 2)) . '</td>'
+                . '<td>' . (isset($t['avg_consumption_kwh']) && $t['avg_consumption_kwh'] !== null ? $e($this->n((float) $t['avg_consumption_kwh'], 1)) : '—') . '</td>'
                 . '<td>' . $e($this->n((float) $t['fuel_cost'], 2)) . '</td>'
                 . '<td>' . $e($t['continuity_issues']) . '</td>'
                 . '<td></td>'
@@ -183,7 +191,7 @@ final class LogbookSummaryExportService
 
         $note = '<p class="note">Paušál na dopravu (5 000 / 4 000 Kč/měs) je informativní srovnání — max 3 vozidla, vzájemně se vylučuje se skutečnými výdaji. '
             . '„Návaznost" = počet nesouladů stavu tachometru mezi po sobě jdoucími jízdami (0 = v pořádku). '
-            . 'Hvězdička u litrů = u některých tankování nejsou známé litry, spotřeba je proto orientační.</p>';
+            . 'Hvězdička u množství (l/kWh) = u některých tankování/nabíjení není známé množství, spotřeba je proto orientační.</p>';
 
         return $css . $head . '<table>' . $h . $body . '</table>' . $note;
     }

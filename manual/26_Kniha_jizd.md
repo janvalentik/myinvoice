@@ -1,13 +1,14 @@
 # 26. Kniha jízd
 
-**Kniha jízd** je evidence jízd, vozidel a tankování. Slouží jako *kniha důkazů*
-pro uplatnění nákladů na pohonné hmoty v daních (§ 24 zákona o daních z příjmů,
-pokyn GFŘ D-22) — bez ní finanční úřad odpočet PHM neuzná. Najdeš ji v menu
-v sekci **Dokumenty**, hned pod [Dokumenty](25_Dokumenty.md).
+**Kniha jízd** je evidence jízd, vozidel a tankování (u elektromobilů nabíjení).
+Slouží jako *kniha důkazů* pro uplatnění nákladů na pohonné hmoty — u elektromobilů
+na elektřinu — v daních (§ 24 zákona o daních z příjmů, pokyn GFŘ D-22); bez ní
+finanční úřad odpočet neuzná. Najdeš ji v menu v sekci **Dokumenty**, hned pod
+[Dokumenty](25_Dokumenty.md).
 
-Modul má čtyři záložky: **Kniha jízd** (jednotlivé jízdy), **Automobily**
-(číselník vozidel), **Tankování** a **Kategorie cest**. Vše je odděleně
-**per dodavatel** (firma/IČO).
+Modul má pět záložek: **Kniha jízd** (jednotlivé jízdy), **Automobily**
+(číselník vozidel), **Tankování** (i nabíjení), **Kategorie cest** a **Souhrny**
+(roční daňový přehled). Vše je odděleně **per dodavatel** (firma/IČO).
 
 Co kniha jízd ze zákona musí evidovat:
 
@@ -19,9 +20,11 @@ Co kniha jízd ze zákona musí evidovat:
 ## Automobily
 
 V záložce **Automobily** vedeš číselník vozidel. U auta zadáš **SPZ** (povinné),
-volitelně značku, model, VIN, druh paliva a **počáteční stav tachometru** (k datu
-pořízení / k 1. 1.). Příznak **Výchozí auto** určuje, na které vozidlo se nové
-záznamy a tankování navážou automaticky, když máš aut víc.
+volitelně značku, model, VIN, **druh paliva** a **počáteční stav tachometru** (k datu
+pořízení / k 1. 1.). U druhu paliva vyber kromě nafty/benzínu/LPG/CNG i **Elektro**
+nebo **Hybrid** — podle toho aplikace pozná, že vozidlo se **nabíjí v kWh** místo
+tankování v litrech, a tomu přizpůsobí jednotky a spotřebu. Příznak **Výchozí auto**
+určuje, na které vozidlo se nové záznamy a tankování navážou automaticky, když máš aut víc.
 
 Auto, které má navázané jízdy nebo tankování, nelze smazat (jen archivovat při
 úpravě) — historie zůstane zachována.
@@ -69,29 +72,40 @@ Tlačítkem **Export** vyexportuješ jízdy za **zvolené období** (datum od/do
 auto do **XLSX** nebo **PDF**. Výstup je seskupený po vozidlech, s mezisoučty
 a celkovým počtem km — vhodné jako příloha k daňové evidenci.
 
-## Tankování
+## Tankování a nabíjení
 
-Tankování můžeš vést **ručně**, nebo je nechat **vytěžit z přijatých faktur**
-od čerpacích stanic. Seznam je opět po měsících s měsíčním součtem částek,
-s filtrem a stránkováním; export do XLSX/PDF funguje stejně jako u jízd.
+Tankování (u elektromobilů **nabíjení**) můžeš vést **ručně**, nebo je nechat
+**vytěžit z přijatých faktur** od čerpacích a nabíjecích stanic. Seznam je opět
+po měsících s měsíčním součtem částek, s filtrem a stránkováním; export do
+XLSX/PDF funguje stejně jako u jízd.
 
 Tankování je čistě **evidenční vrstva** nad přijatou fakturou — náklad účtuje
 sama [přijatá faktura](17_Prijate_faktury.md), tankování ho jen rozpadá na
-jednotlivá čerpání a auta. Do DPH ani [nákladů](22_Naklady.md) nevstupuje dvakrát.
+jednotlivá čerpání/nabití a auta. Do DPH ani [nákladů](22_Naklady.md) nevstupuje dvakrát.
 
-### Načíst z fakturu od benzínek
+### Ruční záznam
 
-1. V detailu dodavatele zaškrtni **Benzínka** (sekce dodavatele). Tím se jeho
-   faktury začnou nabízet ke zpracování.
+Tlačítko **Nové tankování** otevře formulář s datem, množstvím, částkou a místem.
+U množství je **přepínač jednotky l / kWh** — automaticky se předvyplní podle
+vybraného vozidla (u elektromobilu **kWh**, jinak **litry**). U **plug-in hybridu**
+přepínač necháváš na sobě: tankování benzínu zadáš v litrech, dobíjení v kWh.
+Pole **Tachometr** se dá nechat prázdné — aplikace doplní *orientační* stav z knihy
+jízd (zobrazí se jako `≈`), pro přesnost ho ale raději vyplň.
+
+### Načíst z faktur od stanic
+
+1. V detailu dodavatele zaškrtni **Čerpací / nabíjecí stanice** (sekce dodavatele).
+   Tím se jeho faktury začnou nabízet ke zpracování — funguje jak pro benzínky,
+   tak pro provozovatele nabíjení (ČEZ, PRE, E.ON, Ionity apod.), kteří účtují v kWh.
 2. V záložce Tankování klikni na **Načíst z faktur**. Zobrazí se faktury od
-   benzínek; každá má odznak **Nová** / **Zpracováno** a tlačítko **Detail**,
-   které rozbalí položky faktury (pohonné hmoty jsou zvýrazněné).
-3. Vyber auto a klikni **Rozpoznat** — z faktury se vytvoří záznamy tankování
-   navázané na zvolené vozidlo a na původní doklad (číslo dokladu je v seznamu
-   tankování proklikem na fakturu).
+   stanic; každá má odznak **Nová** / **Zpracováno** a tlačítko **Detail**,
+   které rozbalí položky faktury (pohonné hmoty i nabíjení jsou zvýrazněné).
+3. Vyber auto a klikni **Rozpoznat** — z faktury se vytvoří záznamy tankování /
+   nabíjení navázané na zvolené vozidlo a na původní doklad (číslo dokladu je
+   v seznamu proklikem na fakturu).
 
 Tlačítko **Vytěžit historii** projede zpětně **jen dosud nezpracované** faktury
-od benzínek a hromadně z nich vytvoří tankování. Každá faktura se zpracuje jen
+od stanic a hromadně z nich vytvoří záznamy. Každá faktura se zpracuje jen
 jednou, opakované spuštění nic nezdvojí.
 
 ### Detailní výpisy (Axigon a další)
@@ -113,6 +127,22 @@ Záložka **Kategorie cest** je číselník pro rozlišení účelu jízdy. Výc
 Kategorie můžeš přidávat, upravovat a archivovat; kategorii s navázanými jízdami
 nelze smazat. Nové kategorie vznikají i automaticky při importu (viz výše).
 
+## Souhrny
+
+Záložka **Souhrny** dává **roční daňový/účetní přehled** počítaný z jízd a
+tankování/nabíjení — **per vozidlo**: ujeté km (služební / soukromé / nezařazené)
+včetně poměru pro krácení, stav tachometru od → do, náklady na energii a
+**spotřebu**. U vozidla na palivo se zobrazí **l/100 km**, u elektromobilu
+**kWh/100 km**; u **plug-in hybridu** se obě spotřeby počítají **odděleně** a
+zobrazí se vedle sebe (litry se s kWh nikdy nesčítají). Hvězdička `*` u spotřeby
+značí, že u některých tankování/nabíjení nebylo známé množství, takže je spotřeba
+jen orientační.
+
+Souhrn dál hlídá **návaznost tachometru** (skoky mezi po sobě jdoucími jízdami)
+a informativně srovnává s **paušálem na dopravu** (5 000 / 4 000 Kč/měs). Pod
+přehledem jsou grafy najetých km po měsících a kumulativně; vše vyexportuješ do
+**XLSX** nebo **PDF** jako přílohu k daňové evidenci.
+
 ## Tipy
 
 - **Tachometr na přelomu roku** — stav k 31. 12. / 1. 1. doložíš poslední jízdou
@@ -121,3 +151,7 @@ nelze smazat. Nové kategorie vznikají i automaticky při importu (viz výše).
   finanční úřad může vyžadovat bližší popis.
 - **Soukromé jízdy** veď taky — při krácení odpočtu (např. paušál na PHM)
   je užitečné mít poměr služebních a soukromých km.
+- **Elektromobil** nastav v Automobilech jako **Elektro** — nové záznamy pak
+  rovnou nabízí jednotku **kWh** a spotřeba se počítá v kWh/100 km. Dobíjení
+  doma na domovní elektřinu, které nejde oddělit od fakturace za domácnost,
+  zadávej **ručně** (odhad kWh z rozdílu tachometru a spotřeby).
