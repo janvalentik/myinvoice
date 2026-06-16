@@ -38,6 +38,15 @@ hlídá překročení limitů:
 Když překročení 2 M hrozí na konci roku, poradí **odložit prosincové faktury do
 ledna** a zůstat pod limitem.
 
+Při zaškrtnuté **vedlejší činnosti** přibude pod teploměrem ještě řádek
+**rozhodné částky pro povinnou účast na důchodovém (sociálním) pojištění**
+(2025 = 111 736 Kč, 2026 = 117 521 Kč dle ČSSZ). Na rozdíl od limitů výše se
+měří proti **projektovanému zisku** (příjmy − výdaje dle zvoleného paušálu /
+skutečných výdajů), ne proti příjmu — proto je samostatným řádkem mimo teploměr.
+Ukáže, zda zisk zůstane pod limitem (sociální pojištění z vedlejší činnosti se
+neplatí), nebo limit překročíš a v kterém měsíci. Částku lze pro daný rok upravit
+v `Nastavení → Číselníky → Daňové konstanty`.
+
 ## Profil (per rok)
 
 Nastav jednou, dopočítá se automaticky. Uloží se k danému roku:
@@ -47,7 +56,7 @@ Nastav jednou, dopočítá se automaticky. Uloží se k danému roku:
 | Typ činnosti | Výdajový paušál 40 / 60 / 80 % (dle živnosti) |
 | Výdaje | **Paušál %** nebo **Skutečné** (reálné roční výdaje z daňové evidence) |
 | Pásmo paušální daně | Přihlášené pásmo (none / 1. / 2. / 3.) |
-| Vedlejší činnost | Jiná minima pojistného |
+| Vedlejší činnost | Jiná minima pojistného; v běžícím roce přidá na teploměr i hlídání rozhodné částky pro účast na sociálním pojištění |
 | Slevy / odpočty | Manžel/ka, počet dětí, úroky hypotéky, penzijní/životní, dary |
 
 ## Dashboard
