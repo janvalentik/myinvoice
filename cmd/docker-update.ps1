@@ -33,38 +33,43 @@ Get-Content .env | ForEach-Object {
     if ($_ -match '^\s*([A-Z_]+)\s*=\s*(.*)\s*$') { $envVars[$Matches[1]] = $Matches[2] }
 }
 
-# Detect mode: registry vs source build.
-# Priorita 1 — který compose file ma aktualne RUNNING stack (autoritativni):
-#   - docker-compose.production.yml bezi -> registry mode (GHCR pull)
-#   - docker-compose.yml bezi -> source mode (local build z .git)
-# Priorita 2 — fallback podle existujicich souboru:
-#   - jen docker-compose.production.yml -> registry
-#   - jinak -> source (default)
-$composeArgs = @()
-$mode = 'registry'
+# Detect mode z IMAGE bezicho app kontejneru (autoritativni - nezavisi na tom, ktery
+# compose file je po ruce; stara detekce podle compose souboru byla krehka, protoze
+# git klon ma oba soubory + kolidujici nazev projektu). Prebiti: MYINVOICE_UPDATE_MODE.
+#   - bezici registry image (ghcr.io/...) -> registry mode -> docker compose pull
+#   - bezici lokalni build (myinvoice:latest)  -> source mode -> git pull + build
+#   - nic nebezi + lokalne GHCR image -> registry (byls GHCR deploy, jen zhasnuty)
+#   - nic nebezi + .git + build: -> source, jinak registry
+$mode = $env:MYINVOICE_UPDATE_MODE
 
-$prodRunning = $false
-$prodPs = & docker compose -f docker-compose.production.yml ps --format json app 2>$null
-if ($LASTEXITCODE -eq 0 -and $prodPs -match '"State":\s*"running"') { $prodRunning = $true }
+$runningImage = (& docker ps --filter 'label=com.docker.compose.service=app' --format '{{.Image}}' 2>$null |
+    Where-Object { $_ -match 'myinvoice' } | Select-Object -First 1)
 
-$devRunning = $false
-$devPs = & docker compose ps --format json app 2>$null
-if ($LASTEXITCODE -eq 0 -and $devPs -match '"State":\s*"running"') { $devRunning = $true }
-
-if ($prodRunning) {
-    $composeArgs = @('-f', 'docker-compose.production.yml')
-    $mode = 'registry'
-} elseif ($devRunning -and (Test-Path .git) -and (Select-String -Path docker-compose.yml -Pattern '^\s*build:' -Quiet)) {
-    $mode = 'source'
-} elseif ((Test-Path docker-compose.production.yml) -and (-not (Test-Path .git))) {
-    $composeArgs = @('-f', 'docker-compose.production.yml')
-    $mode = 'registry'
-} elseif ((Test-Path .git) -and (Select-String -Path docker-compose.yml -Pattern '^\s*build:' -Quiet)) {
-    $mode = 'source'
+if (-not $mode) {
+    if ($runningImage) {
+        $mode = if ($runningImage -match '/') { 'registry' } else { 'source' }
+    } elseif (& docker images --format '{{.Repository}}' 2>$null | Select-String -Quiet -Pattern 'ghcr\.io/.*myinvoice') {
+        # Stack nebezi, ALE lokalne je stazeny GHCR image -> drive se pullovalo = registry deploy.
+        $mode = 'registry'
+    } elseif ((Test-Path .git) -and (Select-String -Path docker-compose.yml -Pattern '^\s*build:' -Quiet)) {
+        $mode = 'source'
+    } else {
+        $mode = 'registry'
+    }
 }
 
-$composeFileLabel = if ($composeArgs.Count -gt 0) { " (compose: $($composeArgs[1]))" } else { '' }
-Write-Host "==> Mode: $mode$composeFileLabel"
+$composeArgs = @()
+if ($mode -eq 'registry' -and (Test-Path docker-compose.production.yml)) {
+    $composeArgs = @('-f', 'docker-compose.production.yml')
+}
+
+if ($runningImage) {
+    Write-Host "==> Detekovano: bezici image '$runningImage' -> rezim '$mode'"
+} else {
+    Write-Host "==> Zadny bezici app kontejner -> rezim '$mode' (dle pritomnych souboru)"
+}
+Write-Host "    (prebit lze pres MYINVOICE_UPDATE_MODE=registry|source)"
+if ($composeArgs.Count -gt 0) { Write-Host "    compose: $($composeArgs[1])" }
 
 # --- 1. fetch new code/image ---------------------------------------------
 if ($mode -eq 'source') {
@@ -176,6 +181,11 @@ if (-not $appReady) {
     Write-Host "    Last curl error: $lastErr" -ForegroundColor Yellow
     Write-Error "App failed to respond in 120s. Check 'docker compose @composeArgs logs app'."
 }
+
+# --- 3c. uklid osirelych vrstev po updatu (bezpecne - jen dangling) -------
+Write-Host "==> Uklid dangling image vrstev..."
+& docker image prune -f *> $null
+Write-Host "    (stare tagovane verze uklidis pres cmd\docker-prune-images.ps1)"
 
 # --- 4. report -----------------------------------------------------------
 Write-Host ""

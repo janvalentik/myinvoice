@@ -1,9 +1,12 @@
 # MyInvoice.cz — Docker Compose
 #
 # Services:
-#   app     — PHP 8.5 + Apache (built from Dockerfile)
+#   app     — PHP 8.5 + nginx + php-fpm (built from Dockerfile.alpine)
 #   db      — MariaDB 11 with persistent volume
 #   redis   — optional cache/session backend (profile: redis)
+#
+# Default image je alpine/nginx (~92 MB, méně RAM). Debian/Apache fallback:
+# `docker build -f Dockerfile -t myinvoice:latest .` (Dockerfile zůstává v repu, CI ho nepublikuje).
 #
 # First run:   cmd/docker-install.{sh,ps1}     (creates cfg.php, brings stack up, runs migrations)
 # Build:       cmd/docker-build.{sh,ps1}       (rebuilds the app image)
@@ -24,7 +27,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.alpine
     image: myinvoice:latest
     restart: unless-stopped
     depends_on:
@@ -51,6 +54,15 @@ services:
   db:
     image: mariadb:11
     restart: unless-stopped
+    # Tuning pro hosting s málo pamětí/diskem:
+    #   - performance_schema OFF → ~100–200 MB méně RAM
+    #   - buffer pool 128 MB (RAM) — sniž na 64M přes DB_INNODB_BUFFER_POOL pro malý stroj
+    #   - redo log 48 MB místo default 96 MB → ~50 MB méně na disku (DB_INNODB_LOG_SIZE)
+    # MariaDB redo log při startu bezpečně přesází (po čistém shutdownu), data zůstávají.
+    command:
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=${DB_INNODB_BUFFER_POOL:-128M}
+      - --innodb-log-file-size=${DB_INNODB_LOG_SIZE:-48M}
     environment:
       # Fail-closed: bez .env se stack nespustí (žádný předvídatelný default).
       # docker-install.{sh,ps1} vygeneruje .env s náhodnými hesly před `up`.

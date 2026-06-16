@@ -325,8 +325,15 @@ cmd/docker-install.sh
 ```
 
 Stejné kroky jako Varianta A, jen místo `pull` z GHCR postaví `myinvoice:latest`
-image lokálně (multi-stage: Vue build → composer → PHP 8.5 + Apache). Pomalejší,
-ale zachytí tvoje rozpracované úpravy v repu.
+image lokálně (multi-stage: Vue build → composer → PHP 8.5 + nginx z
+`Dockerfile.alpine`). Pomalejší, ale zachytí tvoje rozpracované úpravy v repu.
+
+> 🪶 **Image je alpine/nginx** (default) — ~92 MB a idle ~26 MB RAM aplikace
+> (Debian/Apache mělo ~293 MB). Funkčně identický; `/data` i DB volume jsou
+> kompatibilní, takže existující instalace se zmigruje sama při příštím
+> `cmd/docker-update`. Debian/Apache zůstává jako fallback (pin staršího
+> version tagu ≤ v4.31.0, nebo build z `Dockerfile`). Detaily +
+> RAM tuning → [§ 3.10](manual/03_Instalace_Docker.md).
 
 ### Varianta C — bez klonování repa (jen Docker, manuálně)
 

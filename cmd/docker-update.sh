@@ -5,12 +5,12 @@
 #   2. Restarts the stack
 #   3. Waits for DB health and runs pending migrations
 #
-# Detects mode automatically — preferuje aktuálně RUNNING stack:
-#   1. Pokud běží stack z `docker-compose.production.yml` → registry mode
-#      (GHCR pull, dál používá `-f docker-compose.production.yml`).
-#   2. Pokud běží stack z `docker-compose.yml` a je `.git/` + `build:` blok
-#      → source mode (git pull + local build).
-#   3. Fallback bez běžícího stacku — podle existujících souborů.
+# Detekuje režim z IMAGE běžícího app kontejneru (ne podle compose souborů):
+#   - běžící registry image (ghcr.io/...) → registry mode → docker compose pull
+#   - běžící lokální build (myinvoice:latest) → source mode → git pull + build
+#   - nic neběží + lokálně je GHCR image → registry (byls GHCR deploy, jen zhasnutý)
+#   - nic neběží + .git + build: → source, jinak registry
+# Přebití: MYINVOICE_UPDATE_MODE=registry|source.
 #
 # Idempotent — safe to re-run. Volumes (DB data) persist; backup is your responsibility.
 set -euo pipefail
@@ -30,27 +30,46 @@ fi
 
 set -a; . ./.env; set +a
 
-# Detect mode: registry vs source build.
-# Priorita 1 — který compose file má aktuálně RUNNING stack (autoritativní):
-#   - docker-compose.production.yml běží → registry mode (GHCR pull)
-#   - docker-compose.yml běží → source mode (local build z .git)
-# Priorita 2 — pokud nic neběží, fallback podle existujících souborů:
-#   - jen docker-compose.production.yml → registry
-#   - jinak → source (default)
-COMPOSE_ARGS=""
-MODE="registry"
-if docker compose -f docker-compose.production.yml ps --format json app 2>/dev/null | grep -q '"State":"running"'; then
-  COMPOSE_ARGS="-f docker-compose.production.yml"
-  MODE="registry"
-elif docker compose ps --format json app 2>/dev/null | grep -q '"State":"running"' && [[ -d .git ]] && grep -qE '^\s*build:' docker-compose.yml 2>/dev/null; then
-  MODE="source"
-elif [[ -f docker-compose.production.yml ]] && [[ ! -d .git ]]; then
-  COMPOSE_ARGS="-f docker-compose.production.yml"
-  MODE="registry"
-elif [[ -d .git ]] && grep -qE '^\s*build:' docker-compose.yml 2>/dev/null; then
-  MODE="source"
+# Detect mode z IMAGE běžícího app kontejneru (autoritativní — nezávisí na tom,
+# který compose file je zrovna po ruce; staré řešení podle compose souborů bylo
+# křehké, protože git klon má oba soubory + kolidující název projektu).
+#   - běžící image z registru (ghcr.io/...) → registry mode → `docker compose pull`
+#   - běžící lokálně stavěný image (myinvoice:latest, bez registru) → source mode → build
+#   - nic neběží → fallback podle přítomných souborů (.git + build: → source, jinak registry)
+# Přebití: MYINVOICE_UPDATE_MODE=registry|source.
+MODE="${MYINVOICE_UPDATE_MODE:-}"
+
+running_image="$(docker ps --filter label=com.docker.compose.service=app --format '{{.Image}}' 2>/dev/null | grep -i myinvoice | head -1)"
+
+if [[ -z "$MODE" ]]; then
+  if [[ -n "$running_image" ]]; then
+    case "$running_image" in
+      */*) MODE="registry" ;;   # má registry/namespace → např. ghcr.io/radekhulan/myinvoice
+      *)   MODE="source"   ;;   # bare lokální tag → myinvoice:latest
+    esac
+  elif docker images --format '{{.Repository}}' 2>/dev/null | grep -qiE 'ghcr\.io/.*myinvoice'; then
+    # Stack neběží, ALE lokálně je stažený GHCR image → dřív se pullovalo = registry deploy.
+    # (Bez tohohle by se u zhasnutého GHCR stacku v git klonu spadlo na source/build.)
+    MODE="registry"
+  elif [[ -d .git ]] && grep -qE '^\s*build:' docker-compose.yml 2>/dev/null; then
+    MODE="source"
+  else
+    MODE="registry"
+  fi
 fi
-echo "==> Mode: ${MODE}${COMPOSE_ARGS:+ (compose: ${COMPOSE_ARGS#-f })}"
+
+COMPOSE_ARGS=""
+if [[ "$MODE" == "registry" ]] && [[ -f docker-compose.production.yml ]]; then
+  COMPOSE_ARGS="-f docker-compose.production.yml"
+fi
+
+if [[ -n "$running_image" ]]; then
+  echo "==> Detekováno: běžící image '${running_image}' → režim '${MODE}'"
+else
+  echo "==> Žádný běžící app kontejner → režim '${MODE}' (dle přítomných souborů)"
+fi
+echo "    (přebít lze přes MYINVOICE_UPDATE_MODE=registry|source)"
+[[ -n "$COMPOSE_ARGS" ]] && echo "    compose: ${COMPOSE_ARGS#-f }"
 
 DC=(docker compose)
 [[ -n "$COMPOSE_ARGS" ]] && DC+=($COMPOSE_ARGS)
@@ -143,6 +162,11 @@ for i in {1..60}; do
     exit 1
   fi
 done
+
+# --- 3c. úklid osiřelých vrstev po updatu (bezpečné — jen dangling) -------
+echo "==> Úklid dangling image vrstev…"
+docker image prune -f >/dev/null 2>&1 || true
+echo "    (staré tagované verze uklidíš přes cmd/docker-prune-images.sh)"
 
 # --- 4. report -----------------------------------------------------------
 APP_PORT="${APP_PORT:-8080}"

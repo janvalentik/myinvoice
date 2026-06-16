@@ -16,6 +16,15 @@ web/dist
 manual/generated
 manual/manual.pdf
 
+# Lokální build artefakty / vývojové věci — do image nepatří (šetří kontext i velikost).
+# `dist/` je lokální výstup release-bundle testů (gitignored, ~100 MB) — bez tohohle
+# řádku by ho `COPY . .` přibalil do /var/www/html/dist.
+dist
+api/vendor.prod
+api/tests
+api/.phpunit.cache
+.github
+
 # Local-only — secrets, NESMÍ se dostat do image (vše se čte z hostu:
 # .env přes compose var-substituci, cfg.docker.php přes read-only bind-mount).
 cfg.php
@@ -28,7 +37,7 @@ storage
 private
 aspnet_client
 
-# Web server configs (Docker uses Apache directly via .htaccess)
+# IIS config — Docker image servíruje přes nginx (alpine) / .htaccess (Debian fallback)
 web.config
 
 # Jednorázový externí migrační nástroj (Money S3) — runtime ho nespouští, do image nepatří

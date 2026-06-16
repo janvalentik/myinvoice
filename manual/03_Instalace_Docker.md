@@ -57,8 +57,10 @@ cmd/docker-update.sh
 
 Skript v registry módu sám zavolá `docker compose pull app` (stáhne nový
 image z GHCR), restartuje stack a doběhne pending migrace. Volumes (DB data)
-zůstávají zachovány. Mód detekuje automaticky — pokud nemáš `.git/`
-nebo `build:` blok v compose, jede přes `pull`.
+zůstávají zachovány. Režim **detekuje z image běžícího kontejneru**:
+`ghcr.io/...` → registry (`pull`), lokální build → source (`git pull` + rebuild).
+Když stack zrovna neběží, ale máš lokálně stažený GHCR image, bere to taky jako
+registry. Přebít lze `MYINVOICE_UPDATE_MODE=registry|source`.
 
 Nový image se publikuje automaticky při každém release tagu `v*.*.*`,
 takže aktualizace je otázkou jednoho příkazu.
@@ -105,8 +107,8 @@ Skript `docker-install` postupně:
    randomized `app.pepper` + `secret_encryption_key`, dev-friendly cookies pro
    HTTP loopback)
 3. Postaví image `myinvoice:latest` (multi-stage: Vue build → composer →
-   PHP 8.5 + Apache)
-4. Spustí stack: **app** (Apache:80 → host:8080) + **db** (MariaDB 11)
+   PHP 8.5 + nginx + php-fpm z `Dockerfile.alpine`)
+4. Spustí stack: **app** (nginx:80 → host:8080) + **db** (MariaDB 11)
 5. Počká, až bude DB healthy, a spustí migrace
 
 ## 3.3 Varianta C — bez klonování repa (jen Docker)
@@ -343,9 +345,9 @@ a v `cfg.docker.php` nastav `redis.enabled => true`. Restart appky.
 
 ## 3.8 HTTPS / TLS terminace
 
-Docker stack sám TLS nedělá — Apache uvnitř kontejneru poslouchá na portu 80
-(HTTP) a mapuje se na host port `8080`. Pokud potřebuješ HTTPS (LAN server,
-produkce, doménové jméno), postav před stack reverse proxy s TLS terminací.
+Docker stack sám TLS nedělá — web server (nginx) uvnitř kontejneru poslouchá na
+portu 80 (HTTP) a mapuje se na host port `8080`. Pokud potřebuješ HTTPS (LAN
+server, produkce, doménové jméno), postav před stack reverse proxy s TLS terminací.
 
 **Symptom špatné konfigurace:** prohlížeč hodí `SSL_ERROR_RX_RECORD_TOO_LONG`
 (Firefox) nebo `ERR_SSL_PROTOCOL_ERROR` (Chrome) — znamená to, že browser mluví
@@ -492,3 +494,77 @@ denní cron `cmd/cron-version-check.(sh/cmd)` — viz [Aktualizace](39_Aktualiza
 
 Recovery při zaseknutém upgradu, test workflow z `master`, externí
 monitoring přes `/api/version` → kapitola [Aktualizace](39_Aktualizace.md).
+
+## 3.10 Image: alpine/nginx (default) + Debian fallback
+
+Pro hosting s omezeným diskem a pamětí je **default image alpine/nginx** —
+běží na `php:8.5-fpm-alpine` + **nginx** + **php-fpm** místo Debian/Apache.
+Funkčně je identický (stejné API, `.htaccess` přeložený 1:1 do nginx configu),
+jen výrazně štíhlejší:
+
+| Metrika                         | Debian/Apache (fallback) | **Alpine/nginx (default)** |
+|---------------------------------|---------------|--------------|
+| Velikost image (`docker image inspect .Size`) | ~293 MB | **~92 MB** (−69 %) |
+| RAM aplikace (idle)             | desítky MB (Apache prefork) | **~26 MB** (php-fpm ondemand) |
+| Web server                      | Apache + `.htaccess` | nginx |
+
+GHCR `:latest` (i `:X.Y.Z`, `:X.Y`) je nově **alpine**. Lokální build
+(`docker compose build`) staví taky alpine z `Dockerfile.alpine`.
+
+### Migrace existující instalace = nic navíc
+
+`/data` i DB volume jsou **plně kompatibilní** mezi variantami (www-data má
+v obou uid 33). Existující Debian instalace se proto zmigruje **sama při
+příštím updatu**:
+
+```bash
+cmd/docker-update.sh        # registry: pull :latest (= alpine) + recreate; data zůstanou
+```
+
+### Debian fallback (rollback)
+
+Kdybys narazil na problém s alpine, vrať se na Debian/Apache (`Dockerfile`
+zůstává v repu, CI ho jen nepublikuje):
+
+```bash
+# registry (GHCR): pinni starší version tag — ≤ v4.31.0 jsou ještě Debian
+#   v docker-compose.production.yml změň :latest na :4.31.0, pak pull + up -d
+
+# source: postav Debian image lokálně z původního Dockerfile
+docker build -f Dockerfile -t myinvoice:latest .
+docker compose up -d
+```
+
+### RAM tuning
+
+Pro stroje s ~512 MB–1 GB RAM lze sáhnout na tyto proměnné (alpine entrypoint
+je čte při startu):
+
+```bash
+PHP_FPM_MAX_CHILDREN=4    # méně php-fpm workerů (každý ~30–60 MB); default 8
+OPCACHE_MEMORY=64         # menší opcache shared paměť v MB; default 128
+```
+
+MariaDB tuning je už v obou compose souborech: `performance-schema=OFF`
+(~100–200 MB méně RAM), buffer pool 128 MB (RAM) a **redo log 48 MB** místo
+defaultních 96 MB (~50 MB méně na disku — fresh MariaDB data dir tak spadne
+z ~173 MB na ~120 MB; vlastní data faktur jsou jen jednotky MB). Pro nejmenší
+stroje přidej do `.env`:
+
+```bash
+DB_INNODB_BUFFER_POOL=64M   # RAM (buffer pool)
+DB_INNODB_LOG_SIZE=32M      # disk (redo log) — ušetří dalších ~16 MB
+```
+
+> 🛈 MariaDB redo log se při startu s jinou velikostí bezpečně přesází (po čistém
+> shutdownu), data zůstávají. Změna se projeví při příštím recreatnutí db kontejneru.
+
+### Úklid starých image (uvolnění disku)
+
+Po updatech zůstávají osiřelé image. `docker-update` sám uklidí dangling
+vrstvy; staré **tagované** verze smaž explicitně:
+
+```bash
+cmd/docker-prune-images.sh --dry-run   # napřed vypiš, co by smazal
+cmd/docker-prune-images.sh             # smaže obsolete (běžící + compose image chrání)
+```

@@ -19,19 +19,16 @@ if (!is_dir($ttfontsDir)) {
 }
 
 $keep = [
-    // DejaVu Sans — primární font pro faktury (CZ + EN diakritika)
+    // DejaVu Sans = jediný `backupSubsFont` pro glyfy, které Montserrat nemá
+    // (✓ ✗ ⚠ ◆ …). Primární písma (Montserrat + JetBrains Mono) jsou v
+    // api/resources/fonts/ (mimo tenhle adresář). Mono pasáže (varsymboly, IBANy,
+    // čísla účtů) jedou přes JetBrains Mono → DejaVu Sans Mono ANI Condensed netřeba.
+    // ⚠️ Pozor: tenhle whitelist MUSÍ sedět s `backupSubsFont` v MpdfFontConfig.php
+    // (= ['dejavusans']). Kdyby tam přibyl 'dejavusansmono', vrať sem i DejaVuSansMono*.
     'DejaVuSans.ttf',
     'DejaVuSans-Bold.ttf',
     'DejaVuSans-Oblique.ttf',
     'DejaVuSans-BoldOblique.ttf',
-
-    // DejaVu Sans Mono — pro varsymboly, IBANy, čísla účtů
-    'DejaVuSansMono.ttf',
-    'DejaVuSansMono-Bold.ttf',
-
-    // DejaVu Sans Condensed — fallback pro dlouhé texty (volitelné, malé)
-    'DejaVuSansCondensed.ttf',
-    'DejaVuSansCondensed-Bold.ttf',
 ];
 
 $deleted = 0;

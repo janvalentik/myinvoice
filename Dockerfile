@@ -30,10 +30,19 @@ COPY api/composer.json api/composer.lock ./
 RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-interaction \
         --ignore-platform-reqs
 COPY api/ ./
-RUN composer dump-autoload --optimize --classmap-authoritative
+# dump-autoload + cleanup mPDF fontů. Cleanup voláme explicitně, protože composer
+# install výše běží s --no-scripts (post-install-cmd z composer.json se nespustí).
+RUN composer dump-autoload --optimize --classmap-authoritative \
+ && php bin/cleanup-mpdf-fonts.php
 
 # ---------- Stage 3: runtime ----------
 FROM php:8.5-apache AS runtime
+
+# librsvg2-bin (~30–50 MB i s cairo/pango/gdk-pixbuf deps) je jen FALLBACK pro
+# konverzi SVG loga dodavatele, když v image není Imagick. Pro menší image lze
+# vypnout `--build-arg INSTALL_RSVG=0` (SVG loga pak vyžadují Imagick na hostu).
+# Default 1 = beze změny chování.
+ARG INSTALL_RSVG=1
 
 # Use mlocati/docker-php-extension-installer — the de-facto installer for PHP-Docker
 # extensions. Handles apt deps, parallel builds, PECL packages and the
@@ -43,7 +52,10 @@ COPY --from=mlocati/php-extension-installer:latest /usr/bin/install-php-extensio
 RUN install-php-extensions \
         pdo_mysql gd mbstring intl zip opcache exif bcmath redis \
  && apt-get update \
- && apt-get install -y --no-install-recommends tini cron librsvg2-bin mariadb-client \
+ && apt-get install -y --no-install-recommends tini cron mariadb-client \
+ && if [ "$INSTALL_RSVG" = "1" ]; then \
+        apt-get install -y --no-install-recommends librsvg2-bin; \
+    fi \
  && a2enmod rewrite headers deflate expires \
  && rm -f /etc/apache2/mods-enabled/mpm_* \
  && a2enmod mpm_prefork \

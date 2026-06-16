@@ -37,6 +37,13 @@ fi
 
 COMPOSE=(docker compose -f "$COMPOSE_FILE")
 
+# Smart: pokud už app běží, tohle je spíš update než čerstvá instalace.
+running_image="$(docker ps --filter label=com.docker.compose.service=app --format '{{.Image}}' 2>/dev/null | grep -i myinvoice | head -1 || true)"
+if [[ -n "$running_image" ]]; then
+  echo "==> Pozn.: app už běží (image '${running_image}'). Pro pouhou aktualizaci použij cmd/docker-update.sh."
+  echo "    (tenhle skript je idempotentní — klidně pokračuj, jen přepulluje a nahodí znovu)"
+fi
+
 # --- 1. .env ---------------------------------------------------------------
 if [[ ! -f .env ]]; then
   echo "==> Generating .env with random DB passwords…"

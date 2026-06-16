@@ -44,6 +44,14 @@ function Invoke-Compose {
     & docker compose -f $ComposeFile @args
 }
 
+# Smart: pokud uz app bezi, tohle je spis update nez cersta instalace.
+$runningImage = (& docker ps --filter 'label=com.docker.compose.service=app' --format '{{.Image}}' 2>$null |
+    Where-Object { $_ -match 'myinvoice' } | Select-Object -First 1)
+if ($runningImage) {
+    Write-Host "==> Pozn.: app uz bezi (image '$runningImage'). Pro pouhou aktualizaci pouzij cmd\docker-update.ps1."
+    Write-Host "    (tenhle skript je idempotentni - klidne pokracuj, jen prepulluje a nahodi znovu)"
+}
+
 function New-RandomToken([int]$Bytes = 24) {
     $buf = New-Object byte[] $Bytes
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($buf)

@@ -1,15 +1,18 @@
-# First-time install for the Docker stack.
+# First-time install for the Docker stack - smart: preferuje GHCR pull, build jen na vyzadani.
 #
 #   1. Generates .env with random DB password (if missing)
-#   2. Generates cfg.php from cfg.sample.php with Docker-friendly defaults (if missing)
-#   3. Builds image (if not built)
+#   2. Generates cfg.docker.php from cfg.sample.php with Docker-friendly defaults (if missing)
+#   3. Zvoli rezim a ziska image:
+#        registry (default, je-li docker-compose.production.yml) -> docker compose pull z GHCR
+#        source (-Build / MYINVOICE_INSTALL_MODE=source / chybi production.yml) -> local build
+#        registry pull selze + je Dockerfile -> automaticky fallback na build
 #   4. Brings the stack up
-#   5. Waits for DB health and runs migrations
+#   5. Waits for DB health and runs migrations (entrypoint je spusti sam)
 #   6. Prints the URL where the setup wizard is available
 #
-# Idempotent — safe to re-run.
+# Prebiti: -Build  nebo  $env:MYINVOICE_INSTALL_MODE=registry|source.  Idempotent.
 [CmdletBinding()]
-param()
+param([switch]$Build)
 
 $ErrorActionPreference = 'Stop'
 # Invoke-WebRequest / curl.exe na Windows zobrazuje progress bar, ktery v
@@ -89,24 +92,60 @@ if (-not (Test-Path cfg.docker.php)) {
     Write-Host "==> cfg.docker.php already exists (skipping)"
 }
 
-# --- 3. build --------------------------------------------------------------
-$imgExists = (& docker image inspect myinvoice:latest 2>$null)
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "==> Building image…"
-    & docker compose build app
-    if ($LASTEXITCODE -ne 0) { Write-Error "docker compose build failed" }
+# --- 3. zvolit rezim + ziskat image ---------------------------------------
+# Default = registry (GHCR pull) - rychlejsi a setri RAM/disk/CPU build. Lokalni build
+# jen na vyzadani (-Build / MYINVOICE_INSTALL_MODE=source) nebo kdyz neni production.yml.
+$runningImage = (& docker ps --filter 'label=com.docker.compose.service=app' --format '{{.Image}}' 2>$null |
+    Where-Object { $_ -match 'myinvoice' } | Select-Object -First 1)
+if ($runningImage) {
+    Write-Host "==> Pozn.: app uz bezi (image '$runningImage'). Pro aktualizaci pouzij cmd\docker-update.ps1."
+}
+
+$mode = if ($Build) { 'source' }
+        elseif ($env:MYINVOICE_INSTALL_MODE) { $env:MYINVOICE_INSTALL_MODE }
+        elseif (Test-Path docker-compose.production.yml) { 'registry' }
+        else { 'source' }
+
+$composeArgs = @()
+if ($mode -eq 'registry' -and (Test-Path docker-compose.production.yml)) {
+    $composeArgs = @('-f', 'docker-compose.production.yml')
+}
+$composeHint = if ($composeArgs.Count -gt 0) { " (compose: $($composeArgs[1]))" } else { '' }
+Write-Host "==> Rezim instalace: $mode$composeHint"
+Write-Host "    (registry = GHCR pull; prebij pres -Build nebo MYINVOICE_INSTALL_MODE=registry|source)"
+
+if ($mode -eq 'registry') {
+    Write-Host "==> Pulling image from GHCR…"
+    & docker compose @composeArgs pull app
+    if ($LASTEXITCODE -ne 0) {
+        if (Test-Path Dockerfile) {
+            Write-Warning "GHCR pull selhal -> fallback na lokalni build."
+            $mode = 'source'; $composeArgs = @()
+        } else {
+            Write-Error "GHCR pull selhal a neni Dockerfile pro build."
+        }
+    }
+}
+
+if ($mode -eq 'source') {
+    & docker image inspect myinvoice:latest 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "==> Building image…"
+        & docker compose @composeArgs build app
+        if ($LASTEXITCODE -ne 0) { Write-Error "docker compose build failed" }
+    }
 }
 
 # --- 4. up -----------------------------------------------------------------
 Write-Host "==> Starting stack…"
-& docker compose up -d db app
+& docker compose @composeArgs up -d db app
 if ($LASTEXITCODE -ne 0) { Write-Error "docker compose up failed" }
 
 # --- 5. wait for DB + migrate ---------------------------------------------
 Write-Host "==> Waiting for database to become healthy…"
 $ready = $false
 for ($i = 1; $i -le 30; $i++) {
-    $json = & docker compose ps --format json db 2>$null
+    $json = & docker compose @composeArgs ps --format json db 2>$null
     if ($json -match '"Health":"healthy"') { $ready = $true; Write-Host "    DB ready."; break }
     Start-Sleep -Seconds 2
 }
@@ -151,8 +190,9 @@ Write-Host "   1. Admin user (name, email, password >= 12 chars)"
 Write-Host "   2. Supplier (IC -> Nacist z ARES -> bank account)"
 Write-Host "   3. Optional sample data"
 Write-Host ""
+$cf = if ($composeArgs.Count -gt 0) { " $($composeArgs -join ' ')" } else { '' }
 Write-Host " Useful:"
-Write-Host "   docker compose logs -f app    # tail app logs"
-Write-Host "   docker compose down           # stop stack (data persists)"
-Write-Host "   docker compose down -v        # stop + WIPE volumes (destroys DB)"
+Write-Host "   docker compose$cf logs -f app    # tail app logs"
+Write-Host "   docker compose$cf down           # stop stack (data persists)"
+Write-Host "   docker compose$cf down -v        # stop + WIPE volumes (destroys DB)"
 Write-Host "============================================================"

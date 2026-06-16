@@ -5,6 +5,24 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.32.0] — 2026-06-16
+
+### Changed
+
+- **Docker image je nově alpine/nginx — ~3× menší (~92 MB místo ~293 MB) a výrazně úspornější na RAM.** Běží na `php:8.5-fpm-alpine` + nginx + php-fpm místo Debian/Apache. Funkčně je identický (stejné API i chování); `/data` a databázové volume jsou plně kompatibilní, takže **existující instalace se zmigruje sama při příštím `cmd/docker-update`** (pull `:latest`) bez ztráty dat. Idle spotřeba RAM aplikace klesla na ~26 MB. Debian/Apache varianta zůstává v repu jako fallback (`Dockerfile`); pro rollback na GHCR pinni starší tag (`≤ v4.31.0`).
+- **MariaDB a PHP-FPM doladěné pro hosting s málo RAM/diskem.** `performance_schema=OFF` ušetří ~100–200 MB RAM, InnoDB redo log zmenšen z 96 na 48 MB (~50 MB méně na disku), php-fpm jede v režimu `ondemand`. Vše laditelné přes `.env`: `DB_INNODB_BUFFER_POOL`, `DB_INNODB_LOG_SIZE`, `PHP_FPM_MAX_CHILDREN`, `OPCACHE_MEMORY`.
+- **Všechny PDF výstupy (faktury, přijaté faktury, Kniha DPH, kniha jízd i uživatelský manuál) sjednoceny na fonty Montserrat + JetBrains Mono.** Manuál dříve používal DejaVu — nově je vše brandově konzistentní. DejaVu Sans zůstává jen jako fallback pro symboly (✓ ✗ ⚠). Velikost přibalených mPDF fontů v image klesla z 93 MB na 9 MB.
+- **Spolehlivější `cmd/docker-update`, `docker-install`, `docker-ghcr`.** Režim (stažení z GHCR vs lokální build) se nově detekuje z image běžícího kontejneru, ne z přítomných compose souborů — odstraňuje případy, kdy update u GHCR nasazení omylem stavěl image lokálně. `docker-install` preferuje stažení hotového image z GHCR. Přebití přes `MYINVOICE_UPDATE_MODE` / `MYINVOICE_INSTALL_MODE`.
+
+### Added
+
+- **`cmd/docker-prune-images.{sh,ps1}`** — detekce a úklid zastaralých Docker image MyInvoice (chrání běžící i v compose referencované). `docker-update` po sobě navíc uklidí osiřelé (dangling) vrstvy.
+- **Kniha jízd: rychlé akce** — přidání jízdy/tankování přímo z topbaru a z položky „+" v hlavním menu.
+
+### Fixed
+
+- **Náhled na výkaz práce** — logo dodavatele v hlavičce náhledu a vynucený světlý režim pro čitelnost; doplněna kapitola manuálu (§14.7) a robustnější tlačítko v e-mailu se schvalováním výkazu.
+
 ## [4.31.0] — 2026-06-15
 
 ### Added

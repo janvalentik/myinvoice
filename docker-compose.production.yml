@@ -58,6 +58,15 @@ services:
   db:
     image: mariadb:11
     restart: unless-stopped
+    # Tuning pro hosting s málo pamětí/diskem:
+    #   - performance_schema OFF → ~100–200 MB méně RAM
+    #   - buffer pool 128 MB (RAM) — sniž na 64M přes DB_INNODB_BUFFER_POOL pro malý stroj
+    #   - redo log 48 MB místo default 96 MB → ~50 MB méně na disku (DB_INNODB_LOG_SIZE)
+    # MariaDB redo log při startu bezpečně přesází (po čistém shutdownu), data zůstávají.
+    command:
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=${DB_INNODB_BUFFER_POOL:-128M}
+      - --innodb-log-file-size=${DB_INNODB_LOG_SIZE:-48M}
     environment:
       # Fail-closed: bez .env se stack nespustí (žádný předvídatelný default).
       # Vytvoř .env s DB_PASSWORD a DB_ROOT_PASSWORD (viz hlavička výše).

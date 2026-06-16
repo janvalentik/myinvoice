@@ -16,8 +16,9 @@ use Mpdf\Config\FontVariables;
  * Monospace (částky, varsymboly, IBANy, datumy) je JetBrains Mono (SIL OFL) —
  * tabulkové číslice → zarovnání číselných sloupců; stejný mono brand-font jako appka.
  *
- * DejaVu zůstává jako `backupSubsFont` pro glyfy, které Montserrat nemá
- * (✓ ✗ ◆ ⚠ …) a `dejavusansmono` pro monospace pasáže.
+ * DejaVu Sans zůstává jako jediný `backupSubsFont` pro glyfy, které Montserrat
+ * nemá (✓ ✗ ◆ ⚠ …). Monospace pasáže jedou přes JetBrains Mono (vlastní font),
+ * takže DejaVu Sans Mono se nepoužívá (a `api/bin/cleanup-mpdf-fonts.php` ho maže).
  *
  * Fonty jsou v api/resources/fonts/ — mimo vendor/mpdf/mpdf/ttfonts/, takže je
  * cleanup-mpdf-fonts.php (čistí jen vendor ttfonts) nesmaže.
@@ -47,7 +48,13 @@ final class MpdfFontConfig
         $defCfg   = (new ConfigVariables())->getDefaults();
         $defFonts = (new FontVariables())->getDefaults();
 
-        $fontData = $defFonts['fontdata'];
+        // Ponech z defaultní fontdata JEN 'dejavusans' (jediný DejaVu, který
+        // api/bin/cleanup-mpdf-fonts.php nemaže). Ostatní default fonty
+        // (dejavusansmono, dejavusanscondensed, dejavuserif, freesans, sun-exta…)
+        // v image NEJSOU — kdyby zůstaly registrované ve fontdata, mPDF by je při
+        // substituci chybějícího glyfu zkusil načíst a shodil render
+        // (Cannot find TTF …). Bez nich = chybějící glyf → prázdný box (tofu).
+        $fontData = array_intersect_key($defFonts['fontdata'], ['dejavusans' => 1]);
         $fontData['montserrat'] = [
             'R'  => 'Montserrat-Regular.ttf',
             'B'  => 'Montserrat-Bold.ttf',
@@ -76,7 +83,16 @@ final class MpdfFontConfig
             'fontdata'         => $fontData,
             'default_font'     => self::DEFAULT_FONT,
             'useSubstitutions' => true,
-            'backupSubsFont'   => ['dejavusans', 'dejavusansmono'],
+            'backupSubsFont'   => ['dejavusans'],
+            // Generické CSS rodiny musí mířit na fonty, které v image ZŮSTÁVAJÍ
+            // (po cleanup-mpdf-fonts.php). mPDF defaultně mapuje sans-serif →
+            // DejaVuSansCondensed, monospace → DejaVuSansMono, serif → DejaVuSerif —
+            // ty jsme smazali, takže bez tohohle by `font-family: …, sans-serif`
+            // shodilo render (Cannot find TTF …). Přemapujeme na Montserrat / JetBrains
+            // / DejaVu Sans (jediný fallback pro symboly).
+            'sans_fonts'       => ['montserrat', 'dejavusans'],
+            'serif_fonts'      => ['dejavusans'],
+            'mono_fonts'       => ['jetbrainsmono', 'dejavusans'],
         ];
     }
 }

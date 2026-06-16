@@ -18,12 +18,24 @@ use PHPUnit\Framework\TestCase;
  */
 final class DockerfileDataDirEnvTest extends TestCase
 {
-    public function testDockerfileDoesNotHardcodeDataDirEnv(): void
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function dockerfileProvider(): array
+    {
+        return [
+            'Dockerfile (Debian/Apache)' => ['/Dockerfile'],
+            'Dockerfile.alpine (nginx)'  => ['/Dockerfile.alpine'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('dockerfileProvider')]
+    public function testDockerfileDoesNotHardcodeDataDirEnv(string $relativePath): void
     {
         $repoRoot = dirname(__DIR__, 5);
-        $dockerfilePath = $repoRoot . '/Dockerfile';
+        $dockerfilePath = $repoRoot . $relativePath;
 
-        self::assertFileExists($dockerfilePath, 'Dockerfile not found at repo root');
+        self::assertFileExists($dockerfilePath, "{$relativePath} not found at repo root");
 
         $contents = file_get_contents($dockerfilePath);
         self::assertIsString($contents);
@@ -37,7 +49,7 @@ final class DockerfileDataDirEnvTest extends TestCase
         self::assertDoesNotMatchRegularExpression(
             '/^\s*ENV\s+MYINVOICE_DATA_DIR\b/m',
             $codeOnly,
-            'Dockerfile must NOT set ENV MYINVOICE_DATA_DIR — single-volume mode '
+            "{$relativePath} must NOT set ENV MYINVOICE_DATA_DIR — single-volume mode "
             . 'is enabled via docker-compose.yml environment: block (since 3.6.0). '
             . 'Hardcoding in image would prevent opt-out for custom deployments.',
         );
