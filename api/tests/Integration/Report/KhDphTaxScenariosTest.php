@@ -246,9 +246,14 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertSame('53000', (string) $v4['pln23'], 'ř.40 základ = 10000+2000+15000+11000−25000+40000');
         $this->assertSame('11130', (string) $v4['odp_tuz23_nar']);
 
-        // ř.43 RC mirror odpočet = A.2 (P4) + B.1 (P5)
-        $this->assertSame('17000', (string) $v4['odp_rezim'], 'ř.43 = 8000 (P4) + 9000 (P5)');
-        $this->assertSame('3570',  (string) $v4['odp_rez_nar']);
+        // ř.43 RC mirror odpočet = A.2 (P4) + B.1 (P5). Atributy nar_zdp23/od_zdp23
+        // (sloupec „V plné výši", 21 %) — NE odp_rezim/odp_rez_nar (to je ř.45 korekce §75/§77/§79).
+        $this->assertSame('17000', (string) $v4['nar_zdp23'], 'ř.43 základ = 8000 (P4) + 9000 (P5)');
+        $this->assertSame('3570',  (string) $v4['od_zdp23'], 'ř.43 odpočet = 1680 + 1890');
+        $this->assertSame('', (string) $v4['odp_rezim'], 'ř.45 (korekce) se NESMÍ plést s ř.43 (mirror odpočet)');
+
+        // ř.46 součtový řádek odpočtu (ř.40-45 „V plné výši") = ř.40 (11130) + ř.43 (3570)
+        $this->assertSame('14700', (string) $v4['odp_sum_nar'], 'ř.46 = 11130 (ř.40) + 3570 (ř.43)');
 
         // ř.47 hodnota pořízeného majetku (P8)
         $this->assertSame('40000', (string) $v4['nar_maj'], 'ř.47 = 40000 (P8 majetek)');
@@ -467,7 +472,7 @@ final class KhDphTaxScenariosTest extends TestCase
         // ── DPHDP3 květen: ř.3 + ř.43 + KH A.2 ──
         $dpMay = (new \SimpleXMLElement($this->dph->build($this->supplierId, self::YEAR, 5, 'monthly')['xml']))->DPHDP3;
         $this->assertSame('305312', (string) $dpMay->Veta1['p_zb23'], 'DPHDP3/05 ř.3 základ');
-        $this->assertSame('305312', (string) $dpMay->Veta4['odp_rezim'], 'DPHDP3/05 ř.43 mirror');
+        $this->assertSame('305312', (string) $dpMay->Veta4['nar_zdp23'], 'DPHDP3/05 ř.43 mirror');
 
         $khMay = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, 5)['xml']);
         $this->assertCount(1, $khMay->DPHKH1->VetaA2, 'KH/05 A.2: pořízení z JČS');
@@ -501,7 +506,7 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertNotSame('', (string) $dp->Veta1['dan_pzb23'], 'ř.3 daň NESMÍ být prázdná');
         $this->assertNotSame('0', (string) $dp->Veta1['dan_pzb23'], 'ř.3 daň NESMÍ být 0 (issue #116)');
         // ř.43 mirror odpočet
-        $this->assertSame('12546', (string) $dp->Veta4['odp_rezim'], 'ř.43 mirror základ');
+        $this->assertSame('12546', (string) $dp->Veta4['nar_zdp23'], 'ř.43 mirror základ');
 
         // KH A.2 — základ i daň v bucketu 21 % (efektivní sazba z klasifikace)
         $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
@@ -515,6 +520,48 @@ final class KhDphTaxScenariosTest extends TestCase
         foreach ($book['sections'] as $s) $sec[$s['key']] = $s;
         $this->assertArrayHasKey('43.003', $sec);
         $this->assertEqualsWithDelta(2634.66, $sec['43.003']['subtotal_vat'], 0.01, 'Kniha: samovyměření z classification rate');
+    }
+
+    /**
+     * Zaokrouhlení samovyměřené daně u cizoměnového RC (pořízení z JČS v EUR).
+     *
+     * Daň se MUSÍ počítat ze ZÁKLADU přepočteného na CZK (§ 37/1), ne z cizoměnové
+     * daně přenásobené kurzem — jinak dvojí zaokrouhlení rozejde KH A.2 a přiznání
+     * o haléře. Typický případ pořízení vozidla z JČS: zaokrouhlení EUR-first
+     * dávalo o 0,01 Kč jinou daň než zákonný postup ze základu v Kč.
+     *
+     *   základ 100,05 EUR × kurz 25,00 = 2 501,25 Kč → daň 2 501,25 × 21 % = 525,2625 → 525,26 Kč
+     *   (chybně EUR-first: round(100,05 × 21 %)=21,01 EUR × 25 = 525,25 Kč)
+     */
+    public function testForeignCurrencyRcSelfAssessmentRoundsFromCzkBase(): void
+    {
+        $pdo = $this->db->pdo();
+        $eurId = (int) ($pdo->query("SELECT id FROM currencies WHERE code = 'EUR' ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+        if ($eurId === 0) {
+            $pdo->exec("INSERT INTO currencies (code, name) VALUES ('EUR', 'Euro')");
+            $eurId = (int) $pdo->lastInsertId();
+        }
+
+        $d = fn (int $day) => sprintf('%04d-%02d-%02d', self::YEAR, self::MONTH, $day);
+        $euVend = $this->client('EU dodavatel EUR', $this->deId, 'DE333333333', vendor: true);
+
+        // Kód 23 (pořízení z JČS), RC, základ 100,05 EUR, kurz 25,00.
+        $this->purchase('P-2099-EUR', $euVend, '23', true, 'invoice', $d(10), $d(10), [[100.05, 0, 21]],
+            currencyId: $eurId, exchangeRate: 25.00);
+
+        // ── KH A.2: základ i daň ze základu přepočteného na CZK ──
+        $kh = new \SimpleXMLElement($this->kh->build($this->supplierId, self::YEAR, self::MONTH)['xml']);
+        $this->assertCount(1, $kh->DPHKH1->VetaA2, 'A.2: EUR pořízení z JČS');
+        $this->assertSame('2501.25', (string) $kh->DPHKH1->VetaA2[0]['zakl_dane1'], 'A.2 základ = 100,05 × 25');
+        $this->assertSame('525.26', (string) $kh->DPHKH1->VetaA2[0]['dan1'],
+            'A.2 daň ze ZÁKLADU v CZK (525,26), NE EUR-first (525,25)');
+
+        // ── Kniha DPH: stejná daň (sdílený VatLedgerService) ──
+        $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
+        $sec = [];
+        foreach ($book['sections'] as $s) $sec[$s['key']] = $s;
+        $this->assertArrayHasKey('43.003', $sec);
+        $this->assertEqualsWithDelta(525.26, $sec['43.003']['subtotal_vat'], 0.001, 'Kniha: daň ze základu v CZK');
     }
 
     /**
@@ -605,8 +652,10 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertSame('10000', (string) $dp->Veta1['p_sl23_z'], 'ř.12 základ dovoz služby');
         $this->assertSame('2100',  (string) $dp->Veta1['dan_psl23_z'], 'ř.12 daň samovyměřena z kódu (ne z flagu)');
         // ř.43 zrcadlový odpočet
-        $this->assertSame('10000', (string) $dp->Veta4['odp_rezim'], 'ř.43 mirror základ');
-        $this->assertSame('2100',  (string) $dp->Veta4['odp_rez_nar'], 'ř.43 mirror odpočet');
+        $this->assertSame('10000', (string) $dp->Veta4['nar_zdp23'], 'ř.43 mirror základ');
+        $this->assertSame('2100',  (string) $dp->Veta4['od_zdp23'], 'ř.43 mirror odpočet');
+        // ř.46 součtový odpočet = jen ř.43 (žádný tuzemský odpočet) = 2100
+        $this->assertSame('2100',  (string) $dp->Veta4['odp_sum_nar'], 'ř.46 = ř.43 (2100)');
 
         // Kniha DPH — sekce 43.012 (dovoz služby, RC pár pod členěním 43) a 43.043 (mirror)
         $book = $this->book->build($this->supplierId, self::YEAR, self::MONTH);
@@ -714,6 +763,8 @@ final class KhDphTaxScenariosTest extends TestCase
         $this->assertSame('4200',  (string) $dp->Veta6['odp_zocelk'], 'ř.63 odpočet celkem');
         $this->assertSame('6300',  (string) $dp->Veta6['dano_da'], 'ř.64 vlastní daňová povinnost');
         $this->assertSame('',      (string) $dp->Veta6['dano_no'], 'ř.66 nadměrný odpočet nesmí být vyplněn');
+        // ř.46 (odp_sum_nar) musí existovat a rovnat se ř.63 (odp_zocelk) — zde jen ř.40.
+        $this->assertSame('4200',  (string) $dp->Veta4['odp_sum_nar'], 'ř.46 součtový odpočet = ř.63');
     }
 
     /**
@@ -981,20 +1032,20 @@ final class KhDphTaxScenariosTest extends TestCase
     /**
      * @param list<array{0:float,1:float,2:float}> $items [base, vat, vat_rate_snapshot]
      */
-    private function purchase(string $number, int $vendorId, ?string $code, bool $rc, string $kind, string $issue, ?string $tax, array $items, bool $isFixedAsset = false, string $vatDeduction = 'full', float $vatDeductionPercent = 100.0): void
+    private function purchase(string $number, int $vendorId, ?string $code, bool $rc, string $kind, string $issue, ?string $tax, array $items, bool $isFixedAsset = false, string $vatDeduction = 'full', float $vatDeductionPercent = 100.0, ?int $currencyId = null, ?float $exchangeRate = null): void
     {
         [$base, $vat, $with] = $this->sumItems($items);
         $stmt = $this->db->pdo()->prepare(
             'INSERT INTO purchase_invoices
                 (supplier_id, vendor_id, vendor_invoice_number, document_kind, issue_date, tax_date,
-                 due_date, received_at, currency_id, reverse_charge, vendor_snapshot,
+                 due_date, received_at, currency_id, exchange_rate, reverse_charge, vendor_snapshot,
                  total_without_vat, total_vat, total_with_vat, status, vat_classification_code,
                  is_fixed_asset, vat_deduction, vat_deduction_percent, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "{}", ?, ?, ?, "received", ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "{}", ?, ?, ?, "received", ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $this->supplierId, $vendorId, $number, $kind, $issue, $tax, $issue, $issue,
-            $this->currencyId, $rc ? 1 : 0, $base, $vat, $with, $code, $isFixedAsset ? 1 : 0, $vatDeduction, $vatDeductionPercent, $this->userId,
+            $currencyId ?? $this->currencyId, $exchangeRate, $rc ? 1 : 0, $base, $vat, $with, $code, $isFixedAsset ? 1 : 0, $vatDeduction, $vatDeductionPercent, $this->userId,
         ]);
         $id = (int) $this->db->pdo()->lastInsertId();
         $this->purchaseIds[] = $id;

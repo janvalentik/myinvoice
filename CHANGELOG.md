@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Kontrolní hlášení a přiznání DPH u pořízení z EU / reverse charge — správné zaokrouhlení a řádky.** U dokladů v cizí měně se samovyměřená daň (pořízení zboží z JČS, přijetí služby, dovoz) nově počítá **ze základu přepočteného na Kč × sazba** (§ 37/1) místo z cizoměnové daně přenásobené kurzem. Dvojí zaokrouhlení dřív rozcházelo daň v **oddílu A.2 kontrolního hlášení** oproti přiznání o haléře (např. základ 100,05 € × kurz 25,00 = 2 501,25 Kč → daň 525,26 Kč, ne 525,25 Kč jako zaokrouhlení v eurech). V **přiznání (DPHDP3)** se navíc opravil řádek **43** (nárok na odpočet ze samovyměřených plnění) — plnil se do atributů řádku 45 (korekce odpočtu dle §75/§77/§79), takže portál EPO mohl hlásit chybu — a doplnil se chybějící součtový řádek **46** (odpočet daně celkem). Ověřeno proti referenčnímu schématu i výstupu EPO MF ČR.
+
 ## [4.31.0] — 2026-06-15
 
 ### Added

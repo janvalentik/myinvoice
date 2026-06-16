@@ -185,7 +185,8 @@ final class IdentifiedPersonDphTest extends TestCase
         $result = $this->dph->build($this->supplierId, self::YEAR, self::MONTH, 'monthly');
         $dp = (new \SimpleXMLElement($result['xml']))->DPHDP3;
         self::assertSame('P', (string) $dp->VetaD['typ_platce']);
-        self::assertSame('8000', (string) $dp->Veta4['odp_rezim'], 'plátce má zrcadlový odpočet ř.43');
+        self::assertSame('8000', (string) $dp->Veta4['nar_zdp23'], 'plátce má zrcadlový odpočet ř.43 (nar_zdp23, ne odp_rezim)');
+        self::assertSame('1680', (string) $dp->Veta4['odp_sum_nar'], 'plátce má ř.46 součtový odpočet = ř.43');
     }
 
     // ── helpers (vzor KhDphTaxScenariosTest) ─────────────────────────────────

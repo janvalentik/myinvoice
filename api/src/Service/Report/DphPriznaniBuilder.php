@@ -145,7 +145,13 @@ final class DphPriznaniBuilder
         //   ř.40 pln23/odp_tuz23_nar     = tuzemsko 21 %
         //   ř.41 pln5/odp_tuz5_nar       = tuzemsko 12 %
         //   ř.42 dov_cu/odp_cu_nar       = dovoz CÚ
-        //   ř.43 odp_rezim/odp_rez_nar   = RC mirror odpočet (z ř. 3-13)
+        //   ř.43 nar_zdp23/od_zdp23      = odpočet ze samovyměřených plnění (ř. 3-13)
+        //                                  ve sloupci „V plné výši", sazba 21 %.
+        //                                  POZOR: odp_rezim/odp_rez_nar je ř.45 (korekce
+        //                                  odpočtu dle §75/§77/§79 — registrace, vyrovnání),
+        //                                  NE ř.43. Číselník nemá 12% RC kód (kódy 5/23/24/25
+        //                                  nesou 21 %), takže 21% sloupec pokryje celý mirror.
+        //   ř.46 odp_sum_nar             = součtový řádek odpočtu (ř.40-45, „V plné výši")
         //   ř.47 nar_maj/—               = hodnota pořízeného majetku
         //                                  (doplňující údaj, jen základ; XSD má
         //                                  jediný atribut, daň se neuvádí)
@@ -183,7 +189,7 @@ final class DphPriznaniBuilder
             '40' => ['veta' => 4, 'base' => 'pln23',      'vat' => 'odp_tuz23_nar'],
             '41' => ['veta' => 4, 'base' => 'pln5',       'vat' => 'odp_tuz5_nar'],
             '42' => ['veta' => 4, 'base' => 'dov_cu',     'vat' => 'odp_cu_nar'],
-            '43' => ['veta' => 4, 'base' => 'odp_rezim',  'vat' => 'odp_rez_nar'],
+            '43' => ['veta' => 4, 'base' => 'nar_zdp23',  'vat' => 'od_zdp23'],
             '47' => ['veta' => 4, 'base' => 'nar_maj',    'vat' => null],
         ];
 
@@ -235,6 +241,12 @@ final class DphPriznaniBuilder
             $dphdp3->appendChild($veta3);
         }
         if (!empty($veta4Attrs)) {
+            // ř.46 (odp_sum_nar) = součtový řádek 40-45 ve sloupci „V plné výši" =
+            // celkový nárok na odpočet. Bez něj EPO portál hlásí propustnou chybu
+            // („Odpočet daně celkem nevyplněn"). Rovná se ř.63 (odp_zocelk) — proto
+            // používáme totéž $totalDanOdpocitatelne, které ř.47 (doplňující údaj
+            // k majetku) správně nezapočítává.
+            $veta4Attrs['odp_sum_nar'] = $this->formatAmount($totalDanOdpocitatelne);
             $veta4 = $dom->createElement('Veta4');
             foreach ($veta4Attrs as $k => $v) $veta4->setAttribute($k, $v);
             $dphdp3->appendChild($veta4);

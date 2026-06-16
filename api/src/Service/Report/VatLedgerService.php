@@ -280,9 +280,10 @@ final class VatLedgerService
         if ($source === 'purchase' && $isRc && $vatRate == 0.0 && (float) ($clsf['vat_rate'] ?? 0) > 0) {
             $vatRate = (float) $clsf['vat_rate'];
         }
-        if ($source === 'purchase' && $vatRaw == 0.0 && $isRc && $vatRate > 0) {
-            $vatRaw = round($baseRaw * $vatRate / 100, 2);
-        }
+        // RC samovyměření: dodavatel fakturuje bez DPH (daň 0) → daň si dopočítá příjemce.
+        // POZOR: daň se NEpočítá tady z cizoměnového základu, ale až níže ze základu
+        // přepočteného na CZK (vat_czk) — viz komentář tam. Tady jen příznak.
+        $rcSelfAssess = $source === 'purchase' && $vatRaw == 0.0 && $isRc && $vatRate > 0;
 
         // §75 poměrný odpočet — u přijatých s 'proportional' se odpočet (základ i daň)
         // uplatní jen v poměrné výši (vat_deduction_percent). Zbytek je nedaňová část
@@ -294,6 +295,17 @@ final class VatLedgerService
             $vatRaw  = round($vatRaw * $pct, 2);
             $isPartialDeduction = true;
         }
+
+        $baseCzk = round($baseRaw * $rate, 2);
+        // Daň u RC samovyměření = ZÁKLAD přepočtený na CZK × sazba (§ 37 odst. 1:
+        // „daň se vypočte ze základu daně" — a základem je hodnota v Kč). Počítat ji
+        // z cizoměnové daně přenásobené kurzem by dvojím zaokrouhlením rozešlo KH
+        // oddíl A.2 a přiznání ř.3/43 o haléře (např. 305 312,26 × 21 % = 64 115,57 Kč,
+        // ne 64 115,67 Kč jako round(EUR daň) × kurz). U běžných tuzemských dokladů
+        // bereme skutečnou daň z dokladu přepočtenou kurzem (zpravidlo se neuplatní).
+        $vatCzk = $rcSelfAssess
+            ? round($baseCzk * $vatRate / 100, 2)
+            : round($vatRaw * $rate, 2);
 
         return [
             'source'                => $source,
@@ -319,8 +331,8 @@ final class VatLedgerService
             'vat_deduction_partial' => $isPartialDeduction,
             'vat_rate'              => $vatRate,
             'currency'              => (string) $r['currency'],
-            'base_czk'              => round($baseRaw * $rate, 2),
-            'vat_czk'               => round($vatRaw * $rate, 2),
+            'base_czk'              => $baseCzk,
+            'vat_czk'               => $vatCzk,
             'total_with_vat_czk'    => round((float) $r['inv_total'] * $rate, 2),
             'is_fixed_asset'        => (bool) $r['is_fixed_asset'],
             'exchange_rate'         => $rate,
