@@ -12,7 +12,7 @@ import { useAuthStore } from '@/stores/auth'
 const { t, locale } = useI18n()
 const toast = useToast()
 const auth = useAuthStore()
-const props = defineProps<{ resetToken?: number }>()
+const props = defineProps<{ resetToken?: number; openNewToken?: number }>()
 
 const fuelings = ref<Fueling[]>([])
 const cars = ref<Car[]>([])
@@ -66,9 +66,19 @@ async function load() {
       logbookApi.listFuelings(params),
       cars.value.length ? Promise.resolve(cars.value) : logbookApi.listCars(false),
     ])
-  } finally { loading.value = false }
+  } finally { loading.value = false; maybeOpenNew() }
 }
 onMounted(load)
+
+// Otevření modalu „nové tankování" z rychlé akce (LogbookPage bumpne token).
+// Počkáme na dokončení load(), aby bylo auto k dispozici pro předvyplnění jednotky.
+const wantNew = ref(false)
+watch(() => props.openNewToken, () => { wantNew.value = true; maybeOpenNew() })
+function maybeOpenNew() {
+  if (!wantNew.value || loading.value) return
+  wantNew.value = false
+  newFueling()
+}
 
 watch(() => props.resetToken, () => {
   filterCar.value = ''

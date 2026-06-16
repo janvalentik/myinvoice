@@ -1,13 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { publicWorkReportApi, type WrPublicState, type WrPreview } from '@/api/workReportTracking'
 import { useTurnstile } from '@/composables/useTurnstile'
+import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const token = computed(() => String(route.params.token || ''))
 const { t, locale } = useI18n()
+
+// Veřejný náhled vždy ve světlém režimu — sjednoceno s e-mailem, ze kterého se
+// sem klient prokliká: logo i akcentní barva dodavatele jsou laděné na světlé
+// pozadí (tmavé logo na tmavém pozadí by bylo nečitelné). Děláme to v setupu
+// (před prvním paintem této routy), režim uživatele obnovíme při odchodu.
+const { isDark } = useTheme()
+document.documentElement.classList.remove('dark')
+onBeforeUnmount(() => {
+  document.documentElement.classList.toggle('dark', isDark.value)
+})
 
 const loading = ref(true)
 const loadError = ref('')
@@ -30,6 +41,11 @@ const turnstileEl = ref<HTMLElement | null>(null)
 const TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
 
 const lang = computed(() => preview.value?.language || state.value?.language || 'cs')
+
+// Logo dodavatele (data: URI) místo MyInvoice loga — k dispozici v náhledu i na
+// ověřovací obrazovce. Prázdné → fallback na MyInvoice branding v hlavičce.
+const logoSrc = computed(() => preview.value?.logo_src || state.value?.logo_src || '')
+const supplierName = computed(() => preview.value?.supplier_name || state.value?.supplier_name || '')
 
 function fmtMoney(n: number, currency: string): string {
   const decimals = currency === 'JPY' ? 0 : 2
@@ -141,12 +157,23 @@ async function verify() {
   <div class="min-h-screen bg-neutral-50 flex flex-col">
     <header class="bg-surface border-b border-neutral-200 px-4 py-3">
       <div class="max-w-3xl mx-auto flex items-center gap-3">
-        <div class="w-8 h-8 rounded-md flex items-center justify-center text-white font-bold"
-          :style="{ background: preview?.accent_color || '#3B2D83' }">M</div>
-        <div class="text-sm">
-          <div class="font-semibold">My<span class="text-primary-700">Invoice</span><span class="text-neutral-500">.cz</span></div>
-          <div class="text-xs text-neutral-500">{{ t('workReportTracking.public.title') }}</div>
-        </div>
+        <!-- Logo dodavatele (pokud má zapnutý branding + nahrané logo) -->
+        <template v-if="logoSrc">
+          <img :src="logoSrc" :alt="supplierName" class="h-9 max-w-[220px] object-contain" />
+          <div class="text-sm">
+            <div v-if="supplierName" class="font-semibold text-neutral-900">{{ supplierName }}</div>
+            <div class="text-xs text-neutral-500">{{ t('workReportTracking.public.title') }}</div>
+          </div>
+        </template>
+        <!-- Fallback: MyInvoice branding -->
+        <template v-else>
+          <div class="w-8 h-8 rounded-md flex items-center justify-center text-white font-bold"
+            :style="{ background: preview?.accent_color || '#3B2D83' }">M</div>
+          <div class="text-sm">
+            <div class="font-semibold">My<span class="text-primary-700">Invoice</span><span class="text-neutral-500">.cz</span></div>
+            <div class="text-xs text-neutral-500">{{ t('workReportTracking.public.title') }}</div>
+          </div>
+        </template>
       </div>
     </header>
 

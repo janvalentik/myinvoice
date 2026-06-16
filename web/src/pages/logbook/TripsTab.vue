@@ -12,7 +12,7 @@ import { useAuthStore } from '@/stores/auth'
 const { t, locale } = useI18n()
 const toast = useToast()
 const auth = useAuthStore()
-const props = defineProps<{ resetToken?: number }>()
+const props = defineProps<{ resetToken?: number; openNewToken?: number }>()
 
 const trips = ref<Trip[]>([])
 const cars = ref<Car[]>([])
@@ -86,9 +86,20 @@ async function load() {
     ])
     logbookApi.tripPurposes().then(p => { purposes.value = p }).catch(() => {})
     logbookApi.tripPlaces().then(p => { places.value = p }).catch(() => {})
-  } finally { loading.value = false }
+  } finally { loading.value = false; maybeOpenNew() }
 }
 onMounted(load)
+
+// Otevření modalu „nová jízda" z rychlé akce / „+" v menu (LogbookPage bumpne token).
+// Čekáme na dokončení load(), aby byl seznam aut k dispozici pro předvyplnění.
+const wantNew = ref(false)
+watch(() => props.openNewToken, () => { wantNew.value = true; maybeOpenNew() })
+function maybeOpenNew() {
+  if (!wantNew.value || loading.value) return
+  wantNew.value = false
+  if (cars.value.length) newTrip()
+  else toast.error(t('logbook.no_cars_hint'))
+}
 
 // Předvyplnění tachometru zahájení posledním známým konečným stavem auta (jen nový záznam).
 watch(() => draft.car_id, (carId) => {

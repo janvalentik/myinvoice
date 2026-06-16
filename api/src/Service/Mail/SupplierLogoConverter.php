@@ -293,7 +293,38 @@ final class SupplierLogoConverter
             $svg = (string) preg_replace("/\s+" . $pq . ":[a-zA-Z][\w-]*\s*=\s*'[^']*'/i", '', $svg);
         }
         // Final sanity check — must still contain <svg
-        return preg_match('/<svg[\s>]/i', $svg) ? $svg : '';
+        if (!preg_match('/<svg[\s>]/i', $svg)) {
+            return '';
+        }
+        return $this->ensureSvgNamespace($svg);
+    }
+
+    /**
+     * Doplní povinný SVG namespace do kořenového `<svg>`, pokud chybí. Bez něj
+     * prohlížeč standalone SVG (data: URI v `<img>` — náhled výkazu práce) odmítne
+     * vykreslit (parsuje se jako přísné XML → naturalWidth=0, rozbitý obrázek);
+     * mPDF to v PDF toleruje, prohlížeč ne. Optimalizované exporty (Illustrator
+     * „SVG bez xmlns", apod.) ho často nemají. Idempotentní.
+     */
+    private function ensureSvgNamespace(string $svg): string
+    {
+        if (!preg_match('/<svg\b[^>]*\bxmlns\s*=/i', $svg)) {
+            $svg = (string) preg_replace(
+                '/<svg\b/i',
+                '<svg xmlns="http://www.w3.org/2000/svg"',
+                $svg,
+                1,
+            );
+        }
+        if (preg_match('/\bxlink:/i', $svg) && !preg_match('/<svg\b[^>]*\bxmlns:xlink\s*=/i', $svg)) {
+            $svg = (string) preg_replace(
+                '/<svg\b/i',
+                '<svg xmlns:xlink="http://www.w3.org/1999/xlink"',
+                $svg,
+                1,
+            );
+        }
+        return $svg;
     }
 
     /**
