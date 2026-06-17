@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.34.1] — 2026-06-17
+
+### Fixed
+
+- **Párování plateb z e-mailových avíz České spořitelny — šablona „Odešla platba".** Novější avíza ČS uvádějí v bloku transakce řádky **„Z účtu:"** (odesílatel) a **„Na účet:"** (příjemce) místo dřívějších „Číslo účtu:" / „Číslo účtu protistrany:" — kvůli tomu se nenačítal **účet protistrany**. Parser teď tyto řádky rozpozná a podle **směru platby** (odchozí/příchozí) správně přiřadí, která strana je vlastní účet a která protistrana. Testovací nástroj parserů (*Nastavení → Bankovní účty → Parser provideři → test*) navíc u bank, které datum platby v těle neuvádějí (ČS, Fio), simuluje doručený e-mail aktuálním datem — dřív hlásil chybějící povinné pole `posted_at`, i když by avízo v ostrém provozu prošlo. Bez DB migrace. (#147)
+
 ## [4.34.0] — 2026-06-17
 
 ### Added

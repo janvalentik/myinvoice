@@ -200,10 +200,25 @@ final class BankEmailNoticeAction
     {
         if (!$this->admin($request, $response, $err)) return $err;
         $body = (array) ($request->getParsedBody() ?? []);
+        // Banky, které datum platby v těle avíza neuvádějí (Česká spořitelna, Fio),
+        // berou posted_at z data doručení e-mailu. V testovacím nástroji žádný
+        // skutečný e-mail není, proto ho simulujeme zadaným, jinak aktuálním časem —
+        // bez toho by test hlásil chybějící posted_at, i když by avízo v ostrém
+        // provozu prošlo (#147).
+        $messageDate = null;
+        $dateRaw = trim((string) ($body['date'] ?? ''));
+        if ($dateRaw !== '') {
+            try {
+                $messageDate = new \DateTimeImmutable($dateRaw);
+            } catch (\Throwable) {
+                $messageDate = null;
+            }
+        }
+        $messageDate ??= new \DateTimeImmutable();
         $message = new BankEmailNoticeMessage(
             uid: null,
             messageId: trim((string) ($body['message_id'] ?? '')) ?: null,
-            date: null,
+            date: $messageDate,
             sender: trim((string) ($body['sender'] ?? 'info@rb.cz')),
             subject: trim((string) ($body['subject'] ?? 'Pohyb na účtě')),
             text: (string) ($body['text'] ?? ''),

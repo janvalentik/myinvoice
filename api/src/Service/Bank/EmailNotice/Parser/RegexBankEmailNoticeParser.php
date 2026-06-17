@@ -78,6 +78,23 @@ final class RegexBankEmailNoticeParser extends AbstractBankEmailNoticeParser
             $data['recipient_account'] = trim($m['value']);
         }
 
+        // #147: novější šablona ČS „Odešla platba" uvádí v bloku transakce řádky
+        // „Z účtu:" (odesílatel) a „Na účet:" (příjemce) místo „Číslo účtu:" /
+        // „Číslo účtu protistrany:". Která strana je vlastní účet a která protistrana
+        // se prohazuje podle směru platby, proto je mapujeme až podle „Směr platby"
+        // (dvojtečka v popisku odliší tyto řádky od úvodní věty bez dvojtečky).
+        $fromAccount = preg_match('/Z\s+účtu:\s*(?<value>\d[\d\-]*\/\d{4})/iu', $text, $m) === 1 ? trim($m['value']) : '';
+        $toAccount = preg_match('/Na\s+účet:\s*(?<value>\d[\d\-]*\/\d{4})/iu', $text, $m) === 1 ? trim($m['value']) : '';
+        $outgoing = preg_match('/odchoz|výdej|vydej|výdaj|vydaj|debet|odepsán|odepsan|outgoing/u', mb_strtolower((string) ($data['direction'] ?? ''), 'UTF-8')) === 1;
+        $ownLineAccount = $outgoing ? $fromAccount : $toAccount;
+        $counterpartyLineAccount = $outgoing ? $toAccount : $fromAccount;
+        if (trim((string) ($data['recipient_account'] ?? '')) === '' && $ownLineAccount !== '') {
+            $data['recipient_account'] = $ownLineAccount;
+        }
+        if (trim((string) ($data['counterparty_account'] ?? '')) === '' && $counterpartyLineAccount !== '') {
+            $data['counterparty_account'] = $counterpartyLineAccount;
+        }
+
         foreach (['variable_symbol', 'amount', 'currency', 'posted_at', 'recipient_account'] as $required) {
             if (trim((string) ($data[$required] ?? '')) === '') {
                 throw new \RuntimeException("Parser nenašel povinné pole {$required}.");
