@@ -75,6 +75,8 @@ final class SupplierLogoConverter
         // používá PNG, protože Outlook/Gmail SVG nepodporují.
         $svgSidecar = $targetDir . '/sup-' . $supplierId . '.svg';
         @unlink($svgSidecar); // čistka po předchozím uploadu
+        // Cache bíle-podloženého PDF loga (issue #152) — zneplatni po re-uploadu.
+        \MyInvoice\Service\Pdf\PdfLogoFlattener::cleanup($targetPath);
 
         if ($mime === 'image/svg+xml') {
             $this->convertSvgToPng($sourcePath, $targetPath);
@@ -110,7 +112,7 @@ final class SupplierLogoConverter
     public function delete(int $supplierId): void
     {
         $base = \MyInvoice\Infrastructure\Config\RuntimePaths::storage('supplier-logos') . '/sup-' . $supplierId;
-        foreach (['.png', '.svg'] as $ext) {
+        foreach (['.png', '.svg', '.pdf.png'] as $ext) {
             if (is_file($base . $ext)) @unlink($base . $ext);
         }
     }
