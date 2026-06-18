@@ -5,6 +5,12 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.35.1] — 2026-06-18
+
+### Fixed
+
+- **Aktualizace z UI nefungovala na Windows s PowerShell 7 / jiným adresářem** (#153). Host watcher, který aplikuje upgrade spuštěný z UI (Systém → Aktualizace), spouštěl vlastní update natvrdo příkazem `powershell` (Windows PowerShell 5.1). Na strojích, kde je jen **PowerShell 7 (`pwsh`)**, tak update „neprošel" a musel se spouštět ručně. Watcher nově spustí update **tímtéž PowerShell hostem**, pod kterým sám běží (`pwsh` i `powershell`), zjištěným za běhu. Cesty řeší z umístění skriptu, takže funguje i z jiného adresáře než `C:\inetpub\myinvoice`. Aktualizován i manuál (Scheduled Task i test režim používají `pwsh` a vlastní instalační cestu). Bez DB migrace.
+
 ## [4.35.0] — 2026-06-18
 
 ### Added

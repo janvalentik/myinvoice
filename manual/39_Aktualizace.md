@@ -69,10 +69,16 @@ bash cmd/docker-update-watcher.sh
 ```
 
 ```powershell
-# Windows
+# Windows — spusť tím PowerShellem, který máš (uprav cd na SVOU instalační cestu)
 cd C:\inetpub\myinvoice
-powershell -NoProfile -ExecutionPolicy Bypass -File cmd\docker-update-watcher.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File cmd\docker-update-watcher.ps1
+# nemáš-li PowerShell 7, použij místo `pwsh` příkaz `powershell` (Windows PS 5.1)
 ```
+
+> 🛈 Watcher si vlastní update spouští **tímtéž** PowerShell hostem, pod kterým
+> běží (`pwsh` i `powershell`), a cesty řeší z umístění skriptu — funguje tedy
+> i z jiného adresáře než `C:\inetpub\myinvoice` a na strojích, kde je jen
+> PowerShell 7 (`pwsh`).
 
 Vidíš `[watcher] start, polling storage/upgrade-requested.json inside
 container every 30s` — watcher poslouchá. Klikni v UI **„Aktualizovat"**
@@ -109,13 +115,19 @@ Logy: `journalctl -u myinvoice-update-watcher -f`.
 #### Windows — Scheduled Task
 
 ```powershell
+# Uprav cestu k SVÉ instalaci. Máš-li jen Windows PowerShell 5.1, nahraď
+# `pwsh.exe` za `powershell.exe`.
 schtasks /create /tn "MyInvoice Update Watcher" `
-  /tr "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\inetpub\myinvoice\cmd\docker-update-watcher.ps1" `
+  /tr "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File C:\inetpub\myinvoice\cmd\docker-update-watcher.ps1" `
   /sc onstart /ru SYSTEM /rl HIGHEST
 
 # Spusť hned (ne až po restartu)
 schtasks /run /tn "MyInvoice Update Watcher"
 ```
+
+> 🛈 `pwsh.exe` musí být v PATH (PowerShell 7 instalátor ji tam dává). Pokud
+> Scheduled Task hlásí, že příkaz nenašel, zadej plnou cestu
+> `C:\Program Files\PowerShell\7\pwsh.exe`, nebo použij `powershell.exe` (PS 5.1).
 
 Stav úlohy: `schtasks /query /tn "MyInvoice Update Watcher" /v /fo list`.
 Stop: `schtasks /end /tn "MyInvoice Update Watcher"`.

@@ -11,9 +11,13 @@
 # kdy watcher na hostu neviděl flag uvnitř volume.
 #
 # Provoz:
-#   - Pust jako Scheduled Task (Trigger: At startup, Action: powershell.exe
-#     -NoProfile -ExecutionPolicy Bypass -File C:\inetpub\myinvoice\cmd\docker-update-watcher.ps1)
+#   - Pust jako Scheduled Task (Trigger: At startup). Action spusť tím PowerShell
+#     hostem, který na stroji MÁŠ, a ukaž na SVOU instalační cestu:
+#       PowerShell 7+:  pwsh       -NoProfile -ExecutionPolicy Bypass -File <cesta>\cmd\docker-update-watcher.ps1
+#       Windows PS 5.1: powershell -NoProfile -ExecutionPolicy Bypass -File <cesta>\cmd\docker-update-watcher.ps1
 #     s "Run whether user is logged in or not" + "Run with highest privileges".
+#   - Sám si vlastní update spouští TÍMŽE hostem (pwsh/powershell), pod kterým běží,
+#     a cesty řeší z $PSScriptRoot — funguje tedy z libovolného adresáře.
 #
 # Idempotent — flag se zpracovává jednou (rename před spuštěním).
 [CmdletBinding()]
@@ -28,6 +32,15 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $ProjectRoot
+
+# Spustitelný soubor PowerShell hosta, pod kterým watcher běží (pwsh.exe NEBO
+# powershell.exe). Update se musí volat TÍMŽE hostem — natvrdo `powershell` by na
+# strojích jen s PowerShell 7 (pwsh) selhalo (issue #153). `(Get-Process …).Path`
+# vrací plnou cestu k aktuálnímu hostu v PS 5.1 i 7; fallback dle verze.
+$PwshExe = (Get-Process -Id $PID).Path
+if (-not $PwshExe) {
+    $PwshExe = if ($PSVersionTable.PSVersion.Major -ge 6) { 'pwsh' } else { 'powershell' }
+}
 
 $intervalS = if ($env:MYINVOICE_WATCHER_INTERVAL) { [int]$env:MYINVOICE_WATCHER_INTERVAL } else { 30 }
 
@@ -111,9 +124,11 @@ while ($true) {
 
         $log = Join-Path $env:TEMP "myinvoice-upgrade-$ts.log"
         try {
-            # 2>&1 mergne stderr → success stream; bez `*>&1` PS 5.1 wrapper
-            # nevyhazuje cosmetické "RemoteException" pro stderr-as-error.
-            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'cmd\docker-update.ps1') 2>&1 | Tee-Object -FilePath $log | Out-Host
+            # Update běží jako SAMOSTATNÝ proces (izolace — docker-update.ps1 má
+            # `exit`/Write-Error s EAP=Stop, které by jinak shodily watcher smyčku),
+            # ale TÍMŽE PS hostem jako watcher ($PwshExe = pwsh/powershell), ne natvrdo
+            # `powershell` (issue #153). 2>&1 mergne stderr → success stream.
+            & $PwshExe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $ProjectRoot 'cmd\docker-update.ps1') 2>&1 | Tee-Object -FilePath $log | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $status  = 'applied'
                 $message = "Upgrade dokoncen. Log na hostu: $log"
