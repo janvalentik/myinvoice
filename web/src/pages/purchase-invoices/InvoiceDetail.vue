@@ -210,12 +210,22 @@ function onPdfError(_code: string, message: string) {
   toast.error(message)
 }
 
-async function transition(target: PurchaseInvoiceStatus) {
+const paidAtInput = ref<string>(new Date().toISOString().slice(0, 10))
+const markPaidOpen = ref(false)
+
+function openMarkPaid() {
+  paidAtInput.value = new Date().toISOString().slice(0, 10)
+  markPaidOpen.value = true
+}
+
+async function transition(target: PurchaseInvoiceStatus, paidDate?: string) {
   if (!invoice.value) return
+  if (target === 'paid' && !paidDate) { openMarkPaid(); return }
   if (target === 'cancelled' && !confirm(t('purchase_invoice.confirm.cancel'))) return
   acting.value = true
   try {
-    invoice.value = await purchaseInvoicesApi.transition(invoice.value.id, target)
+    invoice.value = await purchaseInvoicesApi.transition(invoice.value.id, target, paidDate)
+    markPaidOpen.value = false
     toast.success(t(`purchase_invoice.transition.success_${target}`))
     purchaseInvoicesApi.activity(id.value).then(a => { activity.value = a }).catch(() => {})
   } catch (e) {
@@ -1056,6 +1066,23 @@ function transitionLabel(target: PurchaseInvoiceStatus): string {
             <div v-if="a.payload" class="text-xs text-neutral-600 break-all whitespace-pre-wrap leading-snug">{{ payloadText(a.payload) }}</div>
           </li>
         </ul>
+      </div>
+    </div>
+
+    <!-- Modal: Označit jako uhrazené (datum úhrady) -->
+    <div v-if="markPaidOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div class="bg-surface rounded-xl shadow-lg max-w-sm w-full p-5">
+        <h3 class="text-lg font-semibold mb-3">{{ t('purchase_invoice.modals.mark_paid_title') }}</h3>
+        <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('purchase_invoice.modals.mark_paid_date') }}</label>
+        <input v-model="paidAtInput" type="date" class="w-full h-10 px-3 border border-neutral-300 rounded-md mb-4" />
+        <div class="flex justify-end gap-2">
+          <button type="button" @click="markPaidOpen = false"
+            class="cursor-pointer px-3 h-9 text-sm border border-neutral-300 rounded-md text-neutral-700 hover:bg-neutral-50">{{ t('common.cancel') }}</button>
+          <button type="button" @click="transition('paid', paidAtInput)" :disabled="acting"
+            class="cursor-pointer px-4 h-9 text-sm bg-success-500 hover:bg-success-600 disabled:bg-neutral-300 text-white font-medium rounded-md">
+            {{ acting ? '…' : t('common.confirm') }}
+          </button>
+        </div>
       </div>
     </div>
 

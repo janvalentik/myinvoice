@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { reportsApi } from '@/api/reports'
+import { reportsApi, type DphSettings } from '@/api/reports'
 import { apiErrorMessage } from '@/api/errors'
 import { useYearOptions } from '@/composables/useYearOptions'
 
@@ -11,6 +11,22 @@ const now = new Date()
 const year = ref(now.getFullYear())
 const month = ref(now.getMonth() + 1)
 
+const settings = ref<DphSettings | null>(null)
+const periodOverride = ref<'monthly' | 'quarterly' | ''>('')
+
+// PO musí vždy měsíčně (§ 101e/1); FO může kvartálně (§ 101e/2)
+const isLegalEntity = computed(() => settings.value?.taxpayer_type === 'po')
+const effectivePeriod = computed<'monthly' | 'quarterly'>(() => {
+  if (isLegalEntity.value) return 'monthly'
+  if (periodOverride.value) return periodOverride.value
+  return (settings.value?.vat_period as 'monthly' | 'quarterly') || 'monthly'
+})
+const currentQuarter = computed(() => Math.ceil(month.value / 3))
+
+function setQuarter(q: number) {
+  month.value = q * 3
+}
+
 const preview = ref<Awaited<ReturnType<typeof reportsApi.khPreview>> | null>(null)
 const loading = ref(false)
 const error = ref('')
@@ -19,7 +35,7 @@ async function loadPreview() {
   loading.value = true
   error.value = ''
   try {
-    preview.value = await reportsApi.khPreview(year.value, month.value)
+    preview.value = await reportsApi.khPreview(year.value, month.value, effectivePeriod.value)
   } catch (e) {
     error.value = apiErrorMessage(e)
   } finally {
@@ -28,7 +44,7 @@ async function loadPreview() {
 }
 
 function downloadXml() {
-  window.open(reportsApi.khDownloadUrl(year.value, month.value), '_blank')
+  window.open(reportsApi.khDownloadUrl(year.value, month.value, effectivePeriod.value), '_blank')
 }
 
 const monthOptions = computed(() =>
@@ -47,8 +63,11 @@ const daysToDeadline = computed(() => {
   return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 })
 
-watch([year, month], loadPreview)
-onMounted(loadPreview)
+watch([year, month, effectivePeriod], loadPreview)
+onMounted(async () => {
+  try { settings.value = await reportsApi.dphSettings() } catch {}
+  loadPreview()
+})
 </script>
 
 <template>
@@ -72,13 +91,34 @@ onMounted(loadPreview)
         <h1 class="text-2xl font-semibold">{{ t('reports.kh.title') }}</h1>
         <p class="text-sm text-neutral-500 mt-0.5">{{ t('reports.kh.subtitle') }}</p>
       </div>
-      <div class="flex items-center gap-2">
-        <select v-model.number="month" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
-          <option v-for="(label, i) in monthOptions" :key="i + 1" :value="i + 1">{{ label }}</option>
-        </select>
-        <select v-model.number="year" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
-          <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
-        </select>
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Period toggle — pouze pro FO (PO musí vždy měsíčně) -->
+        <div v-if="!isLegalEntity" class="flex rounded-md border border-neutral-300 overflow-hidden text-sm">
+          <button type="button" @click="periodOverride = 'monthly'"
+            :class="effectivePeriod === 'monthly' ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+            class="cursor-pointer px-3 h-9">{{ t('reports.dph.monthly') }}</button>
+          <button type="button" @click="periodOverride = 'quarterly'"
+            :class="effectivePeriod === 'quarterly' ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+            class="cursor-pointer px-3 h-9 border-l border-neutral-300">{{ t('reports.dph.quarterly') }}</button>
+        </div>
+        <!-- Quarter selector (quarterly) nebo month selector (monthly) -->
+        <template v-if="effectivePeriod === 'quarterly'">
+          <select v-model.number="year" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+          </select>
+          <select :value="currentQuarter" @change="setQuarter(Number(($event.target as HTMLSelectElement).value))"
+            class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="q in 4" :key="q" :value="q">Q{{ q }}</option>
+          </select>
+        </template>
+        <template v-else>
+          <select v-model.number="month" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="(label, i) in monthOptions" :key="i + 1" :value="i + 1">{{ label }}</option>
+          </select>
+          <select v-model.number="year" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+          </select>
+        </template>
         <button type="button" @click="downloadXml" :disabled="loading || !preview"
           class="cursor-pointer h-9 px-4 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white text-sm font-medium rounded-md inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -173,7 +213,7 @@ onMounted(loadPreview)
 
       <!-- Tip -->
       <div class="bg-primary-50 border border-primary-200 rounded-md p-3 text-sm text-primary-700">
-        💡 {{ t('reports.kh.note_monthly') }}
+        💡 {{ isLegalEntity ? t('reports.kh.note_po') : t('reports.kh.note_fo') }}
       </div>
     </div>
   </div>

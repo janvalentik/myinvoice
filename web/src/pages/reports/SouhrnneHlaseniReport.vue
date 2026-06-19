@@ -12,6 +12,14 @@ const now = new Date()
 const year = ref(now.getFullYear())
 const month = ref(now.getMonth() + 1)
 
+const periodOverride = ref<'monthly' | 'quarterly' | ''>('')
+const effectivePeriod = computed<'monthly' | 'quarterly'>(() => periodOverride.value || 'monthly')
+const currentQuarter = computed(() => Math.ceil(month.value / 3))
+
+function setQuarter(q: number) {
+  month.value = q * 3
+}
+
 const preview = ref<Awaited<ReturnType<typeof reportsApi.shvPreview>> | null>(null)
 const loading = ref(false)
 const error = ref('')
@@ -20,7 +28,7 @@ async function loadPreview() {
   loading.value = true
   error.value = ''
   try {
-    preview.value = await reportsApi.shvPreview(year.value, month.value)
+    preview.value = await reportsApi.shvPreview(year.value, month.value, effectivePeriod.value)
   } catch (e) {
     error.value = apiErrorMessage(e)
   } finally {
@@ -29,7 +37,7 @@ async function loadPreview() {
 }
 
 function downloadXml() {
-  window.open(reportsApi.shvDownloadUrl(year.value, month.value), '_blank')
+  window.open(reportsApi.shvDownloadUrl(year.value, month.value, effectivePeriod.value), '_blank')
 }
 
 const monthOptions = computed(() =>
@@ -58,7 +66,7 @@ function shTypeLabel(t: string): string {
   }
 }
 
-watch([year, month], loadPreview)
+watch([year, month, effectivePeriod], loadPreview)
 onMounted(loadPreview)
 </script>
 
@@ -83,13 +91,34 @@ onMounted(loadPreview)
         <h1 class="text-2xl font-semibold">{{ t('reports.shv.title') }}</h1>
         <p class="text-sm text-neutral-500 mt-0.5">{{ t('reports.shv.subtitle') }}</p>
       </div>
-      <div class="flex items-center gap-2">
-        <select v-model.number="month" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
-          <option v-for="(label, i) in monthOptions" :key="i + 1" :value="i + 1">{{ label }}</option>
-        </select>
-        <select v-model.number="year" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
-          <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
-        </select>
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Period toggle (SH: kvartálně jen pro čistě servisní dodávky) -->
+        <div class="flex rounded-md border border-neutral-300 overflow-hidden text-sm">
+          <button type="button" @click="periodOverride = 'monthly'"
+            :class="effectivePeriod === 'monthly' ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+            class="cursor-pointer px-3 h-9">{{ t('reports.dph.monthly') }}</button>
+          <button type="button" @click="periodOverride = 'quarterly'"
+            :class="effectivePeriod === 'quarterly' ? 'bg-primary-600 text-white' : 'bg-surface text-neutral-700 hover:bg-neutral-50'"
+            class="cursor-pointer px-3 h-9 border-l border-neutral-300">{{ t('reports.dph.quarterly') }}</button>
+        </div>
+        <!-- Quarter selector (quarterly) nebo month selector (monthly) -->
+        <template v-if="effectivePeriod === 'quarterly'">
+          <select v-model.number="year" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+          </select>
+          <select :value="currentQuarter" @change="setQuarter(Number(($event.target as HTMLSelectElement).value))"
+            class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="q in 4" :key="q" :value="q">Q{{ q }}</option>
+          </select>
+        </template>
+        <template v-else>
+          <select v-model.number="month" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="(label, i) in monthOptions" :key="i + 1" :value="i + 1">{{ label }}</option>
+          </select>
+          <select v-model.number="year" class="h-9 px-3 border border-neutral-300 rounded-md bg-surface text-sm">
+            <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+          </select>
+        </template>
         <button type="button" @click="downloadXml" :disabled="loading || !preview"
           class="cursor-pointer h-9 px-4 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-300 text-white text-sm font-medium rounded-md inline-flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
@@ -177,6 +206,7 @@ onMounted(loadPreview)
       <!-- Tip -->
       <div class="bg-primary-50 border border-primary-200 rounded-md p-3 text-sm text-primary-700">
         💡 {{ t('reports.shv.note') }}
+        <span v-if="effectivePeriod === 'quarterly'" class="block mt-1 text-warning-700">{{ t('reports.shv.note_quarterly_goods') }}</span>
       </div>
     </div>
   </div>

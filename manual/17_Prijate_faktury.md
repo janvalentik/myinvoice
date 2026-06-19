@@ -215,6 +215,7 @@ Po uložení / přechodu na detail:
   - Z draft: Označit jako přijaté / Stornovat
   - Z received: Označit jako zaúčtované / uhrazené / Stornovat
   - Z booked: Označit jako uhrazené / Stornovat
+- „**Označit jako uhrazené**" otevře modální okno s výběrem **data úhrady** (předvyplněno dneškem) — datum se zapíše do záznamu faktury.
 - Tlačítko **Upravit** je dostupné jen u draft. Po označení jako přijatá je doklad immutable (kromě admin override `?force=1` u received).
 - Tlačítko **Smazat** je dostupné jen u draft. Pro pozdější stavy použij Stornovat.
 - Tlačítko **Zaplatit pomocí QR** (u nezaplacených faktur s kladnou částkou k úhradě) — zobrazí QR platbu dodavateli, viz [§ 17.3.2](#1732-zaplatit-pomoci-qr).

@@ -2,7 +2,7 @@
 
 MyInvoice.cz generuje XML pro EPO portál MFČR:
 - **DPH přiznání (DPHDP3)** — měsíční nebo kvartální
-- **Kontrolní hlášení (DPHKH1)** — vždy měsíčně (i pro kvartální plátce DPH)
+- **Kontrolní hlášení (DPHKH1)** — měsíčně nebo kvartálně (pro OSVČ/FO kvartální plátce DPH)
 
 Související výkazy a exporty mají v manuálu vlastní kapitoly: [Kniha DPH](29_Kniha_DPH.md)
 (interní žurnál), [Souhrnné hlášení](30_Souhrnne_hlaseni.md) (EU dodání B2B) a
@@ -25,7 +25,9 @@ V **Nastavení → Daňové nastavení** vyplň:
 Detailní mapping všech polí v UI na XML atributy najdeš v sekci [Pole EPO / VetaP](#pole-epo-vetap) níže.
 
 > [!NOTE]
-> **Kontrolní hlášení se podává VŽDY měsíčně**, i pro kvartální plátce DPH. Jen DPH přiznání může být kvartální.
+> **Právnické osoby (PO/s.r.o./a.s.) podávají Kontrolní hlášení VŽDY měsíčně** (§ 101e odst. 1 ZDPH).
+> OSVČ (FO) mohou podávat KH ve stejné lhůtě jako přiznání k DPH — tj. **kvartálně**, pokud jsou kvartálním plátcem (§ 101e odst. 2).
+> Přepínač Měsíčně / Kvartálně se v `Daně → Kontrolní hlášení` zobrazí jen FO.
 
 ## Pole EPO / VetaP
 

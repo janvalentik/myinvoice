@@ -57,18 +57,28 @@ final class SouhrnneHlaseniBuilder
     /**
      * @return array{xml: string, summary: array<string,mixed>, warnings: list<string>}
      */
-    public function build(int $supplierId, int $year, int $month): array
+    public function build(int $supplierId, int $year, int $month, string $period = 'monthly'): array
     {
         $supplier = $this->loadSupplier($supplierId);
         $warnings = $this->validateSupplier($supplier);
 
-        $start = sprintf('%04d-%02d-01', $year, $month);
-        $end = (new \DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
+        if ($period === 'quarterly') {
+            $quarter = (int) ceil($month / 3);
+            $startMonth = ($quarter - 1) * 3 + 1;
+            $start = sprintf('%04d-%02d-01', $year, $startMonth);
+        } else {
+            $quarter = null;
+            $start = sprintf('%04d-%02d-01', $year, $month);
+        }
+        $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))->modify('last day of this month')->format('Y-m-d');
 
         $rows = $this->collectEuSupplies($supplierId, $start, $end);
 
+        $periodLabel = $period === 'quarterly' && $quarter !== null
+            ? "tomto čtvrtletí"
+            : "tomto měsíci";
         if (empty($rows)) {
-            $warnings[] = 'V tomto měsíci nejsou žádné EU dodávky — SH se nepodává.';
+            $warnings[] = "V {$periodLabel} nejsou žádné EU dodávky — SH se nepodává.";
         }
 
         $dom = new \DOMDocument('1.0', 'UTF-8');
@@ -84,11 +94,15 @@ final class SouhrnneHlaseniBuilder
         $shv->setAttribute('verzePis', '06.01');
         $pisemnost->appendChild($shv);
 
-        // VetaD — typ podání + perioda (typ_platce/typ_ds jdou v VetaP per XSD).
+        // VetaD — typ podání + perioda (mesic pro měsíční, ctvrt pro kvartální)
         $vetaD = $dom->createElement('VetaD');
         $vetaD->setAttribute('k_uladis', 'DPH');
         $vetaD->setAttribute('rok', (string) $year);
-        $vetaD->setAttribute('mesic', (string) $month);
+        if ($period === 'quarterly' && $quarter !== null) {
+            $vetaD->setAttribute('ctvrt', (string) $quarter);
+        } else {
+            $vetaD->setAttribute('mesic', (string) $month);
+        }
         $vetaD->setAttribute('shvies_forma', 'B'); // B = řádné
         $vetaD->setAttribute('dokument', 'SHV');
         $shv->appendChild($vetaD);
@@ -140,7 +154,7 @@ final class SouhrnneHlaseniBuilder
             $totalAmount += $r['amount'];
         }
 
-        // Termín podání: 25. dne následujícího měsíce
+        // Termín podání: 25. dne měsíce následujícího po konci období
         $deadlineMonth = $month + 1;
         $deadlineYear = $year;
         if ($deadlineMonth > 12) { $deadlineMonth -= 12; $deadlineYear++; }
@@ -149,7 +163,9 @@ final class SouhrnneHlaseniBuilder
         return [
             'xml'     => $dom->saveXML() ?: '',
             'summary' => [
-                'period'              => sprintf('%04d-%02d', $year, $month),
+                'period'              => $period === 'quarterly' && $quarter !== null
+                    ? sprintf('%04d-Q%d', $year, $quarter)
+                    : sprintf('%04d-%02d', $year, $month),
                 'rows_count'          => $totalRows,
                 'total_amount'        => round($totalAmount, 2),
                 'rows'                => $rows,

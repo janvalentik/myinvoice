@@ -12,8 +12,10 @@ use MyInvoice\Repository\TaxConstantsRepository;
  *
  * Verze EPO: 03.01 (platná 2025-2026).
  *
- * **VŽDY měsíční** — i pro kvartální plátce DPH. (User feedback: "kontrolní
- * hlášení se dělá měsíčně, ale DPH jen kvartálně pro některé plátce")
+ * Periodicita (§ 101e zákona 235/2004 Sb.):
+ *   - **PO** (právnická osoba) — VŽDY měsíčně (odst. 1).
+ *   - **FO** (fyzická osoba/OSVČ) — ve lhůtě přiznání k DPH; pro kvartální plátce
+ *     lze podávat kvartálně (odst. 2).
  *
  * Sekce KH:
  *   - **A.1** Plnění v režimu přenesené daňové povinnosti (dodavatel)
@@ -40,13 +42,20 @@ final class KontrolniHlaseniBuilder
     /**
      * @return array{xml: string, summary: array<string,mixed>, warnings: list<string>}
      */
-    public function build(int $supplierId, int $year, int $month): array
+    public function build(int $supplierId, int $year, int $month, string $period = 'monthly'): array
     {
         $supplier = $this->loadSupplier($supplierId);
-        $warnings = $this->validateSupplier($supplier);
+        $warnings = $this->validateSupplier($supplier, $period);
 
-        $start = sprintf('%04d-%02d-01', $year, $month);
-        $end = (new \DateTimeImmutable($start))->modify('last day of this month')->format('Y-m-d');
+        if ($period === 'quarterly') {
+            $quarter = (int) ceil($month / 3);
+            $startMonth = ($quarter - 1) * 3 + 1;
+            $start = sprintf('%04d-%02d-01', $year, $startMonth);
+        } else {
+            $quarter = null;
+            $start = sprintf('%04d-%02d-01', $year, $month);
+        }
+        $end = (new \DateTimeImmutable(sprintf('%04d-%02d-01', $year, $month)))->modify('last day of this month')->format('Y-m-d');
 
         // Všechny sekce z jedné projekce kanonických řádků (VatLedgerService).
         ['a1' => $a1, 'a2' => $a2, 'a4' => $a4, 'a5' => $a5, 'b1' => $b1, 'b2' => $b2, 'b3' => $b3]
@@ -65,11 +74,15 @@ final class KontrolniHlaseniBuilder
         $dphkh->setAttribute('verzePis', '03.01');
         $pisemnost->appendChild($dphkh);
 
-        // VetaD — identifikační údaje (KH je VŽDY měsíční, jen `mesic`)
+        // VetaD — identifikační údaje (mesic pro měsíční, ctvrt pro kvartální)
         $vetaD = $dom->createElement('VetaD');
         $vetaD->setAttribute('dokument', 'KH1');
         $vetaD->setAttribute('k_uladis', 'DPH');
-        $vetaD->setAttribute('mesic', (string) $month);
+        if ($period === 'quarterly' && $quarter !== null) {
+            $vetaD->setAttribute('ctvrt', (string) $quarter);
+        } else {
+            $vetaD->setAttribute('mesic', (string) $month);
+        }
         $vetaD->setAttribute('rok', (string) $year);
         $vetaD->setAttribute('d_poddp', date('d.m.Y')); // datum podání (dnes)
         $vetaD->setAttribute('khdph_forma', 'B'); // B = řádné podání
@@ -234,7 +247,7 @@ final class KontrolniHlaseniBuilder
         $vetaC->setAttribute('celk_zd_a2',   $this->formatAmount($celkA2));
         $dphkh->appendChild($vetaC);
 
-        // Termín podání = 25. následujícího měsíce
+        // Termín podání = 25. dne měsíce následujícího po konci období
         $deadlineMonth = $month + 1;
         $deadlineYear = $year;
         if ($deadlineMonth > 12) { $deadlineMonth -= 12; $deadlineYear++; }
@@ -243,7 +256,9 @@ final class KontrolniHlaseniBuilder
         return [
             'xml'      => $dom->saveXML() ?: '',
             'summary'  => [
-                'period'              => sprintf('%04d-%02d', $year, $month),
+                'period'              => $period === 'quarterly' && $quarter !== null
+                    ? sprintf('%04d-Q%d', $year, $quarter)
+                    : sprintf('%04d-%02d', $year, $month),
                 'a1_count'            => count($a1),
                 'a2_count'            => count($a2),
                 'a4_count'            => count($a4),
@@ -377,7 +392,7 @@ final class KontrolniHlaseniBuilder
     }
 
     /** @return list<string> warnings */
-    private function validateSupplier(array $s): array
+    private function validateSupplier(array $s, string $period = 'monthly'): array
     {
         $w = [];
         if (!$s['is_vat_payer']) {
@@ -386,6 +401,9 @@ final class KontrolniHlaseniBuilder
             $w[] = !empty($s['is_identified'])
                 ? 'Identifikovaná osoba kontrolní hlášení nepodává (§ 101c — jen plátci DPH). Přeshraniční plnění patří do přiznání DPH (typ I) a souhrnného hlášení.'
                 : 'Tenant není plátce DPH — KH nemusí být relevantní.';
+        }
+        if ($period === 'quarterly' && ($s['taxpayer_type'] ?? '') === 'po') {
+            $w[] = 'Právnické osoby podávají kontrolní hlášení VŽDY měsíčně (§ 101e odst. 1 zákona 235/2004 Sb.). Kvartální podání je povoleno pouze fyzickým osobám.';
         }
         if (empty($s['financial_office_code'])) $w[] = 'Chybí kód finančního úřadu.';
         if (empty($s['dic'])) $w[] = 'Chybí DIČ.';

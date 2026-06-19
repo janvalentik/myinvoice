@@ -5,6 +5,14 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.36.0] — 2026-06-19
+
+### Added
+
+- **Kvartální Kontrolní hlášení pro OSVČ** (#154). Fyzické osoby (OSVČ), které jsou kvartálními plátci DPH, mohou nově podávat **Kontrolní hlášení kvartálně** (§ 101e odst. 2 zákona 235/2004 Sb.) — stejně jako přiznání k DPH. Přepínač Měsíčně / Kvartálně se zobrazí v `Daně → Kontrolní hlášení` tehdy, když daňové nastavení identifikuje typ poplatníka jako FO; právnické osoby musí podávat stále měsíčně (§ 101e odst. 1) a přepínač se jim nezobrazí. Vygenerované XML používá atribut `ctvrt` místo `mesic` ve VetaD. Bez DB migrace.
+- **Kvartální Souhrnné hlášení pro poskytovatele služeb** (#154). Plátci, kteří do EU dodávají výhradně **služby** (kód 22, § 9/1), mohou nově podávat Souhrnné hlášení **kvartálně** (§ 102 odst. 3–4 ZDPH). Přepínač je vždy dostupný; aplikace na kvartální podání upozorní, že kód 20 (dodání zboží) vyžaduje měsíční periodicitu bez ohledu na typ plátce. Vygenerované XML používá atribut `ctvrt` ve VetaD. Bez DB migrace.
+- **Volba data úhrady přijaté faktury** (#155). Tlačítko „Označit jako uhrazené" v detailu přijaté faktury nyní otevírá modální okno s výběrem **data úhrady** (předvyplněno dneškem). Chování odpovídá vystaveným fakturám — datum se zapíše do `paid_at`. Bez DB migrace.
+
 ## [4.35.1] — 2026-06-18
 
 ### Fixed

@@ -163,7 +163,7 @@ export const reportsApi = {
       params: { year, month, ...(period ? { period } : {}) },
     }).then(r => r.data),
 
-  khPreview: (year: number, month: number) =>
+  khPreview: (year: number, month: number, period?: 'monthly' | 'quarterly') =>
     api.get<{
       summary: {
         period: string
@@ -176,10 +176,10 @@ export const reportsApi = {
         submission_deadline: string
       }
       warnings: string[]
-    }>('/reports/dphkh1/preview', { params: { year, month } }).then(r => r.data),
+    }>('/reports/dphkh1/preview', { params: { year, month, ...(period ? { period } : {}) } }).then(r => r.data),
 
-  // Souhrnné hlášení (EU dodání) — měsíční, plátci i identifikované osoby
-  shvPreview: (year: number, month: number) =>
+  // Souhrnné hlášení (EU dodání) — plátci i identifikované osoby; lze kvartálně pro služby
+  shvPreview: (year: number, month: number, period?: 'monthly' | 'quarterly') =>
     api.get<{
       summary: {
         period: string
@@ -196,12 +196,13 @@ export const reportsApi = {
         submission_deadline: string
       }
       warnings: string[]
-    }>('/reports/dphshv/preview', { params: { year, month } }).then(r => r.data),
+    }>('/reports/dphshv/preview', { params: { year, month, ...(period ? { period } : {}) } }).then(r => r.data),
 
-  shvDownloadUrl: (year: number, month: number) => {
+  shvDownloadUrl: (year: number, month: number, period?: 'monthly' | 'quarterly') => {
     const sid = localStorage.getItem('myinvoice.current_supplier_id')
     const params = new URLSearchParams({ year: String(year), month: String(month) })
     if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
+    if (period) params.set('period', period)
     return `/api/reports/dphshv?${params.toString()}`
   },
 
@@ -228,10 +229,11 @@ export const reportsApi = {
     return `/api/reports/income-tax?${params.toString()}`
   },
 
-  khDownloadUrl: (year: number, month: number) => {
+  khDownloadUrl: (year: number, month: number, period?: 'monthly' | 'quarterly') => {
     const sid = localStorage.getItem('myinvoice.current_supplier_id')
     const params = new URLSearchParams({ year: String(year), month: String(month) })
     if (sid && /^\d+$/.test(sid)) params.set('supplier_id', sid)
+    if (period) params.set('period', period)
     return `/api/reports/dphkh1?${params.toString()}`
   },
 

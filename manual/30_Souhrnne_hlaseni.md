@@ -2,7 +2,10 @@
 
 ### Cesta: `Daně → Souhrnné hlášení`
 
-Souhrnné hlášení (anglicky **Recapitulative Statement**) je výkaz **EU dodání zboží a služeb** v režimu B2B (vystavené faktury klientům — plátcům DPH v jiných členských státech EU). Podává se měsíčně.
+Souhrnné hlášení (anglicky **Recapitulative Statement**) je výkaz **EU dodání zboží a služeb** v režimu B2B (vystavené faktury klientům — plátcům DPH v jiných členských státech EU). Podává se měsíčně nebo kvartálně.
+
+> [!NOTE]
+> **Kvartální SH je povoleno jen tehdy, pokud dodáváš výhradně služby** (kód 22, § 9/1). Dodání zboží do EU (kód 20) vyžaduje měsíční podání bez ohledu na typ plátce (§ 102 odst. 3 ZDPH). Přepínač Měsíčně / Kvartálně je vždy dostupný; aplikace na tuto podmínku upozorní.
 
 > [!IMPORTANT]
 > Souhrnné hlášení **podávají i identifikované osoby** (neplátci DPH), pokud poskytují B2B služby plátcům v EU, nebo nakupují zboží z EU nad limit.

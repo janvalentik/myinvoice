@@ -453,6 +453,10 @@
       "delete_blocked": "Only drafts can be deleted. For already received use Cancel.",
       "cancel": "Really cancel this invoice? This cannot be undone."
     },
+    "modals": {
+      "mark_paid_title": "Mark as paid",
+      "mark_paid_date": "Payment date"
+    },
     "transition": {
       "invalid": "Cannot transition to requested state from current.",
       "success_received": "Invoice marked as received.",
@@ -2925,7 +2929,7 @@
     "disclaimer_body": "Before submitting to the MF ČR EPO portal, always verify with your accountant or tax advisor. Tested on limited dataset — the app does not guarantee regulatory correctness.",
     "shv": {
       "title": "Recapitulative statement (DPHSHV)",
-      "subtitle": "Monthly report of EU supplies of goods/services to VAT payers in other member states. Version 06.01. Submitted by VAT payers and identified persons.",
+      "subtitle": "Report of EU supplies of goods/services to VAT payers in other member states. Version 06.01. Submitted by VAT payers and identified persons.",
       "download_xml": "Download XML",
       "rows_count": "Row count",
       "rows_hint": "Aggregated per VAT_ID + supply type",
@@ -2939,8 +2943,9 @@
       "type": "Supply type",
       "count": "Count",
       "amount": "Amount",
-      "no_data": "No EU supplies in this month (no issued invoices with VAT classification 20/22 for EU clients with VAT ID).",
-      "note": "Recapitulative statement is submitted by VAT payers with at least 1 EU supply in the month. Identified persons (non-payers) submit when B2B EU services or goods purchases over the limit."
+      "no_data": "No EU supplies in this period (no issued invoices with VAT classification 20/22 for EU clients with VAT ID).",
+      "note": "Recapitulative statement is submitted by VAT payers with at least 1 EU supply in the period. Identified persons (non-payers) submit when B2B EU services or goods purchases over the limit.",
+      "note_quarterly_goods": "⚠️ Quarterly ESL is only allowed for services (code 22, §9/1). Goods supplies to EU (code 20) require monthly submission regardless of taxpayer type (§ 102(3) of Act 235/2004)."
     },
     "submissions": {
       "title": "EPO XML submission archive",
@@ -2993,7 +2998,7 @@
     },
     "kh": {
       "title": "Control statement (DPHKH1)",
-      "subtitle": "Always monthly submission, even for quarterly VAT payers. Version 03.01.",
+      "subtitle": "EPO portal MF ČR report. Version 03.01.",
       "download_xml": "Download XML",
       "rows": "rows",
       "aggregated": "aggregated",
@@ -3005,7 +3010,9 @@
       "b1_label": "Reverse charge (recipient)",
       "b2_label": "Received domestic supplies over 10 000 CZK",
       "b3_label": "Received domestic supplies up to 10 000 CZK (aggregated)",
-      "note_monthly": "Control statement is submitted ALWAYS monthly, even for quarterly VAT payers (only VAT return can be quarterly)."
+      "note_monthly": "Control statement is submitted ALWAYS monthly, even for quarterly VAT payers (only VAT return can be quarterly).",
+      "note_po": "Legal entities must submit control statements ALWAYS monthly (§ 101e(1) of Act 235/2004).",
+      "note_fo": "Sole traders (FO) may submit control statements at the same frequency as their VAT return — i.e. quarterly if they are quarterly VAT payers (§ 101e(2))."
     },
     "dph_book": {
       "title": "VAT ledger",
