@@ -1,4 +1,4 @@
-# 38. Bezpečnost (2FA, IP allowlist, role, activity log)
+# 39. Bezpečnost (2FA, IP allowlist, role, activity log)
 
 Bezpečnost MyInvoice stojí na 4 vrstvách:
 
@@ -8,7 +8,7 @@ Bezpečnost MyInvoice stojí na 4 vrstvách:
 4. **Autorizace** — role-based access (admin / accountant / readonly)
 5. **Audit** — activity log všech mutací
 
-## 38.1 Hesla
+## 39.1 Hesla
 
 | Vrstva | Detail |
 |---|---|
@@ -22,11 +22,11 @@ Bezpečnost MyInvoice stojí na 4 vrstvách:
 > 💡 **Passphrase je bezpečnější než krátké složité heslo.** „korelace medvědí
 > dýně přístav 2026" má 49 znaků a je odolnější vůči brute-force než „Hu1@n!22".
 
-## 38.2 Dvoufaktorové ověření (TOTP)
+## 39.2 Dvoufaktorové ověření (TOTP)
 
 TOTP = time-based one-time password (RFC 6238). Nejznámější standard pro 2FA.
 
-### 38.2.1 Aktivace
+### 39.2.1 Aktivace
 
 **Můj profil → 2FA → Aktivovat**.
 
@@ -41,9 +41,9 @@ TOTP = time-based one-time password (RFC 6238). Nejznámější standard pro 2FA
 > ⚠️ MyInvoice **nepoužívá záložní jednorázové kódy** (recovery codes).
 > Při ztrátě autentikátoru použij CLI rescue:
 > `php api/bin/reset-2fa.php <email>` —
-> viz [§ 38.2.3](#3823-ztrata-telefonu-deaktivace).
+> viz [§ 39.2.3](#3923-ztrata-telefonu-deaktivace).
 
-### 38.2.2 Přihlášení s 2FA
+### 39.2.2 Přihlášení s 2FA
 
 Po zadání e-mailu + hesla aplikace vyzve k 6-cifernému kódu z autentikátoru.
 
@@ -52,7 +52,7 @@ Po zadání e-mailu + hesla aplikace vyzve k 6-cifernému kódu z autentikátoru
 Pokud autentikátor nemáš po ruce, nezbývá než provést rescue reset
 (následující sekce).
 
-### 38.2.3 Ztráta telefonu / deaktivace
+### 39.2.3 Ztráta telefonu / deaktivace
 
 Aplikace nemá UI pro deaktivaci 2FA — doporučený postup je CLI rescue tool:
 
@@ -76,7 +76,7 @@ WHERE email = 'tvuj@email.cz';
 > (phpMyAdmin / Adminer / mysql CLI) připravený předem. Při ztrátě telefonu
 > by jinak nikdo nešel do aplikace.
 
-### 38.2.4 Vynucení 2FA pro všechny uživatele
+### 39.2.4 Vynucení 2FA pro všechny uživatele
 
 Pokud chceš, aby **každý** uživatel po přihlášení musel mít aktivní TOTP,
 nastav v `cfg.php` (nebo `cfg.local.php`):
@@ -113,7 +113,7 @@ Chování:
 > konfiguraci by uživatelé skončili v silent-500 — health endpoint vrací
 > warning, viz [§ 99 Řešení problémů](99_Reseni_problemu.md).
 
-### 38.2.5 E-mailové ověření (pro uživatele bez authenticator app)
+### 39.2.5 E-mailové ověření (pro uživatele bez authenticator app)
 
 Pro uživatele, kteří nechtějí (nebo neumí) authenticator aplikaci — typicky
 externí účetní — lze zapnout **e-mailové OTP** jako druhý faktor. Kdo nemá
@@ -153,7 +153,7 @@ Chování:
 > `php api/bin/reset-2fa.php <email>` (vedle vypnutí TOTP smaže i
 > `trusted_devices` a `login_otps` daného účtu).
 
-## 38.3 Brute-force ochrana
+## 39.3 Brute-force ochrana
 
 | Pokusy během | Akce |
 |---|---|
@@ -163,7 +163,7 @@ Chování:
 
 Implementace: **Redis** pokud běží, jinak **MariaDB MEMORY engine** fallback.
 
-## 38.4 IP allowlist (volitelné)
+## 39.4 IP allowlist (volitelné)
 
 V `cfg.php → ip_allowlist.allow` můžeš omezit přístup jen na vybrané IP /
 CIDR rozsahy.
@@ -190,7 +190,7 @@ Doporučení v produkci:
 > deploy. Není v UI **schválně** — v případě omylu by ses zablokoval
 > a nemohl si ho přes UI sundat.
 
-### 38.4.1 Za reverse proxy: `trusted_proxies` (důležité)
+### 39.4.1 Za reverse proxy: `trusted_proxies` (důležité)
 
 Pokud aplikace běží **za reverse proxy** (doporučené produkční nasazení — viz
 kap. 2), vidí všechny požadavky přicházet z IP proxy (např. brána Dockeru
@@ -220,7 +220,7 @@ skutečnou klientskou IP z hlavičky `X-Forwarded-For`:
 > Aplikace hlavičku respektuje pouze tehdy, když `REMOTE_ADDR` odpovídá
 > `trusted_proxies`.
 
-## 38.5 RBAC (role-based access)
+## 39.5 RBAC (role-based access)
 
 Tři role. Hierarchie: **admin > accountant > readonly**.
 
@@ -265,7 +265,7 @@ Vhodné použití:
    (`/…/new`, `/…/edit`) jsou navíc chráněné route-guardem — `readonly` je z nich
    přesměrován na nástěnku.
 
-## 38.6 CSRF + Origin check
+## 39.6 CSRF + Origin check
 
 Každý mutating request (POST / PUT / PATCH / DELETE) musí mít:
 
@@ -275,7 +275,7 @@ Každý mutating request (POST / PUT / PATCH / DELETE) musí mít:
 Bez nich → 403 `csrf_failed` / `origin_mismatch`. UI to obsluhuje
 automaticky (token v Pinia store, header v axios interceptoru).
 
-## 38.7 Activity log
+## 39.7 Activity log
 
 Každá mutace (vytvoření / změna / vystavení / smazání) se loguje. Záznamy
 obsahují:
@@ -290,15 +290,15 @@ obsahují:
   u `client.updated`)
 - Datum + čas
 
-Viz [35. Nastavení](35_Nastaveni.md) pro UI.
+Viz [36. Nastavení](36_Nastaveni.md) pro UI.
 
-### 38.7.1 Co log NEUKLÁDÁ
+### 39.7.1 Co log NEUKLÁDÁ
 
 - **Hesla** — ani staré, ani nové
 - **PII klientů** mimo to, co bylo změněno (jen fields seznam, ne hodnoty)
 - **Bankovní transakce** — log obsahuje jen ID importovaného výpisu
 
-### 38.7.2 Jak se do logu zapisuje IP adresa
+### 39.7.2 Jak se do logu zapisuje IP adresa
 
 Aplikace bere IP klienta z **IP síťového spojení** (`REMOTE_ADDR`). Když běží
 **za reverse proxy** (Docker, nginx, Cloudflare…), je tím spojením proxy — bez
@@ -307,7 +307,7 @@ konfigurace by se proto do auditu zapisovala **IP proxy**, ne reálného klienta
 
 Reálnou IP přečte aplikace z hlavičky `X-Forwarded-For` **pouze tehdy**, když
 `REMOTE_ADDR` odpovídá rozsahu v `cfg.ip_allowlist.trusted_proxies` (viz
-§ 38.4.1). Z hlavičky se bere **první** adresa (původní klient). Bez nastavené
+§ 39.4.1). Z hlavičky se bere **první** adresa (původní klient). Bez nastavené
 `trusted_proxies` se `X-Forwarded-For` ignoruje (ochrana proti podvržení).
 
 > 🛈 Stejná logika se zjišťování IP používá i pro **brute-force lockout**
@@ -315,7 +315,7 @@ Reálnou IP přečte aplikace z hlavičky `X-Forwarded-For` **pouze tehdy**, kdy
 > pokusy podle IP proxy = fakticky globálně. Po nastavení `trusted_proxies`
 > začnou audit log i lockout pracovat s reálnou klientskou IP.
 
-## 38.8 DKIM podpis e-mailů
+## 39.8 DKIM podpis e-mailů
 
 Pro **deliverabilitu** (aby gmail / o365 / seznam tvé maily nepoznačily jako
 spam) doporučujeme aktivovat DKIM:
@@ -327,12 +327,12 @@ spam) doporučujeme aktivovat DKIM:
 
 Detaily v `README.md` v rootu repa.
 
-## 38.9 Bezpečnostní audit
+## 39.9 Bezpečnostní audit
 
 V `source/07-security-audit.md` najdeš výsledky interního auditu — všechny
 identifikované findings (P1/P2/P3) jsou vyřešené nebo odůvodněně vynechané.
 
-## 38.10 Tipy
+## 39.10 Tipy
 
 - **Vždycky 2FA pro admin** — pokud admin účet padne, padá vše. Žádná výmluva.
 - **Pravidelně rotuj hesla** každých 6–12 měsíců.

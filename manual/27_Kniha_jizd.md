@@ -1,10 +1,10 @@
-# 26. Kniha jízd
+# 27. Kniha jízd
 
 **Kniha jízd** je evidence jízd, vozidel a tankování (u elektromobilů nabíjení).
 Slouží jako *kniha důkazů* pro uplatnění nákladů na pohonné hmoty — u elektromobilů
 na elektřinu — v daních (§ 24 zákona o daních z příjmů, pokyn GFŘ D-22); bez ní
 finanční úřad odpočet neuzná. Najdeš ji v menu v sekci **Dokumenty**, hned pod
-[Dokumenty](25_Dokumenty.md).
+[Dokumenty](26_Dokumenty.md).
 
 Modul má pět záložek: **Kniha jízd** (jednotlivé jízdy), **Automobily**
 (číselník vozidel), **Tankování** (i nabíjení), **Kategorie cest** a **Souhrny**
@@ -81,7 +81,7 @@ XLSX/PDF funguje stejně jako u jízd.
 
 Tankování je čistě **evidenční vrstva** nad přijatou fakturou — náklad účtuje
 sama [přijatá faktura](17_Prijate_faktury.md), tankování ho jen rozpadá na
-jednotlivá čerpání/nabití a auta. Do DPH ani [nákladů](22_Naklady.md) nevstupuje dvakrát.
+jednotlivá čerpání/nabití a auta. Do DPH ani [nákladů](23_Naklady.md) nevstupuje dvakrát.
 
 ### Ruční záznam
 

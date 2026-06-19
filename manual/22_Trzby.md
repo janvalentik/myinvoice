@@ -1,6 +1,6 @@
-# 21. Tržby (detailní statistiky vydaných faktur)
+# 22. Tržby (detailní statistiky vydaných faktur)
 
-**Cesta: `Finance → Tržby`** (nebo klik na KPI kartu Tržby v [CRM dashboardu](20_CRM.md))
+**Cesta: `Finance → Tržby`** (nebo klik na KPI kartu Tržby v [CRM dashboardu](21_CRM.md))
 
 Stránka **Tržby** rozpadá příjmovou stranu firmy do KPI dlaždic, grafů a tabulek —
 hloubkový pohled jen na **vydané faktury**. Nahoře je štítek **plátce / neplátce
@@ -23,7 +23,7 @@ DPH**, který určuje, jestli se obraty počítají **bez DPH** (plátce) nebo *
 
 - **Měsíční obrat** (bar) za posledních 12 měsíců + linka loňského roku, per měna
 - **Kumulativní obrat YTD** vs. loni (do stejného dne v roce)
-- **Tržby podle kategorie** (koláč, rolling 12 m, přepočet na CZK) — kategorii tržby vybíráš na faktuře (viz [Tržby podle kategorií](20_CRM.md#trzby-podle-kategorii) v CRM)
+- **Tržby podle kategorie** (koláč, rolling 12 m, přepočet na CZK) — kategorii tržby vybíráš na faktuře (viz [Tržby podle kategorií](21_CRM.md#trzby-podle-kategorii) v CRM)
 - **Top klienti** a **Top zakázky** — koláče za letošek a loni, plus tabulky za rolling 12 měsíců
 - **Stav faktur** a **stav zakázek** (donut)
 - **Závislost na klientech** (concentration risk) — podíl obratu TOP 3 / TOP 5 klientů za rolling 12 měsíců + barevný indikátor rizika
@@ -34,4 +34,4 @@ DPH**, který určuje, jestli se obraty počítají **bez DPH** (plátce) nebo *
 
 > [!TIP]
 > Pro **souhrnný** pohled na tržby i náklady vedle sebe (zisk, marže, zdraví firmy)
-> použij [CRM dashboard](20_CRM.md). Tato kapitola je čistě o příjmové straně.
+> použij [CRM dashboard](21_CRM.md). Tato kapitola je čistě o příjmové straně.

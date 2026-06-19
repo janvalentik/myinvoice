@@ -1,9 +1,9 @@
-# 29. Kniha DPH (měsíční VAT žurnál)
+# 30. Kniha DPH (měsíční VAT žurnál)
 
 ### Cesta: `Daně → Kniha DPH`
 
 Interní reportingový výkaz — **není to EPO podání na finanční úřad**, slouží
-jen pro vnitřní přehled a archivaci. Žurnál seskupený podle řádků [DPH přiznání](28_Vykazy_DPH.md):
+jen pro vnitřní přehled a archivaci. Žurnál seskupený podle řádků [DPH přiznání](29_Vykazy_DPH.md):
 
 - `15.040` — Přijaté tuzemsko, sazba 21 % (ř.40 přiznání = nárok na odpočet)
 - `36.001` — Uskutečněná tuzemsko, základ daně 21 % (ř.1 přiznání)

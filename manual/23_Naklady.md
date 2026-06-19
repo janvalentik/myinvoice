@@ -1,8 +1,8 @@
-# 22. Náklady (detailní statistiky přijatých faktur)
+# 23. Náklady (detailní statistiky přijatých faktur)
 
-**Cesta: `Finance → Náklady`** (nebo klik na KPI kartu Náklady v [CRM dashboardu](20_CRM.md))
+**Cesta: `Finance → Náklady`** (nebo klik na KPI kartu Náklady v [CRM dashboardu](21_CRM.md))
 
-Zrcadlový protějšek [Tržeb](21_Trzby.md) pro **nákladovou stranu** — hloubkový
+Zrcadlový protějšek [Tržeb](22_Trzby.md) pro **nákladovou stranu** — hloubkový
 pohled jen na **přijaté faktury**. U **plátce DPH** se náklady počítají **bez DPH**
 (na vstupu se odečte), u neplátce **s DPH**.
 
@@ -20,7 +20,7 @@ pohled jen na **přijaté faktury**. U **plátce DPH** se náklady počítají *
 - **Měsíční náklady** (bar) za 12 měsíců + loňská linka, **kumulativní platby dodavatelům YTD**
 - **Náklady po rocích** a **po měsících** (tabulky)
 - **Top dodavatelé** — posledních 12 měsíců
-- **Náklady podle kategorií** (12 m) — vyžaduje přiřazené [kategorie nákladů](20_CRM.md#naklady-podle-kategorii) na přijatých fakturách
+- **Náklady podle kategorií** (12 m) — vyžaduje přiřazené [kategorie nákladů](21_CRM.md#naklady-podle-kategorii) na přijatých fakturách
 - **Nárok na odpočet DPH podle sazby** (jen plátce)
 - **Závislost na dodavatelích** (concentration risk) — podíl nákladů TOP 1 / TOP 3 dodavatelů + indikátor rizika
 - **Doba úhrady dodavatelům — distribuce** (histogram)
@@ -31,4 +31,4 @@ pohled jen na **přijaté faktury**. U **plátce DPH** se náklady počítají *
 > [!TIP]
 > Kategorie nákladů přiřazuješ v editoru přijaté faktury. Bez nich se rozpad
 > „Náklady podle kategorií" smrskne na jediný řádek „Bez kategorie". Souhrnný
-> pohled tržby vs. náklady nabízí [CRM dashboard](20_CRM.md).
+> pohled tržby vs. náklady nabízí [CRM dashboard](21_CRM.md).

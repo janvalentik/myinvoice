@@ -28,7 +28,7 @@ e-mail přijde upozornění.
 
 Pokud máš pro účet aktivované 2FA, po zadání hesla tě systém vyzve k
 6-cifernému kódu z autentikátoru. Detailní popis aktivace, použití záložních
-kódů a řešení ztráty telefonu — viz [38. Bezpečnost — § 37.2](38_Bezpecnost.md).
+kódů a řešení ztráty telefonu — viz [39. Bezpečnost — § 37.2](39_Bezpecnost.md).
 
 ## 7.4 Zapomenuté heslo
 

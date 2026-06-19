@@ -8,7 +8,7 @@ formáty hromadného exportu **vystavených faktur** a per-faktura export
 > Pokud chceš účetní za daný měsíc předat **vše najednou v jednom ZIP** (vystavené
 > i přijaté faktury, výpisy z účtu a knihu DPH, roztříděné do složek a s daňově
 > korektním zařazením do období), použij **Hromadný export** v sekci Daně — viz
-> [Hromadný export (ZIP)](33_Hromadny_export.md). Exporty níže
+> [Hromadný export (ZIP)](34_Hromadny_export.md). Exporty níže
 > jsou cílené na jeden formát / jeden typ dokladu.
 
 | Formát | Pro koho | Co obsahuje |
@@ -326,7 +326,7 @@ z globálního kurzu.
   měsíc.
 - **Vše v jednom balíčku** — když účetní chce za měsíc kompletní podklad
   (vystavené + přijaté faktury + výpisy + kniha DPH najednou), použij raději
-  [Hromadný export (ZIP)](33_Hromadny_export.md) v sekci Daně —
+  [Hromadný export (ZIP)](34_Hromadny_export.md) v sekci Daně —
   vyřeší zařazení do období daňově korektně a roztřídí vše do pojmenovaných
   složek.
 - **ISDOC, Pohoda, Stereo** — pokud si nejsi jistý, který formát použít,

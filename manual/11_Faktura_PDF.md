@@ -38,7 +38,7 @@ Každá faktura i zálohová faktura může mít **více evidovaných plateb** (
 více převodů, e-mailová avíza). Platby vznikají:
 
 - **automaticky** při párování bankovního výpisu nebo e-mailového avíza
-  (viz [23. Banka](23_Banka.md)) — i částečná platba se shodným variabilním
+  (viz [24. Banka](24_Banka.md)) — i částečná platba se shodným variabilním
   symbolem se zaeviduje,
 - tlačítkem **Částečná úhrada** — modal s částkou (předvyplněn zbytek), datem
   platby, volitelným VS, referencí a poznámkou,
@@ -131,7 +131,7 @@ každém zařízení i tiskárně, dnes i za 20 let.
 - **ISDOC příloha** — strukturovaná data faktury jsou vložená přímo v PDF jako
   příloha, viz [§ 15.3.5](15_Exporty.md).
 - **Elektronický podpis** — PAdES podpis archivní konformitu **zachová**,
-  viz [§ 37](37_Elektronicke_podpisy.md).
+  viz [§ 37](38_Elektronicke_podpisy.md).
 
 > 🔎 **Ověření konformity.** Výstup je validován referenčním ISO validátorem
 > **veraPDF** (ISO 19005-3, flavour `3b`). Procházejí všechny varianty — faktury
@@ -176,7 +176,7 @@ Tlačítko **Odeslat e-mailem** (na detailu faktury). E-mail jde na:
 - `+ zakazka.fakturacni_emaily[]` (až 3 dodatečné adresy)
 
 Předmět + tělo e-mailu se vezme ze šablony `invoice_new` (CZ / EN podle jazyka
-klienta) — viz [35. Nastavení](35_Nastaveni.md).
+klienta) — viz [36. Nastavení](36_Nastaveni.md).
 
 Po odeslání:
 
@@ -227,7 +227,7 @@ Odchozí e-maily lze volitelně podepisovat S/MIME certifikátem. Nastavuje se v
 Podpis se aplikuje až na sestavený e-mail včetně příloh; příjemce ho ověří v
 běžném e-mailovém klientovi.
 
-Detail nastavení je v [kapitole 28. Elektronické podpisy](37_Elektronicke_podpisy.md).
+Detail nastavení je v [kapitole 28. Elektronické podpisy](38_Elektronicke_podpisy.md).
 
 ## 11.5 Historie PDF
 

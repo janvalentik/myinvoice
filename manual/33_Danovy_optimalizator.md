@@ -1,4 +1,4 @@
-# 32. Daňový optimalizátor (OSVČ)
+# 33. Daňový optimalizátor (OSVČ)
 
 > ⚠️ **Orientační pomůcka, ne daňové přiznání.** Výpočet vychází jen z fakturačních
 > dat a zadaného profilu; nezohledňuje vše (ostatní příjmy, skutečné zálohy na daň,

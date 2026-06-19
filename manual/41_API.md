@@ -1,4 +1,4 @@
-# 40. REST API (automatizace a integrace)
+# 41. REST API (automatizace a integrace)
 
 MyInvoice.cz nabízí veřejné REST API pro integraci s e-shopy, CRM, Make/Zapier
 a vlastními skripty. API používá **Personal Access Tokens** (PAT) v hlavičce
@@ -16,7 +16,7 @@ K dispozici jsou **dvě varianty** stejné dokumentace nad jedním OpenAPI spece
 
 ---
 
-## 40.1 Vytvoření tokenu
+## 41.1 Vytvoření tokenu
 
 1. **Systém → API tokeny** (admin) nebo **profil uživatele**.
 2. Klikni **Nový token**, vyplň:
@@ -31,7 +31,7 @@ K dispozici jsou **dvě varianty** stejné dokumentace nad jedním OpenAPI spece
 3. Po vytvoření zobrazíme **plain-text token** (`mi_pat_…`) — **jen jednou**.
    Ulož ho do password manageru, zpětně už ho nezobrazíme.
 
-## 40.2 Použití tokenu
+## 41.2 Použití tokenu
 
 ```bash
 curl -H "Authorization: Bearer mi_pat_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" \
@@ -80,13 +80,13 @@ curl -X POST https://myinvoice.cz/api/v1/invoices/123/mark-paid \
      -d '{"paid_at": "2026-05-10"}'
 ```
 
-## 40.3 Verzování
+## 41.3 Verzování
 
 - Stabilní cesta: `/api/v1/...`
 - Každá response vrací hlavičku `X-API-Version: 1`.
 - Pokud přidáme nekompatibilní změnu, půjde do `/api/v2/...`; v1 zůstane funkční.
 
-## 40.4 Rate limity
+## 41.4 Rate limity
 
 - **600 requestů / minutu / token** (defaultně, konfigurovatelně přes
   `cfg.rate_limits.api_per_min_per_token`).
@@ -104,7 +104,7 @@ X-RateLimit-Reset:     42          (sekundy do reset countru)
 Doporučujeme klienta s retry-with-backoff (`axios-retry`, Retry-After-aware) +
 sledovat `X-RateLimit-Remaining` a brzdit, když klesá pod ~10 %.
 
-## 40.5 Multi-supplier
+## 41.5 Multi-supplier
 
 Pokud má účet **víc firem (dodavatelů)**, máš dvě možnosti:
 
@@ -114,7 +114,7 @@ Pokud má účet **víc firem (dodavatelů)**, máš dvě možnosti:
 | Hlavička `X-Supplier-Id` se ignoruje. | Bez hlavičky = výchozí firma. |
 | Token nemůže „skočit“ do jiné firmy = bezpečnější. | Flexibilnější pro power-user skripty. |
 
-## 40.6 Scopes
+## 41.6 Scopes
 
 | Scope | Povolené metody |
 |---|---|
@@ -123,7 +123,7 @@ Pokud má účet **víc firem (dodavatelů)**, máš dvě možnosti:
 
 Volání s nedostatečným scopem vrátí `403 insufficient_scope`.
 
-## 40.7 Chybové odpovědi
+## 41.7 Chybové odpovědi
 
 Všechny chyby v unifikovaném formátu:
 
@@ -139,7 +139,7 @@ Všechny chyby v unifikovaném formátu:
 | `not_found` | Zdroj neexistuje (nebo nepatří aktuálnímu supplier-ovi) |
 | `rate_limited` | Překročen limit (viz `Retry-After`) |
 
-## 40.8 Bezpečnost tokenů — best practices
+## 41.8 Bezpečnost tokenů — best practices
 
 - **Ukládej token jako secret** (password manager, Make encrypted variable, GitHub Secrets…).
   Nepushuj do gitu.
@@ -150,7 +150,7 @@ Všechny chyby v unifikovaném formátu:
 - **Sleduj `last_used_at`** v UI — token, který se 3 měsíce nepoužil, asi nepotřebuješ.
 - **Při ztrátě/podezření** — okamžitě **Zrušit** v UI. Revokace je instantní (žádný cache).
 
-## 40.9 Co API nepokrývá
+## 41.9 Co API nepokrývá
 
 - **Admin a settings endpointy** (`/api/admin/*`, `/api/settings/*`) nejsou v
   `openapi.yaml` - jsou určené pro interní administraci, integrace na nich

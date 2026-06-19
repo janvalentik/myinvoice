@@ -30,7 +30,7 @@ Klikni **Další**.
 ![Setup wizard krok 2](img/03_setup_dodavatel.webp)
 
 Vyplníš údaje o **prvním dodavateli** (firmě nebo OSVČ), za kterého budeš
-fakturovat. Můžeš jich později přidat víc — viz [34. Multi-supplier](34_Multi_supplier.md).
+fakturovat. Můžeš jich později přidat víc — viz [35. Multi-supplier](35_Multi_supplier.md).
 
 | Sekce | Popis |
 |---|---|
@@ -69,7 +69,7 @@ Klikni **Dokončit**. Wizard tě **automaticky přihlásí** a přesměruje na
 ## 6.4 Co dál po setupu
 
 1. Otevři **Systém → Nastavení** a doplň, co wizard nepokryl: e-mail kontakt,
-   doplnění více bankovních účtů — viz [35. Nastavení](35_Nastaveni.md).
+   doplnění více bankovních účtů — viz [36. Nastavení](36_Nastaveni.md).
 2. **Systém → Číselníky → Měny** — pokud fakturuješ i v EUR, doplň druhý účet
    (IBAN + BIC).
 3. **Systém → Uživatelé** — pokud má systém používat někdo další (účetní),

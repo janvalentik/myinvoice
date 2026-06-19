@@ -18,7 +18,7 @@ Vyvíjí **[MyWebdesign.cz s.r.o.](https://mywebdesign.cz/)**
 
 📖 **Online dokumentace: [MyInvoice.cz/manual](https://myinvoice.cz/manual/)**
 
-> ⚠️ **Než začneš fakturovat — přečti si [Fakturujeme — daňový průvodce](manual/27_Fakturujeme.md).**
+> ⚠️ **Než začneš fakturovat — přečti si [Fakturujeme — daňový průvodce](manual/28_Fakturujeme.md).**
 > Vysvětluje, jak aplikace pracuje s plátci/neplátci DPH, sazbami, reverse charge,
 > kde má aplikace limitace (OSS, SK 23 %) a jak je obejít. **Správnost faktury
 > je vždy na uživateli — pro nestandardní situace konzultuj účetní.**
@@ -306,7 +306,7 @@ schtasks /run /tn "MyInvoice Update Watcher"
 ```
 
 Detaily, recovery při zaseknutém upgradu a odlaďování v manuálu §
-[38 Aktualizace](manual/39_Aktualizace.md).
+[38 Aktualizace](manual/40_Aktualizace.md).
 
 ### Varianta B — build z source (pro vývoj)
 

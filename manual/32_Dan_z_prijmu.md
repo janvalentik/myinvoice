@@ -1,4 +1,4 @@
-# 31. Daň z příjmů (DPFO / DPPO)
+# 32. Daň z příjmů (DPFO / DPPO)
 
 V menu **Daně → Daň z příjmů** najdeš nástroj pro **roční přiznání**:
 - **DPFO** (Daň z příjmů Fyzických osob, formulář DPFDP5) — pro OSVČ

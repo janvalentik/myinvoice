@@ -1,4 +1,4 @@
-# 25. Dokumenty
+# 26. Dokumenty
 
 Sekce **Dokumenty** je úložiště pro libovolné soubory, které k podnikání patří,
 ale nejsou to přímo faktury — smlouvy, naskenované doklady, XML/ISDOC, datové

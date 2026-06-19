@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Platební příkaz</title>
+<style>
+    /* mPDF kvirky: single class names, žádné nested selectory, padding v <td> ne v <div> */
+    body { font-family: montserrat, dejavusans, sans-serif; font-size: 9pt; color: #15131D; }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+    .header-table td { vertical-align: top; }
+    .header-title { font-size: 15pt; font-weight: bold; }
+    .header-meta { font-size: 9pt; color: #555; margin-top: 1mm; }
+    .payer-info { text-align: right; font-size: 9pt; }
+    .payer-label { color: #777; font-size: 8pt; }
+    .payer-acct { font-family: jetbrainsmono, montserrat, monospace; font-weight: bold; }
+    table.orders { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
+    table.orders thead th {
+        font-size: 7.5pt;
+        font-weight: normal;
+        color: #555;
+        text-align: left;
+        padding: 1.5mm 1.5mm;
+        border-bottom: 0.4pt solid #999;
+        vertical-align: bottom;
+    }
+    table.orders tbody td {
+        padding: 1.2mm 1.5mm;
+        font-size: 8.5pt;
+        border-bottom: 0.2pt solid #eee;
+        vertical-align: top;
+    }
+    table.orders tfoot td {
+        font-weight: bold;
+        font-size: 9.5pt;
+        padding: 2mm 1.5mm;
+        border-top: 0.6pt solid #333;
+    }
+    .num { text-align: right; font-family: jetbrainsmono, montserrat, monospace; white-space: nowrap; }
+    .mono { font-family: jetbrainsmono, montserrat, monospace; }
+    .badge { display: inline-block; padding: 0 1mm; font-size: 7pt; font-weight: bold; border-radius: 2pt; }
+    .badge-ok   { background: #dcfce7; color: #166534; }
+    .badge-warn { background: #fef3c7; color: #92400e; }
+    .badge-bad  { background: #fee2e2; color: #991b1b; }
+    .col-acct { width: 38mm; }
+    .col-sym  { width: 22mm; }
+    .col-amt  { width: 34mm; }
+    .disclaimer { text-align: center; font-size: 7.5pt; color: #888; margin-top: 8mm; font-style: italic; }
+</style>
+</head>
+<body>
+    <table class="header-table">
+        <tr>
+            <td>
+                <div class="header-title">Platební příkaz</div>
+                <div class="header-meta">Datum splatnosti: <strong>{{ payment_date|cz_date }}</strong></div>
+                {% if note %}<div class="header-meta">{{ note }}</div>{% endif %}
+            </td>
+            <td class="payer-info">
+                {% if supplier.company_name %}<div>{{ supplier.company_name }}</div>{% endif %}
+                <div class="payer-label">Účet plátce</div>
+                <div class="payer-acct">
+                    {% if payer.iban %}{{ payer.iban }}{% else %}{{ payer.account_number }}{% if payer.bank_code %}/{{ payer.bank_code }}{% endif %}{% endif %}
+                </div>
+                {% if payer.label %}<div class="payer-label">{{ payer.label }}</div>{% endif %}
+            </td>
+        </tr>
+    </table>
+
+    <table class="orders">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Příjemce</th>
+                <th class="col-acct">Účet</th>
+                <th class="col-sym">VS / KS / SS</th>
+                <th>Ověření</th>
+                <th class="col-amt num">Částka</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in items %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ it.payee_name }}</td>
+                <td class="mono">{% if it.iban %}{{ it.iban }}{% else %}{{ it.account_number }}{% if it.bank_code %}/{{ it.bank_code }}{% endif %}{% endif %}</td>
+                <td class="mono">{{ it.variable_symbol }}{% if it.constant_symbol %} / {{ it.constant_symbol }}{% endif %}{% if it.specific_symbol %} / {{ it.specific_symbol }}{% endif %}</td>
+                <td>
+                    {% if it.account_verified == 'verified' %}<span class="badge badge-ok">zveřejněný</span>
+                    {% elseif it.account_verified == 'unreliable' %}<span class="badge badge-bad">nespolehlivý</span>
+                    {% elseif it.account_verified == 'not_listed' %}<span class="badge badge-warn">nezveřejněný</span>
+                    {% endif %}
+                </td>
+                <td class="num">{{ it.amount|cz_money }} {{ it.currency }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5">Celkem ({{ items|length }} plateb)</td>
+                <td class="num">{{ total_amount|cz_money }} {{ currency }}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="disclaimer">Vygenerováno aplikací MyInvoice.cz — kontrolní přehled platebního příkazu, není daňový doklad.</div>
+</body>
+</html>

@@ -15,11 +15,11 @@ Detailní popis: [První spuštění (setup wizard)](06_Setup_wizard.md).
 ## 5.2 Co nastavit hned po prvním přihlášení
 
 - **Dodavatel** — IČO/DIČ, adresa, logo, číslování faktur, bankovní účty
-  (Nastavení → Můj dodavatel; detail viz [Nastavení](35_Nastaveni.md)).
+  (Nastavení → Můj dodavatel; detail viz [Nastavení](36_Nastaveni.md)).
 - **Odchozí pošta (SMTP)** — aby fungovalo odesílání faktur a upomínek.
 - **Daňové nastavení** — typ poplatníka, perioda DPH, kód FÚ (pokud jsi plátce;
-  viz [Výkazy DPH](28_Vykazy_DPH.md)).
-- **Zabezpečení** — 2FA, IP allowlist, role uživatelů (viz [Bezpečnost](38_Bezpecnost.md)).
+  viz [Výkazy DPH](29_Vykazy_DPH.md)).
+- **Zabezpečení** — 2FA, IP allowlist, role uživatelů (viz [Bezpečnost](39_Bezpecnost.md)).
 - **Plánované úlohy (cron)** — zálohy, párování plateb, upomínky
   (viz [§ 5.5 Cron skripty](#55-cron-skripty)).
 
@@ -28,7 +28,7 @@ Detailní popis: [První spuštění (setup wizard)](06_Setup_wizard.md).
 - Nasazuj za **HTTPS** (u Dockeru reverse proxy — viz
   [§ 3.8 HTTPS / TLS terminace](03_Instalace_Docker.md#38-https-tls-terminace)).
 - Zapni **zálohy** a ověř, že běží (Systém → Plánované úlohy).
-- Pinuj konkrétní verzi image a sleduj [Aktualizace](39_Aktualizace.md).
+- Pinuj konkrétní verzi image a sleduj [Aktualizace](40_Aktualizace.md).
 
 ## 5.4 CLI nástroje
 

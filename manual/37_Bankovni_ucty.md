@@ -1,4 +1,4 @@
-# 36. Bankovní účty a e-mailová avíza (IMAP)
+# 37. Bankovní účty a e-mailová avíza (IMAP)
 
 **Cesta: `Systém → Bankovní účty`**
 
@@ -6,9 +6,9 @@ Tato stránka spravuje **bankovní účty dodavatele** (pro PDF faktury, QR plat
 a GPC výpisy) a navíc **bankovní e-mailová avíza přes IMAP**. Bankovní avízo je
 e-mail od banky s údaji o platbě — MyInvoice ho umí pravidelně načítat, vytěžit
 z něj VS, částku, měnu, datum a cílový účet a vytvořit z něj bankovní transakci
-stejně jako z [výpisu](23_Banka.md).
+stejně jako z [výpisu](24_Banka.md).
 
-## 36.1 Bankovní účty
+## 37.1 Bankovní účty
 
 Sekce **Měny + bankovní účty** je čistý seznam účtů dodavatele. Účet zde
 nastavuješ stejně jako pro PDF faktury, QR platby a GPC výpisy:
@@ -22,7 +22,7 @@ nastavuješ stejně jako pro PDF faktury, QR platby a GPC výpisy:
 Nastavení bankovních avíz je oddělené níže, aby se běžné bankovní údaje
 nemíchaly s parsery a IMAP účty.
 
-## 36.2 Mapování bankovních avíz
+## 37.2 Mapování bankovních avíz
 
 Sekce **Mapování bankovních avíz** určuje, jak se vytěžený e-mail napojí na
 konkrétní bankovní účet dodavatele.
@@ -43,7 +43,7 @@ Nové nebo nenastavené mapování začíná volbou **Žádný IMAP účet**. Ta
 se při scanování nepoužije, dokud nezvolíš konkrétní IMAP účet nebo vědomě
 nepovolíš variantu **Všechny IMAP účty**.
 
-## 36.3 IMAP účty pro bankovní avíza
+## 37.3 IMAP účty pro bankovní avíza
 
 Každý dodavatel může mít více IMAP účtů, typicky jeden pro každou banku.
 
@@ -65,7 +65,7 @@ označovat. Pokud má účet zápis povolený, můžeš zvolit doplňkovou akci 
 úspěchu: neměnit zprávu, přidat flag, přesunout do jiné složky nebo označit
 jako přečtené.
 
-## 36.4 Parser provideri
+## 37.4 Parser provideri
 
 Provider říká, jak poznat e-mail dané banky a jak z něj vytěžit platební údaje.
 
@@ -104,7 +104,7 @@ Regex parser používá první zachycenou skupinu nebo pojmenovanou skupinu se
 stejným názvem jako pole. Pro částku umí formáty typu `+1.234,56`, datum např.
 `01. 06. 2026 10:15`.
 
-## 36.5 Příklad regex provideru pro Raiffeisenbank
+## 37.5 Příklad regex provideru pro Raiffeisenbank
 
 Následující příklad je **anonymizovaný**. Čísla účtů, variabilní symbol, název
 protistrany i zpráva jsou fiktivní. Do manuálu nikdy nedávej reálné e-maily
@@ -167,7 +167,7 @@ Regexy pro vytěžená pole:
 > 🛈 Do UI zadávej regex bez krajních oddělovačů (`/.../`). Parser je doplní
 > sám.
 
-## 36.6 Test parseru a zpracované e-maily
+## 37.6 Test parseru a zpracované e-maily
 
 V sekci **Parser provideri** můžeš vložit testovací e-mail, odesílatele a
 předmět. Test ukáže, který provider se použil a jaká pole se vytěžila.
@@ -185,7 +185,7 @@ Smazání záznamu zde nemaže transakci ani fakturu. Maže jen deduplikační z
 takže je možné stejný e-mail znovu zpracovat při dalším scanu. Používej to jen
 jako emergency/debug akci.
 
-## 36.7 Cron pro e-mailová avíza
+## 37.7 Cron pro e-mailová avíza
 
 Pro automatické zpracování nastav samostatný cron:
 

@@ -1,4 +1,4 @@
-# 23. Banka — import výpisů a párování plateb
+# 24. Banka — import výpisů a párování plateb
 
 Místo ručního označování faktur jako zaplacených, naimportuj **GPC výpis**
 z banky a systém automaticky spáruje platby s fakturami podle variabilního
@@ -12,10 +12,10 @@ spořitelna**, **mBank**, a další.
 > Místo (nebo vedle) výpisů umí systém zpracovávat i **bankovní e-mailová avíza**
 > z IMAP schránky — hodí se, když banka posílá oznámení o příchozí platbě rychleji
 > než pravidelný výpis. Konfigurace bankovních účtů, IMAP schránek a parserů má
-> vlastní kapitolu [Bankovní účty a e-mailová avíza (IMAP)](36_Bankovni_ucty.md)
+> vlastní kapitolu [Bankovní účty a e-mailová avíza (IMAP)](37_Bankovni_ucty.md)
 > v sekci Systém.
 
-## 23.1 Stažení GPC výpisu z banky
+## 24.1 Stažení GPC výpisu z banky
 
 Postup je v každé bance trochu jiný:
 
@@ -30,7 +30,7 @@ Postup je v každé bance trochu jiný:
 Stáhni soubor (typicky `.gpc` nebo `.abo`, někdy `.txt`). Velikost ~10–100 KB
 na měsíc obvykle.
 
-## 23.2 Upload výpisu do MyInvoice
+## 24.2 Upload výpisu do MyInvoice
 
 V hlavním menu **Banka → Nahrát výpis**.
 
@@ -54,7 +54,7 @@ Hláška o výsledku:
 Importováno: 12 transakcí, spárováno: 8, k manuálnímu párování: 4.
 ```
 
-## 23.3 Seznam výpisů
+## 24.3 Seznam výpisů
 
 **Banka → Výpisy** ukáže historii.
 
@@ -69,7 +69,7 @@ Importováno: 12 transakcí, spárováno: 8, k manuálnímu párování: 4.
 | Spárováno | `12/14` — 12 z 14 transakcí spárováno na faktury |
 | Importováno | Datum + uživatel |
 
-## 23.4 Detail výpisu
+## 24.4 Detail výpisu
 
 Klik na řádek → detail.
 
@@ -87,7 +87,7 @@ Tabulka transakcí:
 | Stav | `Spárováno` (zelená) / `Bez shody` (šedá) / `Ignorováno` (oranž.) |
 | Faktura | Pokud spárováno, číslo faktury (klikatelné) |
 
-### 23.4.1 Částečné platby (více převodů na jednu fakturu)
+### 24.4.1 Částečné platby (více převodů na jednu fakturu)
 
 Příchozí platba se **shodným variabilním symbolem**, ale nižší částkou než
 zbývá uhradit, se zaeviduje jako **částečná úhrada** (záznam v boxu Platby
@@ -97,9 +97,9 @@ detailu faktury) — faktura zůstává pohledávkou se sníženým zůstatkem a
 platby). U **zálohové faktury** se k částečné platbě plátci DPH rovnou
 připraví koncept **daňového dokladu k přijaté platbě** (viz § 11.1.2);
 doplatek zálohy, ke které už existuje finální doklad, se eviduje na finál.
-Stejně fungují platby z **e-mailových avíz** ([36. Bankovní účty](36_Bankovni_ucty.md)).
+Stejně fungují platby z **e-mailových avíz** ([37. Bankovní účty](37_Bankovni_ucty.md)).
 
-### 23.4.2 Manuální párování
+### 24.4.2 Manuální párování
 
 Pro transakce, které se nespárovaly automaticky (typicky chybí VS, nebo
 částka nesedí kvůli devizovému kurzu či bankovnímu poplatku):
@@ -112,7 +112,7 @@ Zaeviduje se platba ve výši transakce — plné pokrytí označí fakturu `pai
 (`paid_at` = datum transakce), nižší částka je částečná úhrada. Activity log:
 `bank.matched_manual`.
 
-### 23.4.3 Ignorovat transakci
+### 24.4.3 Ignorovat transakci
 
 Pro transakce, které nejsou platby faktur (poplatky, převody mezi vlastními
 účty, refundace, …):
@@ -120,7 +120,7 @@ Pro transakce, které nejsou platby faktur (poplatky, převody mezi vlastními
 1. Klik **Ignorovat**.
 2. Status → `Ignorováno`. Pro reporting se nepočítá.
 
-### 23.4.4 Vytvoření přijaté faktury z výpisu (doklad o úhradě)
+### 24.4.4 Vytvoření přijaté faktury z výpisu (doklad o úhradě)
 
 U **odchozí (záporné) platby**, ke které ještě nemáš v systému přijatou fakturu,
 můžeš rovnou založit její koncept přímo z výpisu:
@@ -140,7 +140,7 @@ finalizaci faktury).
 > 💡 **Tlačítko „Otevřít"** u spárované transakce přeskočí na navázanou fakturu
 > (vydanou i přijatou).
 
-## 23.5 Reverse: zrušení spárování
+## 24.5 Reverse: zrušení spárování
 
 Pokud automatika spárovala chybně:
 
@@ -148,7 +148,7 @@ Pokud automatika spárovala chybně:
 2. Faktura → status zpět na předchozí (`sent` / `issued`).
 3. Activity log: `bank.unmatched`.
 
-## 23.6 Cron — automatický scan
+## 24.6 Cron — automatický scan
 
 Místo ručního uploadu můžeš nastavit **cron**, který bude pravidelně skenovat
 adresář (např. `private/bank-incoming/`) a importovat nové výpisy:
@@ -163,7 +163,7 @@ Setup:
 2. Cron každých 30 min spustí `php api/bin/cron-bank-scan.php`
 3. Skript projde nové soubory, importuje, přesune do `private/bank-archive/`
 
-## 23.7 Tipy
+## 24.7 Tipy
 
 - **Nahraj výpis **denně/týdně** — čím čerstvější, tím dříve se ti vyfiltrují
   faktury po splatnosti správně.
@@ -173,9 +173,9 @@ Setup:
 - **Platby kartou** (bez VS) se zkusí spárovat na přijatou fakturu i podle
   **částky + podobnosti názvu** dodavatele (název protistrany na výpisu nemusí
   přesně sedět s názvem dodavatele). Spáruje se jen při jednoznačné shodě;
-  jinak nech na ručním párování / založení dokladu (viz § 23.4.4).
+  jinak nech na ručním párování / založení dokladu (viz § 24.4.4).
 - **Částečné platby** (klient pošle míň, ale VS sedí) se u **vydaných** faktur
-  evidují automaticky jako částečná úhrada (viz § 23.4.1). U **přijatých**
+  evidují automaticky jako částečná úhrada (viz § 24.4.1). U **přijatých**
   faktur se podplatba jen označí k ruční kontrole. Toleranci přesné shody lze
   ladit v `cfg.php` → `bank.matching.tolerance`; u bankovních e-mailových avíz
   ji nastavíš přímo v mapování účtu.

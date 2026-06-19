@@ -1,4 +1,4 @@
-# 30. Souhrnné hlášení (DPHSHV)
+# 31. Souhrnné hlášení (DPHSHV)
 
 ### Cesta: `Daně → Souhrnné hlášení`
 
@@ -40,4 +40,4 @@ Generuje DPHSHV verze 06.01. Per řádek VetaA1:
 
 ### Termín podání
 
-**Vždy 25. den následujícího měsíce** (stejně jako [kontrolní hlášení](28_Vykazy_DPH.md#kontrolni-hlaseni-dphkh1)).
+**Vždy 25. den následujícího měsíce** (stejně jako [kontrolní hlášení](29_Vykazy_DPH.md#kontrolni-hlaseni-dphkh1)).

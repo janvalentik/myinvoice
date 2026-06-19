@@ -50,7 +50,7 @@ podle toho, jestli jsi plátce nebo neplátce, a podporuje speciální režimy:
 - **VIES ověření** EU VAT ID — kontrola platnosti DIČ klienta v reálném čase
 - **Auto-výpočet DPH** s rozpadem po sazbách v sumační tabulce
 
-Detaily jsou v kapitole [27. Fakturujeme](27_Fakturujeme.md). Pozor:
+Detaily jsou v kapitole [28. Fakturujeme](28_Fakturujeme.md). Pozor:
 **správnost faktury je vždy na uživateli** — aplikace generuje doklady,
 ale není daňový poradce.
 
@@ -146,7 +146,7 @@ dodavatelů** (firem / IČO) s plně izolovanými daty:
 
 ## 1.10 Bezpečnost
 
-Bezpečnost stojí na pěti vrstvách (detail v [38. Bezpečnost](38_Bezpecnost.md)):
+Bezpečnost stojí na pěti vrstvách (detail v [39. Bezpečnost](39_Bezpecnost.md)):
 
 - **Hesla** — bcrypt cost 12 + pepper, min. 12 znaků, indikátor síly
 - **2FA (TOTP)** — Google Authenticator, Authy, 1Password, Bitwarden…
@@ -178,8 +178,8 @@ Bezpečnost stojí na pěti vrstvách (detail v [38. Bezpečnost](38_Bezpecnost.
 
 MyInvoice je primárně **fakturační**, ne plnohodnotný účetní systém. Nad
 rámec fakturace umí z evidovaných dokladů vygenerovat XML pro EPO portál
-MFČR — viz [28. Výkazy DPH](28_Vykazy_DPH.md) (DPHDP3 + kontrolní hlášení +
-[souhrnné hlášení](30_Souhrnne_hlaseni.md)) a [31. Daň z příjmů](31_Dan_z_prijmu.md) (DPFO/DPPO,
+MFČR — viz [29. Výkazy DPH](29_Vykazy_DPH.md) (DPHDP3 + kontrolní hlášení +
+[souhrnné hlášení](31_Souhrnne_hlaseni.md)) a [32. Daň z příjmů](32_Dan_z_prijmu.md) (DPFO/DPPO,
 zatím jen orientační kostra). Tyto výkazy jsou **pomůcka** — před podáním
 je vždy ověř s účetní nebo daňovým poradcem.
 

@@ -39,4 +39,4 @@ datum vystavení (issue, default) nebo datum přijetí (received).
 > [!TIP]
 > Export **vystavených** faktur (PDF ZIP / ISDOC / Pohoda) řeší kapitola
 > [Exporty](15_Exporty.md) v sekci Prodej. Kompletní měsíční balíček vystavených
-> i přijatých faktur naráz nabízí [Hromadný export](33_Hromadny_export.md) v sekci Daně.
+> i přijatých faktur naráz nabízí [Hromadný export](34_Hromadny_export.md) v sekci Daně.

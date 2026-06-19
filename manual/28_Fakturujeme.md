@@ -1,4 +1,4 @@
-# 27. Fakturujeme — daňový průvodce
+# 28. Fakturujeme — daňový průvodce
 
 > ⚠️ **Správnost faktury je vždy na uživateli.** MyInvoice.cz je fakturační
 > nástroj — generuje doklady, eviduje je a umí je exportovat účetní. Není to
@@ -11,7 +11,7 @@
 Tato kapitola popisuje, jak MyInvoice vystavuje doklady — co dělá automaticky,
 kde tě nechá rozhodnout sebe a kde aplikace končí (a tvůj účetní začíná).
 
-## 27.1 Plátce vs. neplátce DPH
+## 28.1 Plátce vs. neplátce DPH
 
 Příznak **plátce DPH** je u dodavatele (`Nastavení → Dodavatel`) — určuje
 chování celé aplikace. Změna se projeví okamžitě u nově vystavovaných faktur;
@@ -37,7 +37,7 @@ už budou s DPH.
 > být plátcem (zpětná registrace), je třeba opravit dodatečným daňovým
 > dokladem. To MyInvoice neumí automaticky — řeš s účetní.
 
-### 27.1.1 Identifikovaná osoba (§ 6g–6l ZDPH)
+### 28.1.1 Identifikovaná osoba (§ 6g–6l ZDPH)
 
 Třetí daňový status mezi plátcem a neplátcem — typicky freelancer, který
 fakturuje služby do EU (a/nebo nakupuje zahraniční služby typu reklamy či
@@ -60,7 +60,7 @@ Co se tím změní (vše ostatní zůstává jako u neplátce):
 > podání přiznání i SHV je do 25. dne následujícího měsíce; faktura za EU
 > služby se vystavuje nejpozději do 15 dnů od konce měsíce plnění (§ 28).
 
-## 27.2 Sazby DPH (číselník `CZ`)
+## 28.2 Sazby DPH (číselník `CZ`)
 
 Standardní seed obsahuje čtyři sazby pro Česko:
 
@@ -72,14 +72,14 @@ Standardní seed obsahuje čtyři sazby pro Česko:
 | `CZ-RC` | 0 % | Reverse charge | Přenesená daňová povinnost — sazba 0 %, daň odvádí příjemce |
 
 Sazby spravuješ v `Nastavení → Číselníky → DPH sazby`. Můžeš přidávat další
-(např. `SK-23` pro slovenský OSS — viz [§ 27.4](#274-zahranicni-fakturace-limitace-a-oss)), upravovat label nebo
+(např. `SK-23` pro slovenský OSS — viz [§ 28.4](#284-zahranicni-fakturace-limitace-a-oss)), upravovat label nebo
 zneplatnit zastaralé pomocí `valid_to`. Default sazba (`is_default`) se
 předvyplňuje u nově přidané položky faktury.
 
 > ⚠️ Sazby se přiřazují **per položku**, ne per celá faktura. Smíšené sazby
 > v jedné faktuře aplikace zvládá — sumace je rozepsaná po sazbách.
 
-## 27.3 Reverse charge (přenesená daňová povinnost)
+## 28.3 Reverse charge (přenesená daňová povinnost)
 
 Reverse charge (RC) přesouvá povinnost odvést DPH na **příjemce** faktury.
 Vystavitel účtuje 0 % a doplní zákonnou poznámku. V MyInvoice se RC řeší
@@ -110,10 +110,10 @@ o DPH)", pro zahraničního „…dle čl. 196 směrnice 2006/112/ES".
 
 > 💡 RC checkbox je v editoru schovaný i tehdy, když je dodavatel **neplátce
 > DPH** — neplátce RC vystavit nemůže (nemá DPH co přenášet). Výjimkou je
-> **identifikovaná osoba** (§ 27.1.1) — té se RC u zahraničního klienta s DIČ
+> **identifikovaná osoba** (§ 28.1.1) — té se RC u zahraničního klienta s DIČ
 > zapne automaticky.
 
-## 27.4 Zahraniční fakturace — limitace a OSS
+## 28.4 Zahraniční fakturace — limitace a OSS
 
 Tady aplikace končí svou plnou automatiku. MyInvoice je primárně pro **B2B
 fakturaci českým plátcem DPH**. Ostatní scénáře dokáže vystavit, ale daňový
@@ -185,7 +185,7 @@ s jedním DIČ. Workaround: založ druhého dodavatele (`Nastavení → Dodavate
 Přidat`) a přepínej mezi nimi pomocí přepínače v hlavičce. Není to plnohodnotná
 multi-jurisdikční podpora — DPH přiznání pro každou zemi řeš s místní účetní.
 
-## 27.5 Co MyInvoice (ne)dělá
+## 28.5 Co MyInvoice (ne)dělá
 
 Aby bylo úplně jasno, kde je hranice:
 
@@ -206,7 +206,7 @@ Aby bylo úplně jasno, kde je hranice:
 
 - OSS / IOSS přiznání
 - Kompletní daň z příjmů (umí jen orientační kostru — viz
-  [31. Daň z příjmů](31_Dan_z_prijmu.md)), sociální/zdravotní pojištění
+  [32. Daň z příjmů](32_Dan_z_prijmu.md)), sociální/zdravotní pojištění
 - Účetní deník nebo hlavní knihu
 - Kalkulaci marží, skladové hospodářství
 - Mzdy, fakturace s návazností na pracovní smlouvy
@@ -217,7 +217,7 @@ uživatel/účetní jednou měsíčně exportuje (Pohoda XML / Stereo XML / ISDO
 doklady zaúčtuje a ověřené výkazy podá**. Aplikace primárně **eviduje,
 podává a generuje výkazy** z dokladů, neúčtuje je.
 
-## 27.6 Když si nejsi jistý
+## 28.6 Když si nejsi jistý
 
 V pochybnostech platí jednoduchá poučka: **vyber konzervativnější variantu
 a zeptej se účetní**.

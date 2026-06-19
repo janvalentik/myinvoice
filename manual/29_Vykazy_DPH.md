@@ -1,12 +1,12 @@
-# 28. Výkazy DPH (DPHDP3 + KH)
+# 29. Výkazy DPH (DPHDP3 + KH)
 
 MyInvoice.cz generuje XML pro EPO portál MFČR:
 - **DPH přiznání (DPHDP3)** — měsíční nebo kvartální
 - **Kontrolní hlášení (DPHKH1)** — měsíčně nebo kvartálně (pro OSVČ/FO kvartální plátce DPH)
 
-Související výkazy a exporty mají v manuálu vlastní kapitoly: [Kniha DPH](29_Kniha_DPH.md)
-(interní žurnál), [Souhrnné hlášení](30_Souhrnne_hlaseni.md) (EU dodání B2B) a
-[Hromadný export](33_Hromadny_export.md) (ZIP balíček pro účetní). Všechny najdeš v menu **Daně**.
+Související výkazy a exporty mají v manuálu vlastní kapitoly: [Kniha DPH](30_Kniha_DPH.md)
+(interní žurnál), [Souhrnné hlášení](31_Souhrnne_hlaseni.md) (EU dodání B2B) a
+[Hromadný export](34_Hromadny_export.md) (ZIP balíček pro účetní). Všechny najdeš v menu **Daně**.
 
 > [!WARNING]
 > **⚠️ Vygenerovaný XML je pouze pomůcka.** Před odesláním na EPO portál MFČR VŽDY ověř s účetní nebo daňovým poradcem. Aplikace nezaručuje regulatorní správnost — testováno na omezené sadě dat.
@@ -48,7 +48,7 @@ odmítne nebo bude generovat formálně neúplný výkaz.
 | Pole v UI | XML atribut | Hodnoty | Kdy použít |
 |---|---|---|---|
 | **Typ poplatníka** | `typ_ds` ve VetaP | `F` (FO/OSVČ) / `P` (PO/s.r.o.) | Podle právní formy. |
-| **Typ plátce DPH** | `typ_platce` ve VetaD | `P` (plátce) / `I` (identifikovaná osoba) | `I` se nastaví automaticky, když je v dodavateli zaškrtnutá **Identifikovaná osoba** (viz [§ 27.1.1](27_Fakturujeme.md#2711-identifikovana-osoba-6g6l-zdph)). Perioda (měsíc/kvartál) jde zvlášť atributy `mesic`/`ctvrt` dle `vat_period`. |
+| **Typ plátce DPH** | `typ_platce` ve VetaD | `P` (plátce) / `I` (identifikovaná osoba) | `I` se nastaví automaticky, když je v dodavateli zaškrtnutá **Identifikovaná osoba** (viz [§ 28.1.1](28_Fakturujeme.md#2811-identifikovana-osoba-6g6l-zdph)). Perioda (měsíc/kvartál) jde zvlášť atributy `mesic`/`ctvrt` dle `vat_period`. |
 
 > 🛈 **Identifikovaná osoba**: přiznání obsahuje jen řádky samovyměření
 > z přeshraničních přijatých plnění (ř. 3–6, 12–13) **bez zrcadlového odpočtu
@@ -330,7 +330,7 @@ Hodnota se na DPHDP3 uvede:
 - **ř. 40** (nebo 41/42/43 podle klasifikace) — běžný odpočet
 - **ř. 47** (atribut `nar_maj`) — doplňující údaj o hodnotě majetku
 
-Daň se v součtech ř. 46 neduplikuje (ř. 47 je informativní). V [Knize DPH](29_Kniha_DPH.md)
+Daň se v součtech ř. 46 neduplikuje (ř. 47 je informativní). V [Knize DPH](30_Kniha_DPH.md)
 je samostatná sekce **47.047** se sumací.
 
 ## Kontrolní hlášení (DPHKH1)

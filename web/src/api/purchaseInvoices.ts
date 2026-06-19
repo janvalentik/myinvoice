@@ -246,6 +246,7 @@ export interface PurchaseInvoiceListItem {
   vendor_ic: string | null
   month_bucket: string
   extraction_warning: string | null
+  payment_ordered_at: string | null
 }
 
 export interface PurchaseMonthGroup {
@@ -325,6 +326,8 @@ export interface PurchaseListFilters {
   unpaid_only?: boolean
   overdue?: boolean
   needs_review?: boolean
+  /** '1' = předané k úhradě, '0' = nepředané (odvozeno z payment_ordered_at). */
+  payment_ordered?: '1' | '0'
   q?: string
   page?: number
   per_page?: number
@@ -376,6 +379,7 @@ export const purchaseInvoicesApi = {
     if (filters.unpaid_only)  params['filter[unpaid_only]']  = 1
     if (filters.overdue)      params['filter[overdue]']      = 1
     if (filters.needs_review) params['filter[needs_review]'] = 1
+    if (filters.payment_ordered) params['filter[payment_ordered]'] = filters.payment_ordered
     if (filters.page)        params.page                   = filters.page
     if (filters.per_page)    params.per_page               = filters.per_page
     return api.get<{ data: PurchaseMonthGroup[]; meta: PurchaseListMeta }>(
