@@ -5,6 +5,17 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.37.0] — 2026-06-19
+
+### Added
+
+- **Platební příkazy pro přijaté faktury (ABO/KPC, CSV, PDF)** (#150). Z nezaplacených přijatých faktur lze nově hromadně vygenerovat **příkaz k úhradě**. Pro koruny vzniká **ABO (KPC)** soubor pro import do internetbankingu, ostatní měny dostanou **CSV** (s BOM a ochranou proti CSV injection) nebo **PDF na šířku**. Účet plátce se volí podle měny a kandidáti se zobrazují ve dvou opticky odlišených tabulkách (CZK přes ABO vs. ostatní měny přes CSV/PDF). Účet příjemce lze **ověřit proti registru plátců DPH (CRPDPH)** — zveřejněné účty a nespolehlivost plátce, na vyžádání i automaticky — případně ručně doplnit či upravit, zobrazit QR k platbě nebo inline náhled dokladu. Stav „**Předáno k úhradě**" je odvozený příznak (`payment_ordered_at`), ne stav dokladu: má vlastní filtr i badge v seznamu přijatých faktur a při generování příkazu lze zvolit „jen označit" nebo „rovnou označit jako zaplacené" (jinak úhradu potvrdí až párování bankovního výpisu). Historie příkazů se ukládá se snapshotem a jde je znovu stáhnout (CSV/PDF/ABO). Nová kapitola manuálu **§ 20 „Platební příkazy"**. **Vyžaduje DB migraci** (0113: `payment_orders`, `payment_order_items`, `purchase_invoices.payment_ordered_at` + `payment_constant_symbol`, `supplier.abo_client_number`).
+- **Výkaz materiálu vedle Výkazu práce → 2 souhrnné položky na faktuře.** K výkazu faktury lze nově přidat druhý oddíl — **výkaz materiálu** (množství + MJ + cena za MJ místo hodin), který se na fakturu přenese jako druhá souhrnná položka „Materiál" vedle „Práce". Každý výkaz nese **vlastní sazbu DPH** (práce default 21 %, materiál default 12 %) a cena materiálu se zadává v cenové konvenci dokladu (s/bez DPH podle `prices_include_vat`). Materiál se promítá do PDF faktury i do dokladu ke schválení, do schvalovacích e-mailů a do veřejného sledovacího odkazu; „K vyúčtování" = práce + materiál. Editace probíhá v jednom modálním okně se dvěma sbalitelnými sekcemi. Manuál **§ 10.11**. **Vyžaduje DB migraci** (0114: `work_reports` + sazby DPH a souhrn materiálu, nová tabulka `work_report_materials`).
+
+### Fixed
+
+- **Daňové termíny na dashboardu respektují periodicitu DPH** (#156). Sekce „Akce pro tebe" generovala výzvu „DPH + KH za uplynulý měsíc" natvrdo k 25. dni aktuálního měsíce bez ohledu na zdaňovací období dodavatele — čtvrtletní plátci tak uprostřed kvartálu dostávali zavádějící měsíční daňovou akci. Nově se periodicita řeší správně: měsíční plátci beze změny, **čtvrtletní FO** dostanou sloučenou výzvu „DPH + KH za X. čtvrtletí" až po skončení kvartálu, **čtvrtletní PO** mají Kontrolní hlášení měsíčně (§ 101e) odděleně od čtvrtletního přiznání k DPH. Bez DB migrace.
+
 ## [4.36.0] — 2026-06-19
 
 ### Added
