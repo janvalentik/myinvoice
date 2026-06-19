@@ -318,7 +318,8 @@ final class WorkReportLinkService
             }
             $currency = (string) $row['currency'];
             $totalHours += (float) $wr['total_hours'];
-            $byCurrency[$currency] = ($byCurrency[$currency] ?? 0.0) + (float) $wr['total_amount'];
+            $byCurrency[$currency] = ($byCurrency[$currency] ?? 0.0)
+                + (float) $wr['total_amount'] + (float) ($wr['material_total'] ?? 0);
 
             $reports[] = [
                 'invoice_id'   => (int) $row['id'],
@@ -326,16 +327,25 @@ final class WorkReportLinkService
                 'date'         => $row['issue_date'] ?: substr((string) $row['created_at'], 0, 10),
                 'currency'     => $currency,
                 'project_name' => $row['project_name'] ?: null,
-                'title'        => (string) $wr['title'],
-                'total_hours'  => (float) $wr['total_hours'],
-                'total_amount' => (float) $wr['total_amount'],
-                'items'        => array_map(static fn (array $it) => [
+                'title'          => (string) $wr['title'],
+                'total_hours'    => (float) $wr['total_hours'],
+                'total_amount'   => (float) $wr['total_amount'],
+                'items'          => array_map(static fn (array $it) => [
                     'description'  => (string) $it['description'],
                     'work_date'    => $it['work_date'],
                     'hours'        => (float) $it['hours'],
                     'rate'         => (float) $it['rate'],
                     'total_amount' => (float) $it['total_amount'],
                 ], $wr['items']),
+                'material_title' => $wr['material_title'] ?? null,
+                'material_total' => (float) ($wr['material_total'] ?? 0),
+                'materials'      => array_map(static fn (array $m) => [
+                    'description'  => (string) $m['description'],
+                    'quantity'     => (float) $m['quantity'],
+                    'unit'         => (string) $m['unit'],
+                    'unit_price'   => (float) $m['unit_price'],
+                    'total_amount' => (float) $m['total_amount'],
+                ], $wr['materials'] ?? []),
             ];
         }
 

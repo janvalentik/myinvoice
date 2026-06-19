@@ -569,6 +569,10 @@ export const invoicesApi = {
     api.put<WorkReport>(`/invoices/${invoiceId}/work-report`, payload, {
       params: force ? { force: 1 } : undefined,
     }).then(r => r.data),
+  saveWorkReportMaterials: (invoiceId: number, payload: WorkReportMaterialsPayload, force = false) =>
+    api.put<WorkReport>(`/invoices/${invoiceId}/work-report/materials`, payload, {
+      params: force ? { force: 1 } : undefined,
+    }).then(r => r.data),
   deleteWorkReport: (invoiceId: number, force = false) =>
     api.delete<{ deleted: true }>(`/invoices/${invoiceId}/work-report`, {
       params: force ? { force: 1 } : undefined,
@@ -597,6 +601,17 @@ export interface WorkReportItem {
   order_index: number
 }
 
+export interface WorkReportMaterial {
+  id?: number
+  description: string
+  quantity: number
+  unit: string
+  /** Cena/MJ v cenové konvenci dokladu (prices_include_vat). */
+  unit_price: number
+  total_amount?: number
+  order_index: number
+}
+
 export interface WorkReport {
   id: number
   invoice_id: number
@@ -604,17 +619,37 @@ export interface WorkReport {
   title: string
   total_hours: number
   total_amount: number
+  /** Sazba DPH práce (12/21); null = fallback default faktury. */
+  vat_rate_id: number | null
+  material_title: string | null
+  material_total: number
+  material_vat_rate_id: number | null
   items: WorkReportItem[]
+  materials: WorkReportMaterial[]
 }
 
 export interface WorkReportPayload {
   project_id: number | null
   title: string
+  vat_rate_id?: number | null
   items: Array<{
     description: string
     work_date?: string | null
     hours: number
     rate: number
+    order_index: number
+  }>
+}
+
+export interface WorkReportMaterialsPayload {
+  project_id: number | null
+  material_title: string
+  material_vat_rate_id: number | null
+  materials: Array<{
+    description: string
+    quantity: number
+    unit: string
+    unit_price: number
     order_index: number
   }>
 }

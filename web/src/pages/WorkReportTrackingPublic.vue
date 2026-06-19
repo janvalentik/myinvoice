@@ -285,6 +285,37 @@ async function verify() {
                 </tbody>
               </table>
             </div>
+
+            <!-- Výkaz materiálu -->
+            <div v-if="rep.material_total > 0 && rep.materials.length" class="overflow-x-auto border-t border-neutral-200">
+              <div class="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                {{ rep.material_title || t('workReportTracking.public.material') }}
+              </div>
+              <table class="w-full text-sm">
+                <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
+                  <tr>
+                    <th class="px-4 py-2 text-left font-medium">{{ t('workReportTracking.public.description') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-20 whitespace-nowrap">{{ t('workReportTracking.public.quantity') }}</th>
+                    <th class="px-3 py-2 text-left font-medium w-16">{{ t('workReportTracking.public.unit') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-28 whitespace-nowrap">{{ t('workReportTracking.public.unit_price') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-28 whitespace-nowrap">{{ t('workReportTracking.public.amount') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-100">
+                  <tr v-for="(m, idx) in rep.materials" :key="`mat-${idx}`">
+                    <td class="px-4 py-2 whitespace-pre-wrap text-neutral-800">{{ m.description }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ Number(m.quantity).toLocaleString('cs', { maximumFractionDigits: 3 }) }}</td>
+                    <td class="px-3 py-2 text-neutral-600">{{ m.unit }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(m.unit_price, rep.currency) }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(m.total_amount, rep.currency) }}</td>
+                  </tr>
+                  <tr class="bg-neutral-50 font-semibold">
+                    <td class="px-4 py-2 text-right" colspan="4">{{ t('workReportTracking.public.report') }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(rep.material_total, rep.currency) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- Grand total -->

@@ -27,6 +27,16 @@ export interface PublicApprovalWorkReportItem {
   order_index: number
 }
 
+export interface PublicApprovalWorkReportMaterial {
+  id: number
+  description: string
+  quantity: number
+  unit: string
+  unit_price: number
+  total_amount: number
+  order_index: number
+}
+
 export interface PublicApprovalWorkReport {
   id: number
   invoice_id: number
@@ -35,6 +45,10 @@ export interface PublicApprovalWorkReport {
   total_hours: number
   total_amount: number
   items: PublicApprovalWorkReportItem[]
+  material_title: string | null
+  material_total: number
+  material_vat_rate_id: number | null
+  materials: PublicApprovalWorkReportMaterial[]
 }
 
 export interface PublicApprovalInvoice {

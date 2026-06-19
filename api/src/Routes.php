@@ -118,6 +118,7 @@ use MyInvoice\Action\Invoice\SendTestReminderAction;
 use MyInvoice\Action\Invoice\UpdateInvoiceAction;
 use MyInvoice\Action\WorkReport\GetWorkReportAction;
 use MyInvoice\Action\WorkReport\SaveWorkReportAction;
+use MyInvoice\Action\WorkReport\SaveWorkReportMaterialsAction;
 use MyInvoice\Action\WorkReport\DeleteWorkReportAction;
 use MyInvoice\Action\WorkReport\WorkReportLinkAction;
 use MyInvoice\Action\WorkReport\PublicWorkReportGetAction;
@@ -368,6 +369,7 @@ final class Routes
         // Work reports — výkaz víceprací (M5)
         $app->get    ('/api/invoices/{id:[0-9]+}/work-report', GetWorkReportAction::class);
         $app->put    ('/api/invoices/{id:[0-9]+}/work-report', SaveWorkReportAction::class);
+        $app->put    ('/api/invoices/{id:[0-9]+}/work-report/materials', SaveWorkReportMaterialsAction::class);
         $app->delete ('/api/invoices/{id:[0-9]+}/work-report', DeleteWorkReportAction::class);
 
         // Schvalování výkazu zákazníkem (M8)

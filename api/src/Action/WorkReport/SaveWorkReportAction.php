@@ -60,6 +60,15 @@ final class SaveWorkReportAction
             return Json::error($response, 'validation_failed', 'Chybí název výkazu.', 400);
         }
 
+        // Sazba DPH práce (12/21) — volitelná; NULL = fallback default faktury.
+        $vatRateIdRaw = $body['vat_rate_id'] ?? null;
+        $vatRateId = ($vatRateIdRaw !== null && $vatRateIdRaw !== '' && (int) $vatRateIdRaw > 0)
+            ? (int) $vatRateIdRaw
+            : null;
+        if ($vatRateId !== null && !$this->repo->vatRateExists($vatRateId)) {
+            return Json::error($response, 'validation_failed', 'Neplatná sazba DPH výkazu práce.', 400);
+        }
+
         // Project ownership check — varianta MS-P1-1 (Invoice→Project) pro WR edge.
         // Bez tohohle by accountant z S1 mohl uložit WR s project_id ze S2 — cross-tenant
         // FK drift v `work_reports.project_id` (security report @andrejtomci #4, CWE-639 BOLA).
@@ -96,7 +105,7 @@ final class SaveWorkReportAction
             }
         }
 
-        $id = $this->repo->save($invoiceId, $projectId, $title, $items);
+        $id = $this->repo->save($invoiceId, $projectId, $title, $items, $vatRateId);
         $wr = $this->repo->findByInvoice($invoiceId);
         $this->pdf->invalidate($invoiceId, 'invalidate_workreport');
 

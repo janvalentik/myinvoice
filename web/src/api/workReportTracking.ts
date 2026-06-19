@@ -29,6 +29,14 @@ export interface WrPreviewItem {
   total_amount: number
 }
 
+export interface WrPreviewMaterial {
+  description: string
+  quantity: number
+  unit: string
+  unit_price: number
+  total_amount: number
+}
+
 export interface WrPreviewReport {
   invoice_id: number
   label: string | null
@@ -39,6 +47,9 @@ export interface WrPreviewReport {
   total_hours: number
   total_amount: number
   items: WrPreviewItem[]
+  material_title: string | null
+  material_total: number
+  materials: WrPreviewMaterial[]
 }
 
 export interface WrPreview {

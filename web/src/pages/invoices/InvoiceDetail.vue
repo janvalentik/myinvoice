@@ -2011,6 +2011,59 @@ async function updateApprovalStatus() {
       </div>
     </div>
 
+    <!-- Výkaz materiálu -->
+    <div v-if="workReport && workReport.material_total > 0" class="bg-surface border border-neutral-200 rounded-lg shadow-sm overflow-hidden">
+      <header class="px-5 py-3 border-b border-neutral-200 flex items-baseline justify-between gap-3">
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-neutral-500">{{ t('invoice.work_report_material') }}</h3>
+        <span class="text-sm text-neutral-700">{{ workReport.material_title }}</span>
+      </header>
+      <!-- Desktop: tabulka -->
+      <div class="hidden md:block overflow-x-auto">
+        <table class="w-full text-sm table-sticky-first">
+          <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th class="text-left px-5 py-2 font-medium">{{ t('invoice.wr_description') }}</th>
+              <th class="text-right px-4 py-2 font-medium w-24">{{ t('invoice.wr_material_qty') }}</th>
+              <th class="text-left px-4 py-2 font-medium w-20">{{ t('invoice.wr_material_unit') }}</th>
+              <th class="text-right px-4 py-2 font-medium w-32">{{ t('invoice.wr_material_unit_price') }}</th>
+              <th class="text-right px-5 py-2 font-medium w-36">{{ t('invoice.wr_total') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-100">
+            <tr v-for="(m, i) in workReport.materials" :key="i">
+              <td class="px-5 py-2 text-neutral-800 whitespace-pre-wrap">{{ m.description }}</td>
+              <td class="px-4 py-2 text-right font-mono">{{ Number(m.quantity).toLocaleString('cs', { maximumFractionDigits: 3 }) }}</td>
+              <td class="px-4 py-2 text-neutral-600">{{ m.unit }}</td>
+              <td class="px-4 py-2 text-right font-mono">{{ formatMoney(m.unit_price, invoice.currency) }}</td>
+              <td class="px-5 py-2 text-right font-mono">{{ formatMoney(Number(m.total_amount ?? Number(m.quantity) * Number(m.unit_price)), invoice.currency) }}</td>
+            </tr>
+            <tr class="bg-neutral-50 font-semibold">
+              <td class="px-5 py-2 text-right" colspan="4">{{ t('invoice.totals.total') }}</td>
+              <td class="px-5 py-2 text-right font-mono">{{ formatMoney(workReport.material_total, invoice.currency) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile: stack karet -->
+      <div class="md:hidden divide-y divide-neutral-100">
+        <div v-for="(m, i) in workReport.materials" :key="`mm-${i}`" class="p-3 space-y-1">
+          <div class="text-sm whitespace-pre-wrap text-neutral-800">{{ m.description }}</div>
+          <div class="flex items-baseline justify-between text-xs text-neutral-500">
+            <span class="font-mono">{{ Number(m.quantity).toLocaleString('cs', { maximumFractionDigits: 3 }) }} {{ m.unit }}</span>
+            <span>
+              <span class="font-mono">{{ formatMoney(m.unit_price, invoice.currency) }}</span>
+              <span class="text-neutral-400 mx-1.5">·</span>
+              <span class="font-mono font-semibold text-neutral-900">{{ formatMoney(Number(m.total_amount ?? Number(m.quantity) * Number(m.unit_price)), invoice.currency) }}</span>
+            </span>
+          </div>
+        </div>
+        <div class="bg-neutral-50 p-3 flex items-center justify-end font-semibold">
+          <span class="font-mono">{{ formatMoney(workReport.material_total, invoice.currency) }}</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Stav schválení výkazu — viditelné jen pokud projekt vyžaduje + výkaz existuje -->
     <div v-if="requiresApproval" class="bg-surface border border-neutral-200 rounded-lg shadow-sm">
       <header class="px-5 py-3 border-b border-neutral-200">

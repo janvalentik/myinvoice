@@ -382,3 +382,65 @@ Pokud zjistíš, že vystavená faktura je špatně:
   a v PDF přidá text „Daň přiznává odběratel".
 - **PDF náhled konceptu** má vodoznak „NÁHLED" přes celou stranu — klient si ho
   spletl s vystavenou fakturou by neměl.
+
+## 10.11 Výkaz materiálu
+
+Vedle výkazu víceprací (§ 10.6) lze ke stejné faktuře vést i **výkaz materiálu** —
+samostatný rozpis spotřebovaného materiálu, který se do faktury přenese jako
+**druhá souhrnná položka** „Materiál" (vedle položky „Práce"). Oba výkazy sdílí
+jeden výkaz faktury, tisknou se na **2. stranu PDF** a schvalují se zákazníkem
+**zároveň** (§ 10.7).
+
+Zatímco výkaz práce počítá *hodiny × sazba*, výkaz materiálu má místo hodin
+**množství + měrnou jednotku** (default „ks") a **cenu za jednotku** — zadává se
+tedy ve stylu položek faktury.
+
+### 10.11.1 Aktivace
+
+Editor materiálu je na dvou místech (stejně jako výkaz práce):
+
+- v **editoru faktury** sekce **„Výkaz materiálu"** → tlačítko **„Přidat výkaz
+  materiálu"**,
+- v **detailu / seznamu faktur** tlačítko **„Výkaz"** → v okně sekce „Výkaz
+  materiálu".
+
+Dokud výkaz nemá žádný řádek, je sekce **zabalená** — rozbalíš ji tlačítkem
+„Přidat výkaz materiálu".
+
+| Pole | Význam |
+|---|---|
+| Popis | Co bylo dodáno (např. „Kabel UTP cat6") |
+| Množství | Desetinné číslo (počet kusů, metrů, kg, …) |
+| MJ | Měrná jednotka z číselníku (default „ks") |
+| Cena/MJ | Jednotková cena — **bez DPH, nebo s DPH podle režimu faktury** (viz níže) |
+| Celkem | Auto: `množství × cena/MJ` |
+
+### 10.11.2 Sazba DPH výkazu
+
+Každý výkaz nese **jednu sazbu DPH** (sumarizuje se do jedné položky faktury):
+
+- **Výkaz práce** — volitelná sazba, default **21 %**.
+- **Výkaz materiálu** — volitelná sazba, default **12 %**.
+
+Sazbu vybereš v záhlaví příslušné sekce. Materiál a práce tak mohou mít **různou
+sazbu DPH** na jednom dokladu — DPH se na faktuře rekapituluje správně po sazbách.
+
+### 10.11.3 Ceny s DPH / bez DPH
+
+Cena za jednotku se zadává v **cenové konvenci dokladu** (přepínač „Ceny zadávám
+včetně DPH", viz [§ 10.2.6](#1026-ceny-s-dph-vs-bez-dph-brutto-netto-rezim)):
+
+- režim **„bez DPH"** → zadáváš cenu/MJ bez DPH (záhlaví sloupce „Cena/MJ bez DPH"),
+- režim **„s DPH"** → zadáváš cenu/MJ včetně DPH (záhlaví „Cena/MJ s DPH"); DPH se
+  dopočte koeficientem shora (§ 37 ZDPH).
+
+Sazba DPH (12 %) a konvence ceny (s/bez) jsou **dvě nezávislé věci** — materiál má
+12 % bez ohledu na to, jestli cenu píšeš s DPH nebo bez.
+
+### 10.11.4 PDF a schválení
+
+Pokud má výkaz materiálu aspoň jeden řádek, na **2. straně PDF faktury** se pod
+tabulkou práce vytiskne i tabulka **Materiál** (popis, množství, MJ, cena/MJ,
+celkem). Položka „Materiál" ve faktuře je **proklik** na tuto tabulku (stejně jako
+položka práce). Ve schvalovacím e-mailu i na schvalovací stránce zákazník vidí
+obě části a schvaluje je **najednou**.

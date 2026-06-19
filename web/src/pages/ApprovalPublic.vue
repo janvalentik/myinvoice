@@ -229,6 +229,37 @@ async function submit(decision: 'approve' | 'reject') {
                 </tbody>
               </table>
             </div>
+
+            <!-- Materiál -->
+            <div v-if="data.work_report.material_total > 0 && data.work_report.materials.length" class="overflow-x-auto border-t border-neutral-200">
+              <div class="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                {{ data.work_report.material_title || tt('Materiál', 'Material') }}
+              </div>
+              <table class="w-full text-sm">
+                <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
+                  <tr>
+                    <th class="px-4 py-2 text-left font-medium">{{ tt('Popis', 'Description') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-20 whitespace-nowrap">{{ tt('Množství', 'Quantity') }}</th>
+                    <th class="px-3 py-2 text-left font-medium w-16">{{ tt('MJ', 'Unit') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-28 whitespace-nowrap">{{ tt('Cena/MJ', 'Unit price') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-28 whitespace-nowrap">{{ tt('Celkem', 'Total') }}</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-100">
+                  <tr v-for="m in data.work_report.materials" :key="m.id">
+                    <td class="px-4 py-2 whitespace-pre-wrap text-neutral-800">{{ m.description }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ Number(m.quantity).toLocaleString('cs', { maximumFractionDigits: 3 }) }}</td>
+                    <td class="px-3 py-2 text-neutral-600">{{ m.unit }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(m.unit_price, data.invoice.currency) }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(m.total_amount, data.invoice.currency) }}</td>
+                  </tr>
+                  <tr class="bg-neutral-50 font-semibold">
+                    <td class="px-4 py-2 text-right" colspan="4">{{ tt('Celkem', 'Total') }}</td>
+                    <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(data.work_report.material_total, data.invoice.currency) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- Decided by email + actions -->
