@@ -978,11 +978,12 @@ final class CrmAggregationService
      *   total: int
      * }
      */
-    public function actionItems(int $supplierId, ?int $userId = null): array
+    public function actionItems(int $supplierId, ?int $userId = null, ?\DateTimeImmutable $now = null): array
     {
         $items = [];
         $pdo = $this->db->pdo();
-        $today = (new \DateTimeImmutable())->format('Y-m-d');
+        $nowDt = $now ?? new \DateTimeImmutable();
+        $today = $nowDt->format('Y-m-d');
 
         // Load dismissals once
         $dismissals = $this->loadDismissals($supplierId, $userId);
@@ -1121,34 +1122,13 @@ final class CrmAggregationService
             ];
         }
 
-        // 4. Reports deadlines — DPH/KH/SH se podávají 25. následujícího měsíce
-        // (date-based, historical mode chová se jako forever na aktuální měsíc)
-        if (!$this->isFullyDismissed($dismissals, 'tax_deadline')) {
-            $now = new \DateTimeImmutable($today);
-            $currentMonth = (int) $now->format('n');
-            $currentYear = (int) $now->format('Y');
-            $deadlineDate = $currentMonth === 1
-                ? "{$currentYear}-01-25"
-                : sprintf('%04d-%02d-25', $currentYear, $currentMonth);
-            $deadlineDt = new \DateTimeImmutable($deadlineDate);
-            $daysToDeadline = (int) $now->diff($deadlineDt)->format('%r%a');
-            $stmt = $pdo->prepare("SELECT is_vat_payer FROM supplier WHERE id = ?");
-            $stmt->execute([$supplierId]);
-            $isVatPayer = (bool) $stmt->fetchColumn();
-            if ($isVatPayer && $daysToDeadline >= -3 && $daysToDeadline <= 7) {
-                $sev = $daysToDeadline < 0 ? 'high' : ($daysToDeadline <= 2 ? 'high' : 'medium');
-                $items[] = [
-                    'type'     => 'tax_deadline',
-                    'severity' => $sev,
-                    'title'    => 'DPH + KH za uplynulý měsíc',
-                    'hint'     => $daysToDeadline < 0
-                        ? sprintf('Termín byl %d dní zpět — podej co nejdříve!', abs($daysToDeadline))
-                        : sprintf('Termín podání za %d %s (do %s)', $daysToDeadline,
-                            $daysToDeadline === 1 ? 'den' : ($daysToDeadline < 5 ? 'dny' : 'dní'),
-                            $deadlineDate),
-                    'link'     => '/reports/dph',
-                    'days'     => $daysToDeadline,
-                ];
+        // 4. Reports deadlines — DPH přiznání + Kontrolní hlášení se podávají 25. dne
+        // po skončení zdaňovacího období. Respektuje periodicitu dodavatele
+        // (supplier.vat_period + taxpayer_type) — viz taxDeadlineItems().
+        // (date-based, historical mode chová se jako forever na aktuální období)
+        foreach ($this->taxDeadlineItems($supplierId, $nowDt) as $taxItem) {
+            if (!$this->isFullyDismissed($dismissals, (string) $taxItem['type'])) {
+                $items[] = $taxItem;
             }
         }
 
@@ -1237,6 +1217,115 @@ final class CrmAggregationService
             'items' => $items,
             'total' => count($items),
             'dismissed_count' => count($dismissals),
+        ];
+    }
+
+    /**
+     * Daňové termíny (DPH přiznání + Kontrolní hlášení) podle periodicity dodavatele.
+     *
+     * Pravidla (zákon 235/2004 Sb.):
+     *   - **DPH přiznání** — měsíční plátce: 25. dne následujícího měsíce za uplynulý
+     *     měsíc; čtvrtletní plátce: 25. dne měsíce po skončení čtvrtletí (Q1→25.4,
+     *     Q2→25.7, Q3→25.10, Q4→25.1).
+     *   - **Kontrolní hlášení (§101e)** — právnická osoba (PO) VŽDY měsíčně; fyzická
+     *     osoba (FO) ve lhůtě pro přiznání → kopíruje DPH periodu.
+     *
+     * DPH a KH se sloučí do jedné položky jen když mají shodné období i termín
+     * (měsíční plátce, nebo čtvrtletní FO). U čtvrtletní PO se KH (měsíční) a DPH
+     * (čtvrtletní) zobrazí jako dvě samostatné položky s odlišnou periodou.
+     *
+     * Položka se zobrazí jen v okně −3..+7 dní kolem termínu.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function taxDeadlineItems(int $supplierId, \DateTimeImmutable $now): array
+    {
+        $stmt = $this->db->pdo()->prepare(
+            'SELECT is_vat_payer, taxpayer_type, vat_period FROM supplier WHERE id = ?'
+        );
+        $stmt->execute([$supplierId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        if (!(bool) ($row['is_vat_payer'] ?? false)) {
+            return [];
+        }
+
+        $taxpayerType = (string) ($row['taxpayer_type'] ?? '');
+        $vatPeriod = ((string) ($row['vat_period'] ?? 'monthly')) === 'quarterly' ? 'quarterly' : 'monthly';
+        // KH: PO vždy měsíčně; FO kopíruje DPH periodu.
+        $khMonthly = $taxpayerType === 'po' || $vatPeriod === 'monthly';
+
+        $m = (int) $now->format('n');
+        $y = (int) $now->format('Y');
+
+        // DPH termín + popis období
+        if ($vatPeriod === 'monthly') {
+            $dphActive = true;
+            $dphDeadline = sprintf('%04d-%02d-25', $y, $m);
+            $dphPeriod = 'za uplynulý měsíc';
+        } else {
+            // Čtvrtletní termín existuje jen v měsících 1/4/7/10.
+            $dphActive = in_array($m, [1, 4, 7, 10], true);
+            $dphDeadline = sprintf('%04d-%02d-25', $y, $m);
+            $endedQuarter = $m === 1 ? 4 : (int) (($m - 1) / 3); // 4→Q1, 7→Q2, 10→Q3, 1→Q4
+            $quarterYear = $m === 1 ? $y - 1 : $y;
+            $dphPeriod = sprintf('za %d. čtvrtletí %d', $endedQuarter, $quarterYear);
+        }
+
+        // Sloučit DPH+KH? Jen pokud sdílí periodu (měsíční plátce nebo čtvrtletní FO).
+        $combine = $vatPeriod === 'monthly' || !$khMonthly;
+
+        $items = [];
+        if ($combine) {
+            if ($dphActive) {
+                $title = $vatPeriod === 'monthly'
+                    ? 'DPH + KH za uplynulý měsíc'
+                    : 'DPH + KH ' . $dphPeriod;
+                $item = $this->buildDeadlineItem('tax_deadline', $title, $dphDeadline, '/reports/dph', $now);
+                if ($item !== null) {
+                    $items[] = $item;
+                }
+            }
+        } else {
+            // Čtvrtletní PO: KH měsíčně + DPH čtvrtletně, dvě samostatné položky.
+            $khItem = $this->buildDeadlineItem('kh_deadline', 'Kontrolní hlášení za uplynulý měsíc',
+                sprintf('%04d-%02d-25', $y, $m), '/reports/kh', $now);
+            if ($khItem !== null) {
+                $items[] = $khItem;
+            }
+            if ($dphActive) {
+                $dphItem = $this->buildDeadlineItem('tax_deadline', 'DPH ' . $dphPeriod,
+                    $dphDeadline, '/reports/dph', $now);
+                if ($dphItem !== null) {
+                    $items[] = $dphItem;
+                }
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * Sestaví action item pro daňový termín, nebo null mimo okno −3..+7 dní.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function buildDeadlineItem(string $type, string $title, string $deadline, string $link, \DateTimeImmutable $now): ?array
+    {
+        $days = (int) $now->diff(new \DateTimeImmutable($deadline))->format('%r%a');
+        if ($days < -3 || $days > 7) {
+            return null;
+        }
+        return [
+            'type'     => $type,
+            'severity' => $days < 0 ? 'high' : ($days <= 2 ? 'high' : 'medium'),
+            'title'    => $title,
+            'hint'     => $days < 0
+                ? sprintf('Termín byl %d dní zpět — podej co nejdříve!', abs($days))
+                : sprintf('Termín podání za %d %s (do %s)', $days,
+                    $days === 1 ? 'den' : ($days < 5 ? 'dny' : 'dní'),
+                    $deadline),
+            'link'     => $link,
+            'days'     => $days,
         ];
     }
 
@@ -1348,7 +1437,7 @@ final class CrmAggregationService
     public function dismissActionItem(int $supplierId, int $userId, string $itemType, string $mode): void
     {
         $validTypes = ['overdue_invoices', 'bank_unmatched', 'recurring_due', 'overdue_payables',
-            'purchase_drafts', 'tax_deadline', 'shv_deadline', 'churn_risk'];
+            'purchase_drafts', 'tax_deadline', 'kh_deadline', 'shv_deadline', 'churn_risk'];
         $validModes = ['day', 'week', 'forever', 'historical'];
         if (!in_array($itemType, $validTypes, true)) {
             throw new \InvalidArgumentException("Invalid item_type: {$itemType}");
@@ -1508,6 +1597,7 @@ final class CrmAggregationService
                 $stmt->execute([$supplierId, $today]);
                 break;
             case 'tax_deadline':
+            case 'kh_deadline':
             case 'shv_deadline':
                 return []; // date-based, žádné ID
             default:
