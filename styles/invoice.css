@@ -107,8 +107,14 @@ td.meta { width: 45%; text-align: right; }
     width: 50%;
     vertical-align: top;
     padding: 4mm;
-    border: 0.5pt solid #E7E3EE;
     background: #FBFAFD;
+}
+/* Odběratel zvýrazněn jen podbarvením (bez rámečku) — na dokladu „skočí do oka" víc
+   než blok dodavatele. Default bg zrcadlí akcentovou plochu (ISDOC badge); při
+   zapnutém brandingu ho PdfBranding přebarví tintem zvolené barvy
+   (`.parties td.party-customer`), takže respektuje uživatelskou paletu. */
+.parties td.party-customer {
+    background: #EFEAFF;
 }
 .parties h2 {
     margin: 0 0 4mm;
@@ -306,18 +312,35 @@ table.czk-recap tr.grand td {
     padding: 2mm 3mm;
 }
 
-/* ─── QR + bank ─── */
-table.bank-frame {
+/* ─── Platební panel: QR + bankovní spojení v jednom podbarveném boxu ─── */
+.pay-panel {
     width: 100%;
-    border: 0.5pt solid #C9C0E9;
+    height: 100%;                 /* roztáhne panel na výšku řádku → spodní hrana lícuje s „Celkem" vpravo */
     border-collapse: collapse;
+    background: #EFEAFF;          /* bgSoft — branding ji přebarví tintem akcentu */
+    border: 0.5pt solid #C9C0E9;  /* lineMedium — sladěno s ostatními akcent. plochami */
     border-radius: 2mm;
 }
-table.bank-frame td {
-    padding: 3mm;
+.pay-panel td {
+    padding: 3.5mm;
     font-size: 10pt;
     line-height: 1.5;
+    vertical-align: middle;       /* obsah svisle na střed → vyrovná prázdné místo při roztažení */
 }
+/* Zaplacená faktura: platební panel dostane jemný zelený nádech (success), místo
+   brandového tintu. Vyšší specificita (2 třídy) přebije branding override `.pay-panel`
+   bez ohledu na pořadí — UHRAZENO tak vždy sedí na zeleném podkladu. */
+.pay-panel.pay-panel-paid {
+    background: #EAF6EC;
+    border-color: #BFE0C6;
+}
+/* QR uvnitř panelu — bez vlastního rámečku/paddingu, splývá s podbarvením. */
+.pay-panel td.pay-qr {
+    width: 40mm;
+    text-align: center;
+    white-space: nowrap;
+}
+.pay-panel td.pay-qr img { width: 33mm; height: 33mm; }
 .bank-label {
     font-size: 9pt;
     text-transform: uppercase;
@@ -339,23 +362,6 @@ table.bank-frame td {
     font-size: 9pt;
     color: #5A5470;
     line-height: 1.6;
-}
-
-.qr-box {
-    text-align: center;
-    padding: 2mm;
-    border: 1pt solid #D2CCDF;
-    border-radius: 2mm;
-    background: #FFFFFF;
-}
-.qr-box img { width: 35mm; height: 35mm; }
-.qr-box .qr-label {
-    font-size: 8pt;
-    color: #6753AE;
-    text-transform: uppercase;
-    letter-spacing: 1pt;
-    font-weight: 700;
-    margin-top: 1mm;
 }
 
 /* Notes a poznámky */
@@ -402,6 +408,9 @@ table.bank-frame td {
     font-size: 7.5pt;
     color: #A7A0BA;
     font-family: 'montserrat', 'DejaVu Sans', sans-serif;
+    /* Bez letter-spacingu mPDF na 7.5pt přebíjí kern pár „Pl" tak, že „l" zmizí
+       (např. „v Plzni" → „v P zni"). Drobné rozpáčení glyfy vrátí a zlepší čitelnost. */
+    letter-spacing: 0.15pt;
 }
 /* mPDF htmlpagefooter — attribution na patě KAŽDÉ stránky */
 .page-attribution {

@@ -83,7 +83,7 @@
         {% endif %}
       </div>
     </td>
-    <td>
+    <td class="party-customer">
       <h2>{{ t('Odběratel', 'Customer') }}</h2>
       <div class="spacer-3">&nbsp;</div>
       <div class="party-name">{{ client.company_name }}</div>
@@ -272,85 +272,66 @@
 <table class="totals">
   <tr>
     <td class="left">
-      <table style="width:100%;border-collapse:collapse;">
+      {# QR + bankovní spojení sloučené do jednoho podbarveného „platebního" panelu —
+         vizuální kotva dokladu. Renderuje se jen když je co platit/ukázat. #}
+      {% set _has_pay = qr_data_uri or is_paid or payment_method == 'card' or payment_method == 'cash' or bank %}
+      {% if _has_pay %}
+      <table class="pay-panel{% if is_paid %} pay-panel-paid{% endif %}">
         <tr>
-          <td style="vertical-align:top;padding-right:3mm;width:33mm;">
-            {% if qr_data_uri %}
-            <div class="qr-box">
-              <img src="{{ qr_data_uri }}" alt="QR" width="105" height="105">
-              <div class="qr-label">QR Pay</div>
-            </div>
-            {% endif %}
+          {% if qr_data_uri %}
+          <td class="pay-qr">
+            <img src="{{ qr_data_uri }}" alt="QR" width="105" height="105">
           </td>
-          <td style="vertical-align:top;">
+          {% endif %}
+          <td class="pay-info">
             {% if is_paid %}
-            <table class="bank-frame paid-stamp">
-              <tr>
-                <td>
-                  <div class="bank-label" style="color:#2E7D32;">{{ t('UHRAZENO', 'PAID') }}</div>
-                  <div class="spacer-3">&nbsp;</div>
-                  <div class="bank-value" style="color:#2E7D32;">
-                    {%- if payment_method == 'card' -%}{{ t('Platba kartou online', 'Paid online by card') }}
-                    {%- elseif payment_method == 'cash' -%}{{ t('Hotově', 'Cash') }}
-                    {%- else -%}{{ t('Neplaťte prosím znovu', 'Do not pay again') }}{%- endif -%}
-                  </div>
-                  {% if invoice.paid_at %}
-                    <div class="spacer-2">&nbsp;</div>
-                    <div class="bank-meta-line">{{ t('Datum úhrady', 'Paid on') }}: {{ invoice.paid_at|date(date_format) }}</div>
-                  {% endif %}
-                </td>
-              </tr>
-            </table>
+              <div class="bank-label" style="color:#2E7D32;margin-bottom:1.5mm;">{{ t('UHRAZENO', 'PAID') }}</div>
+              <div class="bank-value" style="color:#2E7D32;">
+                {%- if payment_method == 'card' -%}{{ t('Platba kartou online', 'Paid online by card') }}
+                {%- elseif payment_method == 'cash' -%}{{ t('Hotově', 'Cash') }}
+                {%- else -%}{{ t('Neplaťte prosím znovu', 'Do not pay again') }}{%- endif -%}
+              </div>
+              {% if invoice.paid_at %}
+                <div class="spacer-2">&nbsp;</div>
+                <div class="bank-meta-line">{{ t('Datum úhrady', 'Paid on') }}: {{ invoice.paid_at|date(date_format) }}</div>
+              {% endif %}
             {% elseif payment_method == 'card' %}
-            <table class="bank-frame">
-              <tr>
-                <td>
-                  <div class="bank-label">{{ t('Způsob úhrady', 'Payment method') }}</div>
-                  <div class="spacer-3">&nbsp;</div>
-                  <div class="bank-value">{{ t('Platební karta', 'Card') }}</div>
-                  <div class="spacer-2">&nbsp;</div>
-                  <div class="bank-meta-line">{{ t('Bankovní převod ani QR se nepoužije.', 'Bank transfer and QR are not used.') }}</div>
-                </td>
-              </tr>
-            </table>
+              <div class="bank-label">{{ t('Způsob úhrady', 'Payment method') }}</div>
+              <div class="spacer-3">&nbsp;</div>
+              <div class="bank-value">{{ t('Platební karta', 'Card') }}</div>
+              <div class="spacer-2">&nbsp;</div>
+              <div class="bank-meta-line">{{ t('Bankovní převod ani QR se nepoužije.', 'Bank transfer and QR are not used.') }}</div>
             {% elseif payment_method == 'cash' %}
-            <table class="bank-frame">
-              <tr>
-                <td>
-                  <div class="bank-label">{{ t('Způsob úhrady', 'Payment method') }}</div>
-                  <div class="spacer-3">&nbsp;</div>
-                  <div class="bank-value">{{ t('Hotově', 'Cash') }}</div>
-                </td>
-              </tr>
-            </table>
+              <div class="bank-label">{{ t('Způsob úhrady', 'Payment method') }}</div>
+              <div class="spacer-3">&nbsp;</div>
+              <div class="bank-value">{{ t('Hotově', 'Cash') }}</div>
             {% elseif bank %}
-            <table class="bank-frame">
-              <tr>
-                <td>
-                  <div class="bank-label">{{ t('Bankovní spojení', 'Bank account') }}</div>
-                  <div class="spacer-3">&nbsp;</div>
-                  {% if bank.account_number %}
-                    <div class="bank-value">{{ bank.account_number }}{% if bank.bank_code %} / {{ bank.bank_code }}{% endif %}</div>
-                  {% endif %}
-                  {% if bank.iban %}
-                    <div class="bank-value">{{ bank.iban }}</div>
-                  {% endif %}
-                  {% if bank.bic or bank.bank_name %}
-                    <div class="spacer-2">&nbsp;</div>
-                  {% endif %}
-                  {% if bank.bic %}
-                    <div class="bank-meta-line">BIC: {{ bank.bic }}</div>
-                  {% endif %}
-                  {% if bank.bank_name %}
-                    <div class="bank-meta-line">{{ t('Banka', 'Bank') }}: {{ bank.bank_name }}</div>
-                  {% endif %}
-                </td>
-              </tr>
-            </table>
+              <div class="bank-label">{{ t('Bankovní spojení', 'Bank account') }}</div>
+              <div class="spacer-3">&nbsp;</div>
+              {% if bank.account_number %}
+                <div class="bank-value">{{ bank.account_number }}{% if bank.bank_code %} / {{ bank.bank_code }}{% endif %}</div>
+              {% endif %}
+              {% if bank.iban %}
+                <div class="bank-value">{{ bank.iban }}</div>
+              {% endif %}
+              {% set _vs = payment_varsymbol|default(invoice.varsymbol) %}
+              {% if _vs %}
+                <div class="bank-meta-line">{{ t('Var. symbol', 'Var. symbol') }}: <span style="font-family:'jetbrainsmono','DejaVu Sans Mono',monospace;color:#15131D;">{{ _vs }}</span></div>
+              {% endif %}
+              {% if bank.bic or bank.bank_name %}
+                <div class="spacer-2">&nbsp;</div>
+              {% endif %}
+              {% if bank.bic %}
+                <div class="bank-meta-line">BIC: {{ bank.bic }}</div>
+              {% endif %}
+              {% if bank.bank_name %}
+                <div class="bank-meta-line">{{ t('Banka', 'Bank') }}: {{ bank.bank_name }}</div>
+              {% endif %}
             {% endif %}
           </td>
         </tr>
       </table>
+      {% endif %}
     </td>
     <td class="right">
       <table class="totals-table">
@@ -595,9 +576,15 @@
     </tr>
     {% endfor %}
     <tr style="background:#F4F2F8;font-weight:bold;">
-      <td style="text-align:right;" colspan="4">{{ t('Celkem', 'Total') }}</td>
-      <td class="num nowrap">{{ work_report.material_total|number_format(mtotal_dec, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
+      <td style="text-align:right;" colspan="4">{% if supplier.is_vat_payer %}{{ t('Celkem bez DPH', 'Total excl. VAT') }}{% else %}{{ t('Celkem', 'Total') }}{% endif %}</td>
+      <td class="num nowrap">{{ work_report.material_total|number_format(supplier.is_vat_payer ? 2 : mtotal_dec, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
     </tr>
+    {% if supplier.is_vat_payer %}
+    <tr style="background:#F4F2F8;font-weight:bold;">
+      <td style="text-align:right;" colspan="4">{{ t('Celkem s DPH', 'Total incl. VAT') }}{% if work_report.material_vat_rate is not null %} ({{ work_report.material_vat_rate|number_format(work_report.material_vat_rate == work_report.material_vat_rate|round(0) ? 0 : 2, decimal_sep, thousand_sep) }}&nbsp;%){% endif %}</td>
+      <td class="num nowrap">{{ work_report.material_total_with_vat|number_format(2, decimal_sep, thousand_sep) }} {{ invoice.currency }}</td>
+    </tr>
+    {% endif %}
   </tbody>
 </table>
 {% endif %}

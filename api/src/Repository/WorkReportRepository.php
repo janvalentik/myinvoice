@@ -25,9 +25,35 @@ final class WorkReportRepository
         $wr['material_title']       = $wr['material_title'] !== null ? (string) $wr['material_title'] : null;
         $wr['material_total']       = (float) ($wr['material_total'] ?? 0);
         $wr['material_vat_rate_id'] = isset($wr['material_vat_rate_id']) ? (int) $wr['material_vat_rate_id'] : null;
+
+        // Sazba DPH materiálu (procenta) + součet s DPH — pro výkaz materiálu u plátce
+        // (PDF tiskne „Celkem bez DPH" i „Celkem s DPH"). material_total je základ daně
+        // (netto, suma quantity × unit_price), proto DPH připočítáme shora základu.
+        $wr['material_vat_rate']       = null;
+        $wr['material_total_with_vat'] = $wr['material_total'];
+        if ($wr['material_vat_rate_id'] !== null) {
+            $rate = $this->ratePercent($wr['material_vat_rate_id']);
+            if ($rate !== null) {
+                $wr['material_vat_rate']       = $rate;
+                $wr['material_total_with_vat'] = round(
+                    $wr['material_total'] + round($wr['material_total'] * $rate / 100, 2),
+                    2
+                );
+            }
+        }
+
         $wr['items']                = $this->itemsFor((int) $wr['id']);
         $wr['materials']            = $this->materialsFor((int) $wr['id']);
         return $wr;
+    }
+
+    /** Procentní sazba DPH z číselníku (rate_percent), nebo null když ID neexistuje. */
+    private function ratePercent(int $vatRateId): ?float
+    {
+        $stmt = $this->db->pdo()->prepare('SELECT rate_percent FROM vat_rates WHERE id = ?');
+        $stmt->execute([$vatRateId]);
+        $val = $stmt->fetchColumn();
+        return $val === false ? null : (float) $val;
     }
 
     /** @return list<array<string,mixed>> */

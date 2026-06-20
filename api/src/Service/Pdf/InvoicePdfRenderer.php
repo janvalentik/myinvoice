@@ -404,6 +404,21 @@ final class InvoicePdfRenderer
             $snap = is_string($invoice['bank_snapshot']) ? json_decode($invoice['bank_snapshot'], true) : $invoice['bank_snapshot'];
             if (is_array($snap)) {
                 $row = array_merge($live, $snap);
+                // Snapshot je primární (historický stav účtu), ALE prázdná hodnota ve snapshotu
+                // nesmí přebít neprázdné live pole. Týká se hlavně `bank_name`: starší faktury
+                // se vystavily dřív, než CRPDPH enrichment doplnil název banky do currencies →
+                // snapshot má bank_name='' a array_merge ho nechá vyhrát (banka se netiskne).
+                // Název banky je jen popisek bankovního kódu, takže ho doplníme z live JEN když
+                // jde o stejný účet (shodný bank_code) — jinak by mohl popisovat jiný účet.
+                $sameAccount = (string) ($snap['bank_code'] ?? '') === (string) ($live['bank_code'] ?? '')
+                    && (string) ($snap['iban'] ?? '') === (string) ($live['iban'] ?? '');
+                if ($sameAccount) {
+                    foreach (['bank_name', 'bic'] as $k) {
+                        if (empty($row[$k]) && !empty($live[$k])) {
+                            $row[$k] = $live[$k];
+                        }
+                    }
+                }
             }
         }
         if (empty($row)) return null;
