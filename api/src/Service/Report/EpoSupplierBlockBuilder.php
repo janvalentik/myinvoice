@@ -102,14 +102,6 @@ final class EpoSupplierBlockBuilder
     }
 
     /**
-     * Normalizace CZ-NACE / OKEČ hodnoty pro `c_okec`. XSD vyžaduje 6-digit number
-     * (totalDigits=6). Hodnoty z UI mohou být "62.09", "62.0900", "629000" apod.
-     *   - Strip non-digit znaků
-     *   - Pad zprava nulami na 6 znaků
-     * Validitu hodnoty proti číselníku MFČR (https://mojedane.gov.cz/pmd/dokumentace/ciselniky/ukazka/okec)
-     * zde NEKONTROLUJEME — uživatel zná svou klasifikaci, my jen formátujeme.
-     */
-    /**
      * Normalizace telefonu pro EPO `c_telef` / `sest_telef`:
      *   - odstraní `+420` / `00420` prefix
      *   - odstraní mezery, pomlčky, závorky
@@ -124,12 +116,24 @@ final class EpoSupplierBlockBuilder
         return $s;
     }
 
+    /**
+     * Normalizace CZ-NACE / OKEČ hodnoty pro `c_okec`. Hodnoty z UI mohou být
+     * "62.02", "62020", "620200" apod. → strip non-digit znaků, ořež na max 6.
+     *
+     * NEPADUJEME zprava nulami: CZ-NACE číselník EPO je proměnné šířky — většina
+     * položek je 5-místná (`62020`), jen pár odvětví má 6-místné podtřídy
+     * (`010111`). XSD `totalDigits=6` je MAXIMUM, ne fixní délka; skutečný výčet
+     * hodnot žije v externím číselníku MFČR
+     * (https://adisspr.mfcr.cz/pmd/dokumentace/ciselniky/). Pravostranné doplnění
+     * 5-místného kódu nulou ("62020" → "620200") vyrobí hodnotu mimo číselník
+     * a EPO podání odmítne ("hodnota musí být z číselníku"). Validitu proti
+     * číselníku zde NEKONTROLUJEME — uživatel zná svou klasifikaci.
+     */
     public static function normalizeOkec(string $raw): ?string
     {
         $digits = preg_replace('/\D/', '', $raw) ?? '';
         if ($digits === '') return null;
         if (strlen($digits) > 6) $digits = substr($digits, 0, 6);
-        if (strlen($digits) < 6) $digits = str_pad($digits, 6, '0', STR_PAD_RIGHT);
         return $digits;
     }
 }
