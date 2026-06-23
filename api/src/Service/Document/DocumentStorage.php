@@ -15,7 +15,8 @@ use MyInvoice\Repository\DocumentRepository;
  *  - na disku JEN hash → žádný uživatelský vstup v cestě, exaktní dedup +
  *    korektní dedup-aware mazání; původní název žije v DB (original_name),
  *  - sanitizace názvu (sanitizeFilename) se používá pro zobrazení/ZIP entries,
- *  - MIME z obsahu (finfo), whitelist přípon + blocklist nebezpečných MIME,
+ *  - MIME z obsahu (finfo), blocklist nebezpečných přípon + MIME (jinak vše projde
+ *    jako doc_type 'other' — sekce Dokumenty je obecné úložiště, ne jen faktury),
  *  - path-traversal guard (cílová cesta musí ležet uvnitř sup-{id} kořene).
  *
  * Náhledy (thumbnaily) leží v storage/documents/sup-{id}/_thumbs/{sha8}.webp.
@@ -26,7 +27,12 @@ final class DocumentStorage
     private const ABSOLUTE_MAX_BYTES = 500 * 1024 * 1024;
     private const DEFAULT_MAX_BYTES   = 50 * 1024 * 1024;
 
-    /** Povolené přípony → typ dokumentu (enum documents.doc_type). */
+    /**
+     * Známé přípony → konkrétní typ dokumentu (enum documents.doc_type). NENÍ to
+     * whitelist — cokoliv, co tu není a není v DANGEROUS_EXT, se uloží jako 'other'
+     * (např. bankovní výpisy .gpc/.abo, .json, .log, …). Sekce Dokumenty je obecné
+     * úložiště, ne jen na faktury.
+     */
     private const EXT_TO_TYPE = [
         'pdf'  => 'pdf',
         'doc'  => 'docx', 'docx' => 'docx', 'rtf' => 'other', 'odt' => 'other',
@@ -40,6 +46,25 @@ final class DocumentStorage
         'jpg'  => 'image', 'jpeg' => 'image', 'png' => 'image', 'gif' => 'image',
         'webp' => 'image', 'heic' => 'image', 'heif' => 'image', 'bmp' => 'image',
         'tif'  => 'image', 'tiff' => 'image',
+    ];
+
+    /**
+     * Nebezpečné přípony, které nikdy nepřijmeme (spustitelné soubory a skripty).
+     * Blocklist — úložiště je obecné, ale spustitelný kód do něj nepatří. Servírování
+     * je sice vždy `attachment` + `nosniff` (DocumentFileAction), tohle je obrana navíc.
+     */
+    private const DANGEROUS_EXT = [
+        // Windows spustitelné / instalační
+        'exe', 'msi', 'msix', 'msp', 'com', 'scr', 'pif', 'cpl', 'dll', 'sys', 'drv',
+        'bat', 'cmd', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'hta', 'lnk', 'scf',
+        'reg', 'inf', 'msc', 'gadget', 'ps1', 'psm1', 'psd1',
+        // Unix / macOS spustitelné
+        'sh', 'bash', 'zsh', 'csh', 'ksh', 'app', 'command',
+        'deb', 'rpm', 'dmg', 'pkg', 'apk',
+        // Serverové skripty (i kdyby se úložiště omylem servírovalo přes interpreter)
+        'php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'phps', 'pht', 'phar',
+        'asp', 'aspx', 'jsp', 'jspx', 'cgi', 'pl', 'pm', 'py', 'pyc', 'pyo',
+        'rb', 'jar', 'htaccess',
     ];
 
     /** MIME, které nikdy nepřijmeme (i kdyby přípona vypadala neškodně). */
@@ -83,8 +108,9 @@ final class DocumentStorage
     }
 
     /**
-     * Klasifikuje příponu+MIME na doc_type, nebo vyhodí DocumentException, pokud
-     * je formát nepovolený / nebezpečný.
+     * Klasifikuje příponu+MIME na doc_type. Blacklist přístup: nebezpečné přípony
+     * a MIME odmítne (DocumentException), vše ostatní projde — známé přípony dostanou
+     * konkrétní typ, zbytek 'other'.
      */
     public function classify(string $ext, string $detectedMime): string
     {
@@ -94,11 +120,11 @@ final class DocumentStorage
         if (in_array($mime, self::DANGEROUS_MIME, true)) {
             throw new DocumentException('unsupported_type', 'Tento typ souboru není povolen.', 415);
         }
-        if (!isset(self::EXT_TO_TYPE[$ext])) {
-            throw new DocumentException('unsupported_type',
-                'Nepodporovaná přípona souboru (.' . $ext . ').', 415);
+        if (in_array($ext, self::DANGEROUS_EXT, true)) {
+            throw new DocumentException('executable_blocked',
+                'Spustitelné soubory nelze nahrát (.' . $ext . ').', 415);
         }
-        return self::EXT_TO_TYPE[$ext];
+        return self::EXT_TO_TYPE[$ext] ?? 'other';
     }
 
     /**

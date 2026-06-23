@@ -72,6 +72,21 @@
     "limit_info": "Max na soubor: {mb} MiB · velké soubory a složky se nahrávají na pozadí",
     "php_limit_note": "Limit serveru (PHP) na jeden požadavek: {mb} MiB — větší se nahrávají po částech.",
     "upload_job_started": "Nahrávání běží na pozadí (viz panel úloh)",
+    "upload_skipped_one": "1 soubor se nenahrál:",
+    "upload_skipped_many": "{n} souborů se nenahrálo:",
+    "upload_skipped_more": "…a další {n}",
+    "job_done_skipped": "Úloha dokončena — nahráno {created}, nenahráno {skipped}",
+    "skip_reason": {
+      "unsupported_type": "nepodporovaný typ",
+      "executable_blocked": "spustitelný soubor",
+      "file_too_large": "příliš velký",
+      "empty_file": "prázdný soubor",
+      "no_filename": "chybí název",
+      "move_failed": "chyba uložení",
+      "ingest_failed": "chyba zpracování",
+      "store_failed": "chyba zápisu",
+      "unknown": "nenahráno"
+    },
     "search_no_results": "Nic nenalezeno",
     "search_hint": "Zadej alespoň 2 znaky",
     "dms": {

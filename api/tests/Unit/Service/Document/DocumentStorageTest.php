@@ -96,10 +96,28 @@ final class DocumentStorageTest extends TestCase
         $this->storage()->classify('svg', 'image/svg+xml');
     }
 
-    public function testClassifyRejectsUnknownExtension(): void
+    public function testClassifyUnknownExtensionBecomesOther(): void
     {
+        // Blacklist přístup: neznámá, ale neškodná přípona projde jako 'other'
+        // (např. bankovní výpisy .gpc/.abo, .json, .log…).
+        $s = $this->storage();
+        self::assertSame('other', $s->classify('xyz', 'application/octet-stream'));
+        self::assertSame('other', $s->classify('gpc', 'text/plain'));
+        self::assertSame('other', $s->classify('abo', 'text/plain'));
+    }
+
+    public function testClassifyRejectsExecutableByExtensionAlone(): void
+    {
+        // I s neškodným detekovaným MIME musí spustitelná přípona spadnout (blocklist přípon).
+        $s = $this->storage();
+        try {
+            $s->classify('exe', 'application/octet-stream');
+            self::fail('exe měl být odmítnut');
+        } catch (DocumentException $e) {
+            self::assertSame('executable_blocked', $e->errorCode);
+        }
         $this->expectException(DocumentException::class);
-        $this->storage()->classify('xyz', 'application/octet-stream');
+        $s->classify('bat', 'text/plain');
     }
 
     public function testClassifyRejectsPhp(): void

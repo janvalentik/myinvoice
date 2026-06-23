@@ -72,6 +72,21 @@
     "limit_info": "Max per file: {mb} MiB · large files and folders upload in the background",
     "php_limit_note": "Server (PHP) per-request limit: {mb} MiB — larger uploads are sent in chunks.",
     "upload_job_started": "Upload is running in the background (see jobs panel)",
+    "upload_skipped_one": "1 file was not uploaded:",
+    "upload_skipped_many": "{n} files were not uploaded:",
+    "upload_skipped_more": "…and {n} more",
+    "job_done_skipped": "Job finished — {created} uploaded, {skipped} skipped",
+    "skip_reason": {
+      "unsupported_type": "unsupported type",
+      "executable_blocked": "executable file",
+      "file_too_large": "too large",
+      "empty_file": "empty file",
+      "no_filename": "missing name",
+      "move_failed": "save error",
+      "ingest_failed": "processing error",
+      "store_failed": "write error",
+      "unknown": "not uploaded"
+    },
     "search_no_results": "Nothing found",
     "search_hint": "Type at least 2 characters",
     "dms": {
