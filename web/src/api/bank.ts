@@ -2,6 +2,8 @@ import { api } from './client'
 
 export interface BankStatement {
   id: number
+  /** Zdroj výpisu: 'gpc' = nahraný/importovaný výpis, 'email_notice' = měsíční agregát e-mailových avíz. */
+  source?: 'gpc' | 'email_notice'
   file_name: string
   account_number: string
   /** Vlastní pojmenování účtu z currencies.label (např. "CZK — Fio Bank"), pokud match. */
@@ -25,6 +27,8 @@ export type MatchStatus = 'unmatched' | 'auto_exact' | 'auto_partial' | 'manual'
 
 export interface BankTransaction {
   id: number
+  /** 'statement' = z nahraného výpisu, 'email_notice' = z e-mailového avíza. */
+  source?: 'statement' | 'email_notice'
   statement_id: number
   posted_at: string
   amount: number

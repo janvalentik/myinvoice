@@ -64,7 +64,7 @@ final class CreditasBankEmailNoticeParser extends AbstractBankEmailNoticeParser
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        if (!SenderDomain::matches($message->sender, 'creditas.cz')) {
+        if (!$this->senderMatchesDomain($message, 'creditas.cz')) {
             return false;
         }
 

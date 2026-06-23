@@ -129,6 +129,8 @@ export interface BankEmailImapSettings {
   encryption: 'ssl' | 'tls' | 'none'
   validate_cert: boolean
   require_email_auth: boolean
+  allow_forwarded: boolean
+  forwarded_from: string | null
   email_auth_serv_id: string | null
   username: string
   folder: string

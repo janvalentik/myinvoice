@@ -40,7 +40,7 @@ final class RaiffeisenbankEmailNoticeParser extends AbstractBankEmailNoticeParse
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        if (!SenderDomain::matches($message->sender, 'rb.cz')) {
+        if (!$this->senderMatchesDomain($message, 'rb.cz')) {
             return false;
         }
         $subject = mb_strtolower($message->subject);

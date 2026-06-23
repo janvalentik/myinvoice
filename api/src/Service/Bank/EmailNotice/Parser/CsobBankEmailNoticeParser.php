@@ -40,7 +40,7 @@ final class CsobBankEmailNoticeParser extends AbstractBankEmailNoticeParser
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        if (!SenderDomain::matches($message->sender, 'csob.cz')) {
+        if (!$this->senderMatchesDomain($message, 'csob.cz')) {
             return false;
         }
 

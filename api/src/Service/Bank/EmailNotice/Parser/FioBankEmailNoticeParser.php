@@ -57,7 +57,7 @@ final class FioBankEmailNoticeParser extends AbstractBankEmailNoticeParser
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        if (!SenderDomain::matches($message->sender, 'fio.cz')) {
+        if (!$this->senderMatchesDomain($message, 'fio.cz')) {
             return false;
         }
 

@@ -5,6 +5,21 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.38.0] — 2026-06-23
+
+### Added
+
+- **Bankovní e-mailová avíza: podpora přeposlaných (FW) zpráv (#161).** Avíza se dají do sběrné schránky **přeposílat** (typicky z firemní pošty), aniž by je systém odmítl hláškou „Pro e-mail nebyl nalezen žádný aktivní parser provider". U přímého avíza poznává banku podle odesílatele, jenže přeposláním se odesílatelem stáváš ty — proto u IMAP účtu přibyla volba **Přijímat přeposlaná (FW) avíza** (ve výchozím stavu vypnutá), která banku rozpozná i z těla e-mailu. Volitelné pole **E-mail přeposílatele** omezí, od koho smí přeposlaná avíza chodit (adresa nebo doména). Funguje pro všechny vestavěné banky (Raiffeisenbank, UniCredit, ČSOB, Fio, Banka CREDITAS) i pro Českou spořitelnu a vlastní regex providery. Migrace 0116 a 0117.
+  - Bezpečnostní poznámka: přeposláním zaniká původní podpis banky (DKIM), takže případné ověření autenticity se vztahuje na přeposílatele, ne na banku; ochranu drží i nadále struktura avíza a povinné mapování cílového účtu na bankovní účet dodavatele.
+
+### Fixed
+
+- **Bankovní avíza: opakované zpracování téhož avíza už nezaloží duplicitní transakci.** Pokud byl u avíza smazán záznam zpracované zprávy a schránka se znovu naskenovala, vznikla pro tutéž platbu další bankovní transakce. Nově se transakce z avíza zakládá idempotentně (podle identifikátoru zdrojové zprávy), takže opakovaný sken už jen znovu vyhodnotí spárování. Bez DB migrace.
+
+### Changed
+
+- **E-mailová avíza jsou v přehledu výpisů odlišena.** Měsíční souhrn avíz nese v seznamu i v detailu nenápadný štítek **„Avíza"** a místo konkrétního data (avíza se sbírají za celý měsíc) zobrazuje **název měsíce**. V detailu se u avíz navíc skryjí boxy se zůstatky a celkovými obraty — měsíční souhrn avíz na rozdíl od nahraného výpisu průběžný zůstatek účtu nenese. Bez DB migrace.
+
 ## [4.37.7] — 2026-06-23
 
 ### Fixed

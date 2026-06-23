@@ -91,6 +91,8 @@ final class BankEmailNoticeRepository
             'encryption' => in_array($body['encryption'] ?? 'ssl', ['ssl', 'tls', 'none'], true) ? (string) $body['encryption'] : 'ssl',
             'validate_cert' => array_key_exists('validate_cert', $body) ? (int) (bool) $body['validate_cert'] : 1,
             'require_email_auth' => !empty($body['require_email_auth']) ? 1 : 0,
+            'allow_forwarded' => !empty($body['allow_forwarded']) ? 1 : 0,
+            'forwarded_from' => $this->nullable($body['forwarded_from'] ?? null),
             'email_auth_serv_id' => $this->nullable($body['email_auth_serv_id'] ?? null),
             'username' => trim((string) ($body['username'] ?? '')),
             'password_enc' => $passwordEnc,
@@ -112,6 +114,7 @@ final class BankEmailNoticeRepository
             $sql = 'UPDATE bank_email_imap_settings
                        SET name = :name, enabled = :enabled, host = :host, port = :port, encryption = :encryption,
                            validate_cert = :validate_cert, require_email_auth = :require_email_auth,
+                           allow_forwarded = :allow_forwarded, forwarded_from = :forwarded_from,
                            email_auth_serv_id = :email_auth_serv_id, username = :username, password_enc = :password_enc,
                            folder = :folder, max_messages_per_run = :max_messages_per_run,
                            process_from_date = :process_from_date, success_action = :success_action,
@@ -125,12 +128,12 @@ final class BankEmailNoticeRepository
         }
 
         $sql = 'INSERT INTO bank_email_imap_settings
-                  (supplier_id, name, enabled, host, port, encryption, validate_cert, require_email_auth, email_auth_serv_id,
+                  (supplier_id, name, enabled, host, port, encryption, validate_cert, require_email_auth, allow_forwarded, forwarded_from, email_auth_serv_id,
                    username, password_enc, folder,
                    max_messages_per_run, process_from_date, success_action, success_flag, success_move_folder,
                    failure_action, failure_flag, failure_move_folder, retry_failed, max_attempts)
                 VALUES
-                  (:supplier_id, :name, :enabled, :host, :port, :encryption, :validate_cert, :require_email_auth, :email_auth_serv_id,
+                  (:supplier_id, :name, :enabled, :host, :port, :encryption, :validate_cert, :require_email_auth, :allow_forwarded, :forwarded_from, :email_auth_serv_id,
                    :username, :password_enc, :folder,
                    :max_messages_per_run, :process_from_date, :success_action, :success_flag, :success_move_folder,
                    :failure_action, :failure_flag, :failure_move_folder, :retry_failed, :max_attempts)';
@@ -517,6 +520,24 @@ final class BankEmailNoticeRepository
             }
         }
 
+        // Idempotence (#161): re-scan téhož avíza (typicky po smazání processed-message
+        // záznamu přes „Smazat záznam", což odstraní dedup na úrovni zprávy) nesmí založit
+        // druhou transakci. source_ref nese message_id (nebo fallback hash) → je per-avízo
+        // stabilní. Najdeme-li existující, jen re-matchujeme a vrátíme ji.
+        $dupStmt = $pdo->prepare(
+            "SELECT id, statement_id FROM bank_transactions WHERE source = 'email_notice' AND source_ref = ? LIMIT 1"
+        );
+        $dupStmt->execute([$sourceRef]);
+        $existing = $dupStmt->fetch(\PDO::FETCH_ASSOC);
+        if ($existing !== false) {
+            $transactionId = (int) $existing['id'];
+            return [
+                'statement_id' => (int) $existing['statement_id'],
+                'transaction_id' => $transactionId,
+                'match_result' => $matcher->match($transactionId),
+            ];
+        }
+
         $pdo->prepare(
             'INSERT INTO bank_transactions
                 (source, source_ref, statement_id, posted_at, amount, currency, variable_symbol, constant_symbol,
@@ -586,6 +607,8 @@ final class BankEmailNoticeRepository
             'encryption' => 'ssl',
             'validate_cert' => true,
             'require_email_auth' => false,
+            'allow_forwarded' => false,
+            'forwarded_from' => null,
             'email_auth_serv_id' => null,
             'username' => '',
             'folder' => 'INBOX',
@@ -640,6 +663,7 @@ final class BankEmailNoticeRepository
         $row['port'] = (int) $row['port'];
         $row['validate_cert'] = (bool) $row['validate_cert'];
         $row['require_email_auth'] = (bool) ($row['require_email_auth'] ?? false);
+        $row['allow_forwarded'] = (bool) ($row['allow_forwarded'] ?? false);
         $row['max_messages_per_run'] = (int) $row['max_messages_per_run'];
         $row['retry_failed'] = (bool) $row['retry_failed'];
         $row['max_attempts'] = (int) $row['max_attempts'];

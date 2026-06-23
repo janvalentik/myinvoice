@@ -193,7 +193,7 @@ final class BankStatementAction
         // account_label: vlastní pojmenování účtu z currencies.label (např. "CZK — Fio Bank")
         // přes scalar subselect (LIMIT 1 — sup. může mít jen 1 záznam per account_number+bank_code).
         $stmt = $this->db->pdo()->prepare(
-            "SELECT bs.id, bs.file_name, bs.account_number, bs.currency, bs.statement_date, bs.statement_number,
+            "SELECT bs.id, bs.source, bs.file_name, bs.account_number, bs.currency, bs.statement_date, bs.statement_number,
                     bs.prev_balance, bs.curr_balance, bs.transaction_count, bs.matched_count, bs.imported_at,
                     (bs.file_content IS NOT NULL) AS has_file,
                     (bs.pdf_content IS NOT NULL) AS has_pdf, bs.pdf_name,
@@ -512,7 +512,7 @@ final class BankStatementAction
         // se to dostane do json_encode. Místo toho exposujeme jen `has_file` flag,
         // bajty se stahují přes /download endpoint.
         $stmt = $this->db->pdo()->prepare(
-            "SELECT bs.id, bs.file_name, bs.file_hash, bs.account_number, bs.bank_code,
+            "SELECT bs.id, bs.source, bs.file_name, bs.file_hash, bs.account_number, bs.bank_code,
                     bs.currency, bs.statement_number, bs.statement_date,
                     bs.prev_balance, bs.curr_balance, bs.credit_total, bs.debit_total,
                     bs.transaction_count, bs.matched_count,

@@ -104,6 +104,8 @@ function defaultImapDraft(): Partial<BankEmailImapSettings> & { password?: strin
     encryption: 'ssl',
     validate_cert: true,
     require_email_auth: false,
+    allow_forwarded: false,
+    forwarded_from: '',
     email_auth_serv_id: '',
     username: '',
     password: '',
@@ -963,6 +965,21 @@ async function deleteMessage(m: BankEmailProcessedMessage) {
               <input v-model="imapDraft.email_auth_serv_id" type="text" placeholder="mx.mojefirma.cz"
                 class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
               <p class="text-xs text-neutral-500 mt-1">{{ t('bank_accounts.email_auth_serv_id_hint') }}</p>
+            </div>
+            <div class="md:col-span-3 grid md:grid-cols-2 gap-4 mt-7 items-start">
+              <label class="flex items-start gap-2 text-sm">
+                <input v-model="imapDraft.allow_forwarded" type="checkbox" class="mt-0.5 rounded border-neutral-300 text-primary-600" />
+                <span>
+                  {{ t('bank_accounts.allow_forwarded') }}
+                  <span class="block text-xs text-neutral-500">{{ t('bank_accounts.allow_forwarded_hint') }}</span>
+                </span>
+              </label>
+              <div v-if="imapDraft.allow_forwarded">
+                <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.forwarded_from') }}</label>
+                <input v-model="imapDraft.forwarded_from" type="text" placeholder="jan@firma.cz"
+                  class="w-full h-10 px-3 bg-surface border border-neutral-300 rounded-md text-sm font-mono" />
+                <p class="text-xs text-neutral-500 mt-1">{{ t('bank_accounts.forwarded_from_hint') }}</p>
+              </div>
             </div>
             <div>
               <label class="block text-sm font-medium text-neutral-700 mb-1">{{ t('bank_accounts.on_success') }}</label>

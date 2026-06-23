@@ -39,6 +39,8 @@ final class WebklexImapMailboxClient implements ImapMailboxClientInterface
                     text: $this->normalizer->normalize($body),
                     raw: $rawBody,
                     authResults: $this->authenticationResults($message),
+                    allowForwarded: (bool) ($settings['allow_forwarded'] ?? false),
+                    forwardedFrom: trim((string) ($settings['forwarded_from'] ?? '')),
                 );
             }
             return $out;

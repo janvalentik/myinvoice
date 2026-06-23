@@ -9,6 +9,10 @@ final class BankEmailNoticeMessage
     /**
      * @param list<string> $authResults Hodnoty hlaviček Authentication-Results shora dolů
      *                                   (nejnovější hop = přijímací server = index 0).
+     * @param bool $allowForwarded Schránka přijímá přeposlaná (FW) avíza — povolí
+     *                             detekci banky z těla, když `From` nesedí (opt-in per účet).
+     * @param string $forwardedFrom Volitelný whitelist přeposílatele (adresa nebo doména);
+     *                              prázdný = libovolný. Uplatní se jen v přeposlané větvi.
      */
     public function __construct(
         public readonly ?int $uid,
@@ -19,6 +23,8 @@ final class BankEmailNoticeMessage
         public readonly string $text,
         public readonly string $raw,
         public readonly array $authResults = [],
+        public readonly bool $allowForwarded = false,
+        public readonly string $forwardedFrom = '',
     ) {}
 
     public function fallbackHash(): string

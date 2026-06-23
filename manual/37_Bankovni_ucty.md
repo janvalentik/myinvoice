@@ -56,7 +56,16 @@ Každý dodavatel může mít více IMAP účtů, typicky jeden pro každou bank
 | Procházet | Ověří připojení a nabídne složky ze serveru |
 | Max. zpráv na běh | Kolik nejnovějších e-mailů cron načte při jednom běhu |
 | Zpracovat od data | Starší e-maily se ignorují i když spadnou do limitu |
+| Přijímat přeposlaná (FW) avíza | Rozpozná banku i z těla e-mailu, když avíza chodí do schránky přeposlaná (odesílatel je tvoje adresa, ne banka) |
+| E-mail přeposílatele | Volitelné omezení, od koho smí přeposlaná avíza chodit — adresa (`jan@firma.cz`) nebo doména (`firma.cz`); prázdné = libovolný |
 | Po úspěchu | Co udělat se zpracovanou zprávou |
+
+Pokud do schránky chodí avíza **přeposlaná** (např. z firemní schránky na sběrnou
+adresu), zapni **Přijímat přeposlaná (FW) avíza**. U přímého avíza poznává banku
+podle odesílatele, ale přeposláním se odesílatelem stáváš ty — proto se pak banka
+hledá i z těla e-mailu. Volitelně omez **E-mail přeposílatele**, ať se zpracují
+jen avíza od tvé adresy. Přeposláním zaniká původní podpis banky (DKIM), takže
+ověření autenticity se vztahuje na přeposílatele, ne na banku.
 
 Polling zprávy standardně **neoznačuje jako přečtené**. Systém si úspěšně
 zpracované e-maily pamatuje v databázi podle `Message-ID` / UID / fallback

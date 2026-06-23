@@ -223,6 +223,8 @@ final class BankEmailNoticeAction
             subject: trim((string) ($body['subject'] ?? 'Pohyb na účtě')),
             text: (string) ($body['text'] ?? ''),
             raw: (string) ($body['text'] ?? ''),
+            allowForwarded: !empty($body['allow_forwarded']),
+            forwardedFrom: trim((string) ($body['forwarded_from'] ?? '')),
         );
         $preferredRef = !empty($body['provider_ref']) ? (string) $body['provider_ref'] : null;
         try {

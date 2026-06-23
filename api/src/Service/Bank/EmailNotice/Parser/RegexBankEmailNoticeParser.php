@@ -26,7 +26,7 @@ final class RegexBankEmailNoticeParser extends AbstractBankEmailNoticeParser
 
     public function supports(BankEmailNoticeMessage $message, BankEmailNoticeProvider $provider): bool
     {
-        if (!$this->senderAllowed($message->sender, (string) ($provider->senderWhitelist ?? ''))) {
+        if (!$this->senderAllowedForwarded($message, (string) ($provider->senderWhitelist ?? ''))) {
             return false;
         }
         $subjectPattern = trim((string) ($provider->subjectPattern ?? ''));

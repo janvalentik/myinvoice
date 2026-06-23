@@ -12,10 +12,17 @@ import ClientFormModal from '@/components/modals/ClientFormModal.vue'
 import type { Client } from '@/api/clients'
 import { useAuthStore } from '@/stores/auth'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const toast = useToast()
 const router = useRouter()
 const auth = useAuthStore()
+
+// E-mailová avíza jsou měsíční agregát (statement_date = 1. den měsíce) → název měsíce.
+function monthLabel(dateStr: string): string {
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  return d.toLocaleDateString(locale.value === 'en' ? 'en-US' : 'cs-CZ', { month: 'long', year: 'numeric' })
+}
 
 const route = useRoute()
 const statement = ref<BankStatementDetail | null>(null)
@@ -207,8 +214,14 @@ async function rematchStatement() {
 
   <div v-else-if="statement">
     <RouterLink to="/bank" class="text-sm text-neutral-600 hover:text-neutral-900">{{ t('bank.back') }}</RouterLink>
-    <h1 class="text-2xl font-semibold mt-1">
-      {{ t('bank.statement_title', { number: statement.statement_number, date: formatDate(statement.statement_date) }) }}
+    <h1 class="text-2xl font-semibold mt-1 flex items-center gap-2 flex-wrap">
+      <span v-if="statement.source === 'email_notice'" :title="t('bank.email_notice_hint')"
+        class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-neutral-100 text-neutral-500 font-medium">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        {{ t('bank.email_notice_badge') }}
+      </span>
+      <span v-if="statement.source === 'email_notice'">{{ t('bank.email_notice_statement_title', { month: monthLabel(statement.statement_date) }) }}</span>
+      <span v-else>{{ t('bank.statement_title', { number: statement.statement_number, date: formatDate(statement.statement_date) }) }}</span>
     </h1>
     <p class="text-sm text-neutral-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
       <span>{{ t('bank.account') }}<span class="font-mono">{{ statement.account_number }}</span></span>
@@ -217,7 +230,9 @@ async function rematchStatement() {
       <span>· {{ statement.file_name }}</span>
     </p>
 
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 mb-4">
+    <!-- Zůstatky a celky nese jen nahraný výpis (GPC); e-mailová avíza jsou měsíční
+         souhrn jednotlivých plateb bez průběžného zůstatku → boxy by byly prázdné. -->
+    <div v-if="statement.source !== 'email_notice'" class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 mb-4">
       <div class="bg-surface border border-neutral-200 rounded-lg p-4 shadow-sm">
         <div class="text-xs text-neutral-500 uppercase">{{ t('bank.prev_balance') }}</div>
         <div class="text-lg font-mono">{{ formatMoney(statement.prev_balance, statement.currency ?? 'CZK') }}</div>

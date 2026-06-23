@@ -133,6 +133,81 @@ TEXT;
         self::assertFalse($parser->supports($message, $this->provider($parser)));
     }
 
+    public function testRejectsForwardedNoticeWhenForwardingNotAllowed(): void
+    {
+        $parser = new CreditasBankEmailNoticeParser();
+        self::assertFalse($parser->supports($this->forwardedMessage(false), $this->provider($parser)));
+    }
+
+    public function testSupportsForwardedNoticeWhenForwardingAllowed(): void
+    {
+        $parser = new CreditasBankEmailNoticeParser();
+        $message = $this->forwardedMessage(true);
+        $provider = $this->provider($parser);
+
+        self::assertTrue($parser->supports($message, $provider));
+
+        $parsed = $parser->parse($message, $provider);
+        self::assertSame('123456', $parsed->variableSymbol);
+        self::assertSame(1000.0, $parsed->amount);
+        self::assertSame('1000000005/2250', $parsed->recipientAccount);
+        self::assertSame('Příchozí úhrada', $parsed->message);
+    }
+
+    public function testForwarderWhitelistAcceptsMatchingSenderAndDomain(): void
+    {
+        $parser = new CreditasBankEmailNoticeParser();
+        $provider = $this->provider($parser);
+
+        self::assertTrue($parser->supports($this->forwardedMessage(true, 'jan.novak@example.com'), $provider), 'exact address');
+        self::assertTrue($parser->supports($this->forwardedMessage(true, 'example.com'), $provider), 'domain');
+    }
+
+    public function testForwarderWhitelistRejectsForeignSender(): void
+    {
+        $parser = new CreditasBankEmailNoticeParser();
+        $provider = $this->provider($parser);
+
+        self::assertFalse($parser->supports($this->forwardedMessage(true, 'someone@evil.com'), $provider), 'foreign address');
+        self::assertFalse($parser->supports($this->forwardedMessage(true, 'evil.com'), $provider), 'foreign domain');
+    }
+
+    /**
+     * Přeposlané (FW) avízo: odesílatel je adresa uživatele, ne banky; banku
+     * prozradí jen patička v těle. Outlook do textové části nevkládá přeposlaný
+     * `From:` blok, proto se banka pozná z adresy info@creditas.cz v patičce.
+     */
+    private function forwardedMessage(bool $allowForwarded, string $forwardedFrom = ''): BankEmailNoticeMessage
+    {
+        $body = <<<TEXT
+Hezký den,
+
+zůstatek na účtu 1000000005/2250 se zvýšil o částku 1 000,00 CZK (Příchozí úhrada). Disponibilní zůstatek 23.06.2026 18:43 je 97 163,53 CZK.
+
+Detail platby:
+- změna na účtu: 1000000005/2250
+- účet protistrany: 1900000007 - banka protistrany: 0800 - datum: 23.06.2026 18:43
+- částka: 1 000,00 CZK
+- VS: 123456 - disponibilní zůstatek: 97 163,53 CZK
+
+Pokud se chcete na cokoli zeptat, napište na e-mail info@creditas.cz.
+Vaše Banka CREDITAS
+TEXT;
+
+        return new BankEmailNoticeMessage(
+            uid: 1,
+            messageId: '<forwarded-sample@example.com>',
+            date: new \DateTimeImmutable('2026-06-23 18:43:00'),
+            sender: 'Jan Novák <jan.novak@example.com>',
+            subject: 'FW: Notifikace o změně na účtu',
+            text: $body,
+            raw: $body,
+            authResults: [],
+            allowForwarded: $allowForwarded,
+            forwardedFrom: $forwardedFrom,
+        );
+    }
+
     private function message(string $body, string $subject): BankEmailNoticeMessage
     {
         return new BankEmailNoticeMessage(
