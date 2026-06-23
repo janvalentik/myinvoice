@@ -5,6 +5,17 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.40.0] — 2026-06-23
+
+### Added
+
+- **Odebrání ukázkových (sample) dat (#162).** Ukázková data, která si necháš vygenerovat při instalaci, šlo dosud odstranit jen úplným resetem celé databáze. Nově v **Systém → Nastavení** přibyla sekce **Ukázková data** s tlačítkem *Odebrat ukázková data* — smaže přesně vygenerovanou sadu (klienti, dodavatelé, zakázky, vydané i přijaté faktury, dobropisy, pravidelné fakturace, kniha jízd) a tvoje vlastní záznamy nechá být. Sekce se zobrazí jen tehdy, když nějaká ukázková data v systému jsou. Funguje díky tomu, že generátor si nově každou vytvořenou položku eviduje (migrace 0118), takže ji lze později odebrat na milimetr přesně. Endpoint je admin-only.
+- **`reset.php --keep-users-supplier`.** Nový přepínač CLI resetu smaže jen byznys data (klienti, doklady, banka, dokumenty, kniha jízd, pravidelné fakturace, importy, daňová podání), ale **ponechá uživatele, dodavatele a jeho konfiguraci** (měny, číslování dokladů, podepisování PDF, e-mail/banka nastavení, číselníky). Hodí se pro „start načisto" bez nutnosti znovu procházet setup, i pro úklid starších ukázkových dat, která vznikla ještě bez evidence.
+
+### Fixed
+
+- **`bin/sample.php` už nejde spustit nad databází s daty.** Generátor ukázkových dat (CLI) dosud neměl ochranu, kterou má průvodce instalací — druhé spuštění proto naduplikovalo klienty a doklady a skončilo chybou na duplicitní SPZ vozidla, přičemž v databázi zůstala polovičatě vložená data. Nově generátor odmítne běh, pokud pro dodavatele už nějací klienti nebo doklady existují, a celé generování běží v jedné transakci — při jakékoli chybě se tedy nezapíše vůbec nic. Bez DB migrace pro samotnou opravu (evidence sample dat přidává migrace 0118).
+
 ## [4.39.0] — 2026-06-23
 
 ### Added

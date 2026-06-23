@@ -174,6 +174,18 @@ export const adminApi = {
   cronJobs: () => api.get<CronJobsResponse>('/admin/cron-jobs').then(r => r.data),
   runCronJob: (script: string) =>
     api.post<{ script: string; started: boolean }>(`/admin/cron-jobs/${encodeURIComponent(script)}/run`).then(r => r.data),
+
+  // Ukázková (sample) data — stav + odebrání (issue #162)
+  sampleDataStatus: () =>
+    api.get<SampleDataStatus>('/maintenance/sample-data').then(r => r.data),
+  deleteSampleData: () =>
+    api.delete<{ deleted: Record<string, number> }>('/maintenance/sample-data').then(r => r.data),
+}
+
+export interface SampleDataStatus {
+  has: boolean
+  total: number
+  counts: Partial<Record<'client' | 'vendor' | 'project' | 'invoice' | 'credit_note' | 'purchase_invoice' | 'recurring_template' | 'car', number>>
 }
 
 export type CronJobHealth = 'ok' | 'overdue' | 'failing' | 'overdue_and_failing' | 'never_ran'

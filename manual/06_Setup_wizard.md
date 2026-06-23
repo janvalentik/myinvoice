@@ -63,6 +63,13 @@ Sample data **nejdou doinstalovat zpětně** — pokud teď přeskočíš a pozd
 zjistíš, že je chceš, dostaneš `409 setup_done` (ochrana proti přepsání reálných
 faktur). Reset přes `php api/bin/reset.php` smaže všechno a wizard se objeví znovu.
 
+**Odebrání ukázkových dat.** Jakmile sis sadu vygeneroval a chceš začít načisto
+jen s vlastními daty, najdeš v **Systém → Nastavení** sekci **Ukázková data** s
+tlačítkem *Odebrat ukázková data* — smaže přesně vygenerovanou sadu a tvoje
+vlastní záznamy nechá být. Sekce se zobrazí jen tehdy, když nějaká ukázková data
+existují. Alternativně z příkazové řádky `php api/bin/reset.php --keep-users-supplier`
+smaže všechna byznys data, ale ponechá přihlášení a nastaveného dodavatele.
+
 Klikni **Dokončit**. Wizard tě **automaticky přihlásí** a přesměruje na
 [Přehled (dashboard)](08_Prehled.md).
 

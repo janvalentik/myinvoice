@@ -8,6 +8,8 @@ declare(strict_types=1);
  *   php api/bin/reset.php             # interaktivní potvrzení
  *   php api/bin/reset.php --yes       # bez ptaní
  *   php api/bin/reset.php --yes --keep-cache   # ponechá ARES/VIES cache
+ *   php api/bin/reset.php --keep-users-supplier # ponechá účet(y) + dodavatele + jeho konfiguraci,
+ *                                               # smaže jen byznys data (klienti, doklady, banka…)
  *
  * DYNAMICKÉ mazání: vymaže VŠECHNY tabulky kromě keep-listu (viz níže $keep),
  *       takže nezaostává za schématem — nové tabulky (vč. secretů: IMAP hesla,
@@ -48,6 +50,7 @@ use MyInvoice\Service\Config\CfgLocalWriter;
 $args = array_flip(array_slice($argv, 1));
 $autoYes   = isset($args['--yes']) || isset($args['-y']);
 $keepCache = isset($args['--keep-cache']);
+$keepUsersSupplier = isset($args['--keep-users-supplier']);
 
 $rootDir = Bootstrap::rootDir();
 
@@ -80,8 +83,16 @@ echo "Aktuální stav:\n";
 foreach ($counts as $t => $c) printf("  %-20s %s\n", $t, $c);
 echo "\n";
 
+if ($keepUsersSupplier) {
+    echo "Režim: --keep-users-supplier — ZACHOVÁ uživatele, dodavatele a jeho konfiguraci\n";
+    echo "       (měny, číslování, podepisování, e-mail/banka config, číselníky).\n";
+    echo "       Smaže BYZNYS data: klienti, doklady, banka, dokumenty, kniha jízd, recurring…\n\n";
+}
+
 if (!$autoYes) {
-    echo "POZOR: smaže veškerá data v systému. Pokračovat? (napiš 'ANO'): ";
+    echo $keepUsersSupplier
+        ? "POZOR: smaže všechna byznys data (účet a firma zůstanou). Pokračovat? (napiš 'ANO'): "
+        : "POZOR: smaže veškerá data v systému. Pokračovat? (napiš 'ANO'): ";
     $answer = trim((string) fgets(STDIN));
     if ($answer !== 'ANO') {
         echo "Zrušeno.\n";
@@ -112,6 +123,34 @@ $partial = [
     'vat_classifications'         => 'supplier_id IS NOT NULL',
     'bank_email_notice_providers' => 'supplier_id IS NOT NULL', // ponech globální bankovní providery
 ];
+
+// --keep-users-supplier: zachovej účet(y) + dodavatele + jeho KONFIGURACI (měny, číslování,
+// podepisování, e-mail/banka config, číselníky), smaž jen BYZNYS data (klienti, doklady,
+// banka, dokumenty, kniha jízd, recurring, importy, daňová podání…). „Start fresh" se
+// zachovaným přihlášením a firmou — netřeba znovu setup. Užitečné i pro úklid duplicitních
+// sample dat, která vznikla bez evidence (issue #162).
+if ($keepUsersSupplier) {
+    $keep = array_merge($keep, [
+        // Účet a přihlášení
+        'users', 'sessions', 'trusted_devices', 'login_otps',
+        // Identita dodavatele + měny + číslování dokladů
+        'supplier', 'currencies', 'invoice_counters', 'purchase_invoice_counters', 'app_meta',
+        // API tokeny (PAT)
+        'api_tokens',
+        // Podepisování PDF (konfigurace + klíče)
+        'signing_profiles', 'signing_credentials', 'signing_settings',
+        'signature_role_profiles', 'signature_user_profiles', 'signature_document_overrides',
+        'pdf_signature_output_settings',
+        // E-mail / bankovní avíza (konfigurace, NE zpracované zprávy)
+        'bank_email_imap_settings', 'bank_email_account_mappings', 'email_templates',
+        // Per-supplier číselníky
+        'expense_categories', 'revenue_categories', 'tax_profiles', 'trip_categories',
+    ]);
+    // vat_classifications + bank_email_notice_providers jsou konfigurace → ponech CELÉ.
+    unset($partial['vat_classifications'], $partial['bank_email_notice_providers']);
+    $keep[] = 'vat_classifications';
+    $keep[] = 'bank_email_notice_providers';
+}
 
 $allTables = $pdo->query('SHOW TABLES')->fetchAll(\PDO::FETCH_COLUMN);
 
@@ -167,16 +206,21 @@ foreach ($dirs as $d) {
 }
 
 // Zruš setup-time přepínače v cfg.local.php (jinak by stará hodnota přežila nový setup).
-try {
-    CfgLocalWriter::setKeys(CfgLocalWriter::resolveTargetDir($rootDir), ['auth.require_totp' => false]);
-    echo "\n[reset] cfg.local.php: auth.require_totp = false\n";
-} catch (\Throwable $e) {
-    echo "\n[reset] cfg.local.php: nelze zapsat (" . $e->getMessage() . ") — uprav ručně, pokud potřebuješ.\n";
+// S --keep-users-supplier účet zůstává → NEsahej na auth.require_totp (nesnižuj bezpečnost).
+if (!$keepUsersSupplier) {
+    try {
+        CfgLocalWriter::setKeys(CfgLocalWriter::resolveTargetDir($rootDir), ['auth.require_totp' => false]);
+        echo "\n[reset] cfg.local.php: auth.require_totp = false\n";
+    } catch (\Throwable $e) {
+        echo "\n[reset] cfg.local.php: nelze zapsat (" . $e->getMessage() . ") — uprav ručně, pokud potřebuješ.\n";
+    }
 }
 
 echo "\n================================================\n";
 echo "  HOTOVO. Vymazáno $total tabulek.\n";
-echo "  Spusť `php api/bin/setup.php` pro nové úvodní nastavení.\n";
+echo $keepUsersSupplier
+    ? "  Účet a dodavatel zůstaly zachované — můžeš rovnou zadávat reálná data.\n"
+    : "  Spusť `php api/bin/setup.php` pro nové úvodní nastavení.\n";
 echo "================================================\n";
 
 function wipeDir(string $dir): int

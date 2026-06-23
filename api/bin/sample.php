@@ -52,6 +52,24 @@ if ($adminId === 0 || $supplierId === 0) {
     exit(1);
 }
 
+// Guard: sample data se generují JEN do prázdné DB (stejně jako HTTP setup wizard).
+// Bez něj druhý běh duplikoval klienty/doklady a padal na UNIQUE (cars.registration).
+$guard = $pdo->prepare(
+    'SELECT (SELECT COUNT(*) FROM clients          WHERE supplier_id = ?)
+          + (SELECT COUNT(*) FROM invoices         WHERE supplier_id = ?)
+          + (SELECT COUNT(*) FROM purchase_invoices WHERE supplier_id = ?)'
+);
+$guard->execute([$supplierId, $supplierId, $supplierId]);
+if ((int) $guard->fetchColumn() > 0) {
+    fwrite(STDERR, "[sample] Pro dodavatele #$supplierId už existují klienti nebo doklady —\n");
+    fwrite(STDERR, "         ukázková data lze generovat jen do prázdné DB.\n");
+    fwrite(STDERR, "         Nejdřív je odeber:\n");
+    fwrite(STDERR, "           php api/bin/reset.php --keep-users-supplier   (smaže jen byznys data)\n");
+    fwrite(STDERR, "           php api/bin/reset.php                         (úplný reset)\n");
+    fwrite(STDERR, "         nebo v aplikaci: Nastavení → Odebrat ukázková data.\n");
+    exit(1);
+}
+
 echo "================================================\n";
 echo "  MyInvoice.cz — SAMPLE TEST DATA\n";
 echo "================================================\n";

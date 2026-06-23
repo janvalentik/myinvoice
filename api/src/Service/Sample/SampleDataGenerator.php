@@ -34,6 +34,30 @@ final class SampleDataGenerator
     {
         $pdo = $this->db->pdo();
 
+        // Guard: sample data se generují JEN do prázdné DB. Bez této pojistky
+        // šel `bin/sample.php` spustit i nad existujícími daty → duplicitní klienti/
+        // faktury a pád na UNIQUE (cars.registration). HTTP wizard guard má taky
+        // (SetupSampleAction), tady je sdílená pojistka pro CLI i wizard.
+        $guard = $pdo->prepare(
+            'SELECT (SELECT COUNT(*) FROM clients          WHERE supplier_id = ?)
+                  + (SELECT COUNT(*) FROM invoices         WHERE supplier_id = ?)
+                  + (SELECT COUNT(*) FROM purchase_invoices WHERE supplier_id = ?)'
+        );
+        $guard->execute([$supplierId, $supplierId, $supplierId]);
+        if ((int) $guard->fetchColumn() > 0) {
+            throw new \RuntimeException(
+                'Ukázková data nelze vygenerovat — pro tohoto dodavatele už existují klienti nebo doklady. '
+                . 'Nejdřív je odeberte (Nastavení → Odebrat ukázková data) nebo spusťte `php api/bin/reset.php`.'
+            );
+        }
+
+        // Kořenové entity vytvořené generátorem — na konci se zapíšou do
+        // sample_data_entries, ať je lze později přesně odebrat (issue #162).
+        $tracked = [];
+        $track = static function (string $type, int $id) use (&$tracked): void {
+            if ($id > 0) $tracked[] = [$type, $id];
+        };
+
         $resolveCurrency = function (string $code) use ($pdo, $supplierId): int {
             $stmt = $pdo->prepare(
                 'SELECT id FROM currencies WHERE supplier_id = ? AND code = ? ORDER BY is_default DESC, id ASC LIMIT 1'
@@ -47,6 +71,12 @@ final class SampleDataGenerator
         };
         $czkId = $resolveCurrency('CZK');
         $eurId = $resolveCurrency('EUR');
+
+        // Vše v jedné transakci → při chybě (např. UNIQUE) se nic nezapíše a DB
+        // nezůstane v polovičním stavu. Stats recompute běží AŽ po commitu, protože
+        // StatsRecomputer si otevírá vlastní transakci (vnořené PDO transakce nejdou).
+        $pdo->beginTransaction();
+        try {
 
         // RC flag (index 8) daňově smysluplně: tuzemští klienti BEZ reverse charge
         // (tuzemský RC §92a na IT služby neexistuje), EU klienti s DIČ (SK, DE)
@@ -71,7 +101,9 @@ final class SampleDataGenerator
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
             );
             $stmt->execute([$supplierId, $company, $ic, $dic, $street, $city, $zip, $countryId, $email, $lang, $currencyId, $rc]);
-            $clientIds[] = (int) $pdo->lastInsertId();
+            $cid = (int) $pdo->lastInsertId();
+            $clientIds[] = $cid;
+            $track('client', $cid);
         }
 
         $projects = [
@@ -92,7 +124,9 @@ final class SampleDataGenerator
                  VALUES (?,?,?,?,?,?,?,"active")'
             );
             $stmt->execute([$clientIds[$ci], $name, $due, $projNum, $contractNum, $rate, $currencyId]);
-            $projectIds[] = (int) $pdo->lastInsertId();
+            $projId = (int) $pdo->lastInsertId();
+            $projectIds[] = $projId;
+            $track('project', $projId);
         }
 
         $today  = new \DateTimeImmutable('today');
@@ -161,6 +195,7 @@ final class SampleDataGenerator
                 $status, $sentAt, $paidAt, $adminUserId,
             ]);
             $invId = (int) $pdo->lastInsertId();
+            $track('invoice', $invId);
             $invoices[] = ['id' => $invId, 'vs' => $vs, 'currency' => $clientCurrency, 'currency_id' => $clientCurrencyId, 'rc' => $clientReverseCharge];
 
             $itemCount = random_int(1, 3);
@@ -233,6 +268,7 @@ final class SampleDataGenerator
                 $issueDate . ' 12:00:00', $adminUserId,
             ]);
             $cnId = (int) $pdo->lastInsertId();
+            $track('credit_note', $cnId);
 
             $pdo->prepare(
                 'INSERT INTO invoice_items
@@ -295,6 +331,7 @@ final class SampleDataGenerator
             $stmt->execute([$supplierId, $company, $ic, $dic, $street, $city, $zip, $countryId, $email, $currencyId]);
             $vid = (int) $pdo->lastInsertId();
             $vendorIds[] = $vid;
+            $track('vendor', $vid);
             $vendorMeta[] = [
                 'id' => $vid, 'company' => $company, 'ic' => $ic, 'dic' => $dic,
                 'street' => $street, 'zip' => $zip, 'city' => $city, 'iso2' => $iso2,
@@ -356,6 +393,7 @@ final class SampleDataGenerator
                 $status, $bookedAt, $paidAt, $adminUserId,
             ]);
             $piId = (int) $pdo->lastInsertId();
+            $track('purchase_invoice', $piId);
 
             // 1-3 položky z vendor poolu (popis + sazba + klasifikace k sobě patří)
             $itemCount = random_int(1, min(3, count($pool['items'])));
@@ -441,14 +479,35 @@ final class SampleDataGenerator
                 $rt['items'],
                 array_keys($rt['items']),
             ));
+            $track('recurring_template', (int) $tplId);
             $recurringCount++;
         }
 
         // ───── Kniha jízd (1 firemní auto, 15 jízd, 6 tankování) ─────
         $logbook = $this->seedLogbook($pdo, $supplierId, $adminUserId, $today);
+        $carId = (int) ($logbook['car_id'] ?? 0);
+        $track('car', $carId);
+
+        // Zapiš evidenci sample entit — řídí „Odebrat ukázková data" (přesné smazání)
+        // i zobrazení tlačítka v UI (issue #162).
+        if ($tracked !== []) {
+            $ins = $pdo->prepare(
+                'INSERT INTO sample_data_entries (supplier_id, entity_type, entity_id) VALUES (?, ?, ?)'
+            );
+            foreach ($tracked as [$type, $id]) {
+                $ins->execute([$supplierId, $type, $id]);
+            }
+        }
+
+        $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
 
         // Sample data nejdou přes InvoiceActions, takže project/client revenue cache by zůstaly prázdné
         // → dashboard a top-clients koláč by hlásily nulu. Recompute všech vygenerovaných entit.
+        // AŽ po commitu — StatsRecomputer si otevírá vlastní transakci.
         foreach ($projectIds as $pid) $this->stats->recomputeProject((int) $pid);
         foreach ($clientIds  as $cid) $this->stats->recomputeClient((int) $cid);
         foreach ($vendorIds  as $vid) $this->stats->recomputeClient((int) $vid);
@@ -473,7 +532,7 @@ final class SampleDataGenerator
      * inserty. Odometer řetězíme spojitě od počátečního stavu auta, tankování
      * umisťujeme do téhož rozsahu km, ať na sebe přehledy a souhrny sedí.
      *
-     * @return array{cars:int, trips:int, fuelings:int}
+     * @return array{cars:int, trips:int, fuelings:int, car_id:int}
      */
     private function seedLogbook(PDO $pdo, int $supplierId, int $adminUserId, \DateTimeImmutable $today): array
     {
@@ -575,7 +634,7 @@ final class SampleDataGenerator
             $fuelingsCount++;
         }
 
-        return ['cars' => 1, 'trips' => $tripsCount, 'fuelings' => $fuelingsCount];
+        return ['cars' => 1, 'trips' => $tripsCount, 'fuelings' => $fuelingsCount, 'car_id' => $carId];
     }
 
     private function nextPurchaseVarsymbol(PDO $pdo, int $supplierId, string $period): string

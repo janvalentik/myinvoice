@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { settingsApi, type Supplier, type SelfCopyType, type SelfCopyMode } from '@/api/settings'
+import { adminApi, type SampleDataStatus } from '@/api/admin'
 import { clientsApi } from '@/api/clients'
 import { useSupplierStore } from '@/stores/supplier'
 import { useToast } from '@/composables/useToast'
@@ -166,9 +167,48 @@ async function load() {
     // První render preview hned po loadu supplier
     bumpPreview()
   } finally { loading.value = false }
+  loadSampleStatus()
 }
 
 onMounted(load)
+
+// ── Ukázková (sample) data — sekce se zobrazí jen když nějaká evidovaná existují (issue #162) ──
+const sampleStatus = ref<SampleDataStatus | null>(null)
+const showSampleConfirm = ref(false)
+const sampleDeleting = ref(false)
+
+async function loadSampleStatus() {
+  try {
+    sampleStatus.value = await adminApi.sampleDataStatus()
+  } catch {
+    sampleStatus.value = null  // 403 (ne-admin) / chyba → sekci nezobrazuj
+  }
+}
+
+const sampleSummaryLine = computed(() => {
+  const c = sampleStatus.value?.counts ?? {}
+  const parts: string[] = []
+  const push = (n: number, key: string) => { if (n > 0) parts.push(`${n} ${t(key)}`) }
+  push((c.client ?? 0) + (c.vendor ?? 0), 'settings.sample_data.unit_clients')
+  push((c.invoice ?? 0) + (c.credit_note ?? 0), 'settings.sample_data.unit_invoices')
+  push(c.purchase_invoice ?? 0, 'settings.sample_data.unit_purchase')
+  push(c.project ?? 0, 'settings.sample_data.unit_projects')
+  return parts.join(', ')
+})
+
+async function removeSampleData() {
+  sampleDeleting.value = true
+  try {
+    await adminApi.deleteSampleData()
+    toast.success(t('settings.sample_data.removed'))
+    showSampleConfirm.value = false
+    await loadSampleStatus()
+  } catch (e: any) {
+    toast.error(e?.response?.data?.error?.message || t('common.error'))
+  } finally {
+    sampleDeleting.value = false
+  }
+}
 
 async function saveSupplier() {
   if (!supplier.value) return
@@ -885,6 +925,44 @@ async function removeLogo() {
           </div>
         </div>
       </section>
+
+      <!-- Ukázková data — jen pokud nějaká evidovaná existují (issue #162) -->
+      <section v-if="sampleStatus?.has" class="bg-surface border border-warning-500/40 rounded-lg p-5 shadow-sm">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-warning-600 mb-2">{{ t('settings.sample_data.title') }}</h2>
+        <p class="text-sm text-neutral-600 mb-1">{{ t('settings.sample_data.description') }}</p>
+        <p v-if="sampleSummaryLine" class="text-xs text-neutral-500 mb-4">{{ t('settings.sample_data.contains') }}: {{ sampleSummaryLine }}</p>
+        <button type="button" @click="showSampleConfirm = true"
+          class="cursor-pointer h-10 px-4 text-sm font-medium rounded-md border border-danger-500/50 text-danger-600 hover:bg-danger-50 inline-flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          {{ t('settings.sample_data.remove_button') }}
+        </button>
+      </section>
+    </div>
+
+    <!-- Potvrzení odebrání ukázkových dat -->
+    <div v-if="showSampleConfirm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div class="bg-surface rounded-lg shadow-xl w-full max-w-md p-6">
+        <div class="flex items-start gap-3 mb-4">
+          <div class="w-10 h-10 rounded-full bg-danger-50 flex items-center justify-center shrink-0">
+            <svg class="w-5 h-5 text-danger-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.34 16a2 2 0 001.73 3z"/></svg>
+          </div>
+          <div>
+            <h3 class="text-base font-semibold text-neutral-900">{{ t('settings.sample_data.confirm_title') }}</h3>
+            <p class="text-sm text-neutral-600 mt-1">{{ t('settings.sample_data.confirm_text') }}</p>
+            <p v-if="sampleSummaryLine" class="text-xs text-neutral-500 mt-2">{{ sampleSummaryLine }}</p>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" @click="showSampleConfirm = false" :disabled="sampleDeleting"
+            class="cursor-pointer h-10 px-4 text-sm rounded-md border border-neutral-300 text-neutral-700 hover:bg-neutral-50">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="button" @click="removeSampleData" :disabled="sampleDeleting"
+            class="cursor-pointer h-10 px-4 text-sm font-medium rounded-md bg-danger-600 hover:bg-danger-700 disabled:opacity-60 text-white">
+            {{ sampleDeleting ? '…' : t('settings.sample_data.confirm_button') }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
