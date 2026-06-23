@@ -5,6 +5,13 @@ All notable changes to MyInvoice.cz are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.37.7] — 2026-06-23
+
+### Fixed
+
+- **Bankovní avíza na cizoměnových účtech: měna se nově bere z účtu, ne natvrdo CZK (#160).** Avíza Fio banky „Příjem/Výdaj na kontě" ve svém těle měnu vůbec neuvádějí, takže se u plateb na **cizoměnový účet** (např. EUR) ukládala s měnou **CZK** místo skutečné měny účtu. Důsledkem byly špatně evidované částky a hlavně **neúspěšné párování** — příchozí cizoměnová platba se porovnávala, jako by byla v korunách, takže se nikdy nespustila kurzová (FX) větev a legitimní shody s fakturou se míjely. Měna účtu je přitom v okamžiku importu už známá (účet je vyřešený na záznam v číselníku měn), nově se proto použije jako autoritativní a parserem doplněná CZK zůstává jen krajní záloha. Bez DB migrace.
+  - Pro nápravu už dříve naimportovaných dat slouží jednorázový skript `api/bin/fix-email-notice-foreign-currency.php` (dorovná měnu na výpisech i transakcích a přepočítá klíč měsíčního výpisu). Spouštět nejdřív bez parametru (náhled), pro zápis s `--apply`.
+
 ## [4.37.6] — 2026-06-22
 
 ### Changed

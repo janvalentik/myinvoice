@@ -225,6 +225,7 @@ final class BankEmailNoticeScanner
                 'imap-' . $imapAccountId . ':' . ($messageId ?: $hash),
                 (float) ($mapping['amount_tolerance'] ?? 0.05),
                 $this->matcher,
+                isset($mapping['currency_code']) ? (string) $mapping['currency_code'] : null,
             );
             $match = $tx['match_result'];
             $matchedInvoiceId = isset($match['invoice_id']) ? (int) $match['invoice_id'] : null;

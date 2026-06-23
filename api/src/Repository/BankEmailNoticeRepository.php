@@ -461,15 +461,26 @@ final class BankEmailNoticeRepository
         string $sourceRef,
         ?float $tolerance,
         \MyInvoice\Service\Bank\StatementMatcher $matcher,
+        ?string $accountCurrency = null,
     ): array {
         [$account, $bankCode] = $this->splitAccount($notice->recipientAccount);
         $pdo = $this->db->pdo();
+
+        // Měna účtu je autoritativní: Fio avíza „příjem/výdaj na kontě" měnu neobsahují,
+        // takže parser defaultuje na CZK. Cílový účet je ale už vyřešený na currencies row,
+        // jejíž kód (EUR…) přicházi jako $accountCurrency. Parserem defaultovaná měna
+        // zůstává jen poslední fallback (např. nemapovaná auto-detekce bez měny účtu).
+        $currency = strtoupper(
+            $accountCurrency !== null && trim($accountCurrency) !== ''
+                ? trim($accountCurrency)
+                : $notice->currency
+        );
 
         // Měsíční výpis: avíza pro stejný účet/měnu/měsíc se sbírají do jednoho
         // bank_statements (source=email_notice), ať seznam výpisů nezaplaví 1 řádek/avízo.
         // Deterministický file_hash + UNIQUE uq_bs_hash = atomický find-or-create.
         $ym = preg_match('/^\d{4}-\d{2}/', (string) $notice->postedAt, $mm) === 1 ? $mm[0] : date('Y-m');
-        $monthKey = $account . '|' . ($bankCode ?? '') . '|' . strtoupper($notice->currency) . '|' . $ym;
+        $monthKey = $account . '|' . ($bankCode ?? '') . '|' . $currency . '|' . $ym;
         $fileHash = hash('sha256', 'email-notice-monthly:' . $monthKey);
 
         $findStmt = $pdo->prepare('SELECT id FROM bank_statements WHERE file_hash = ? LIMIT 1');
@@ -491,7 +502,7 @@ final class BankEmailNoticeRepository
                     $fileHash,
                     $account,
                     $bankCode,
-                    $notice->currency,
+                    $currency,
                     $ym . '-01',
                 ]);
                 $statementId = (int) $pdo->lastInsertId();
@@ -517,7 +528,7 @@ final class BankEmailNoticeRepository
             $statementId,
             $notice->postedAt,
             $notice->amount,
-            $notice->currency,
+            $currency,
             $notice->variableSymbol,
             $notice->constantSymbol,
             $notice->counterpartyAccount,
