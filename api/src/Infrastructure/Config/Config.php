@@ -228,6 +228,7 @@ final class Config
                     'unicredit' => \MyInvoice\Service\Bank\EmailNotice\Parser\UnicreditBankEmailNoticeParser::class,
                     'csob' => \MyInvoice\Service\Bank\EmailNotice\Parser\CsobBankEmailNoticeParser::class,
                     'fio' => \MyInvoice\Service\Bank\EmailNotice\Parser\FioBankEmailNoticeParser::class,
+                    'creditas' => \MyInvoice\Service\Bank\EmailNotice\Parser\CreditasBankEmailNoticeParser::class,
                 ],
             ],
         ];
