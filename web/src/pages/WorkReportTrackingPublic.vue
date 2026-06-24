@@ -258,19 +258,19 @@ async function verify() {
               </span>
             </header>
             <div class="overflow-x-auto">
-              <table class="w-full text-sm">
+              <table class="w-full text-sm table-fixed">
                 <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
                   <tr>
                     <th class="px-4 py-2 text-left font-medium">{{ t('workReportTracking.public.description') }}</th>
                     <th v-if="reportHasDates(rep.items)" class="px-3 py-2 text-left font-medium w-28">{{ t('workReportTracking.public.date') }}</th>
                     <th class="px-3 py-2 text-right font-medium w-20 whitespace-nowrap">{{ t('workReportTracking.public.hours') }}</th>
                     <th class="px-3 py-2 text-right font-medium w-32 whitespace-nowrap">{{ t('workReportTracking.public.rate') }}</th>
-                    <th class="px-3 py-2 text-right font-medium w-32 whitespace-nowrap">{{ t('workReportTracking.public.amount') }}</th>
+                    <th class="px-3 py-2 text-right font-medium w-36 whitespace-nowrap">{{ t('workReportTracking.public.amount') }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-neutral-100">
                   <tr v-for="(it, idx) in rep.items" :key="idx">
-                    <td class="px-4 py-2 whitespace-pre-wrap text-neutral-800">{{ it.description }}</td>
+                    <td class="px-4 py-2 whitespace-pre-wrap break-words text-neutral-800">{{ it.description }}</td>
                     <td v-if="reportHasDates(rep.items)" class="px-3 py-2 whitespace-nowrap text-neutral-600">{{ fmtDate(it.work_date) }}</td>
                     <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtHours(it.hours) }}</td>
                     <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(it.rate, rep.currency) }}</td>
@@ -291,7 +291,7 @@ async function verify() {
               <div class="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
                 {{ rep.material_title || t('workReportTracking.public.material') }}
               </div>
-              <table class="w-full text-sm">
+              <table class="w-full text-sm table-fixed">
                 <thead class="bg-neutral-50 text-xs text-neutral-500 uppercase tracking-wide">
                   <tr>
                     <th class="px-4 py-2 text-left font-medium">{{ t('workReportTracking.public.description') }}</th>
@@ -303,7 +303,7 @@ async function verify() {
                 </thead>
                 <tbody class="divide-y divide-neutral-100">
                   <tr v-for="(m, idx) in rep.materials" :key="`mat-${idx}`">
-                    <td class="px-4 py-2 whitespace-pre-wrap text-neutral-800">{{ m.description }}</td>
+                    <td class="px-4 py-2 whitespace-pre-wrap break-words text-neutral-800">{{ m.description }}</td>
                     <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ Number(m.quantity).toLocaleString('cs', { maximumFractionDigits: 3 }) }}</td>
                     <td class="px-3 py-2 text-neutral-600">{{ m.unit }}</td>
                     <td class="px-3 py-2 text-right font-mono whitespace-nowrap">{{ fmtMoney(m.unit_price, rep.currency) }}</td>
